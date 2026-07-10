@@ -9,6 +9,9 @@ catalogs:
     '@solana-program/system':
       specifier: ^0.12.2
       version: 0.12.2
+    '@solana-program/token':
+      specifier: ^0.13.0
+      version: 0.13.0
     '@solana-program/token-2022':
       specifier: ^0.9.0
       version: 0.9.0
@@ -86,6 +89,9 @@ importers:
       '@sdp/solana':
         specifier: workspace:*
         version: link:../../packages/sdp-solana
+      '@sdp/spc':
+        specifier: workspace:*
+        version: link:../../packages/sdp-spc
       '@sdp/types':
         specifier: workspace:*
         version: link:../../packages/sdp-types
@@ -413,6 +419,9 @@ importers:
       '@sdp/rpc':
         specifier: workspace:*
         version: link:../sdp-rpc
+      '@sdp/spc':
+        specifier: workspace:*
+        version: link:../sdp-spc
       '@sdp/types':
         specifier: workspace:*
         version: link:../sdp-types
@@ -575,6 +584,12 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/sdp-private-channels:
+    devDependencies:
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/sdp-rpc:
     dependencies:
       '@sdp/types':
@@ -614,6 +629,27 @@ importers:
       tsx:
         specifier: 4.22.4
         version: 4.22.4
+
+  packages/sdp-spc:
+    dependencies:
+      '@sdp/rpc':
+        specifier: workspace:*
+        version: link:../sdp-rpc
+      '@sdp/solana':
+        specifier: workspace:*
+        version: link:../sdp-solana
+      '@sdp/types':
+        specifier: workspace:*
+        version: link:../sdp-types
+      '@solana-program/token':
+        specifier: 'catalog:'
+        version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
+      '@solana-program/token-2022':
+        specifier: 'catalog:'
+        version: 0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3))
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
 
   packages/sdp-types:
     dependencies:

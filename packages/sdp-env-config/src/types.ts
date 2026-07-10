@@ -6,6 +6,7 @@ export type SectionId =
   | "clerk"
   | "signing"
   | "fee"
+  | "private-channels"
   | "secrets"
   | "advanced";
 

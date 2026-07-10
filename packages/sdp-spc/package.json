@@ -1,0 +1,34 @@
+{
+  "name": "@sdp/spc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./src/index.ts", "import": "./src/index.ts", "default": "./src/index.ts" },
+    "./config": { "types": "./src/config.ts", "import": "./src/config.ts", "default": "./src/config.ts" },
+    "./errors": { "types": "./src/errors.ts", "import": "./src/errors.ts", "default": "./src/errors.ts" },
+    "./types": { "types": "./src/types.ts", "import": "./src/types.ts", "default": "./src/types.ts" },
+    "./gateway": { "types": "./src/gateway.ts", "import": "./src/gateway.ts", "default": "./src/gateway.ts" },
+    "./balances": { "types": "./src/balances.ts", "import": "./src/balances.ts", "default": "./src/balances.ts" },
+    "./transfer": { "types": "./src/transfer.ts", "import": "./src/transfer.ts", "default": "./src/transfer.ts" },
+    "./auth": { "types": "./src/auth.ts", "import": "./src/auth.ts", "default": "./src/auth.ts" },
+    "./programs/deposit": { "types": "./src/programs/deposit.ts", "import": "./src/programs/deposit.ts", "default": "./src/programs/deposit.ts" },
+    "./programs/withdraw": { "types": "./src/programs/withdraw.ts", "import": "./src/programs/withdraw.ts", "default": "./src/programs/withdraw.ts" },
+    "./deposit": { "types": "./src/deposit.ts", "import": "./src/deposit.ts", "default": "./src/deposit.ts" },
+    "./withdraw": { "types": "./src/withdraw.ts", "import": "./src/withdraw.ts", "default": "./src/withdraw.ts" },
+    "./reconcile": { "types": "./src/reconcile.ts", "import": "./src/reconcile.ts", "default": "./src/reconcile.ts" },
+    "./streamer": { "types": "./src/streamer.ts", "import": "./src/streamer.ts", "default": "./src/streamer.ts" }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/"
+  },
+  "dependencies": {
+    "@sdp/rpc": "workspace:*",
+    "@sdp/solana": "workspace:*",
+    "@sdp/types": "workspace:*",
+    "@solana-program/token": "catalog:",
+    "@solana-program/token-2022": "catalog:",
+    "@solana/kit": "catalog:"
+  }
+}

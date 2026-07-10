@@ -43,6 +43,7 @@
     "format:check": "biome format .",
     "test": "scripts/doppler/run-with-config.sh node scripts/run-workspace-tests.mjs unit",
     "test:integration": "scripts/doppler/run-with-config.sh node scripts/run-workspace-tests.mjs integration",
+    "test:spc": "SDP_INTEGRATION_SUITE=spc PRIVATE_CHANNEL_GATEWAY_URL=${PRIVATE_CHANNEL_GATEWAY_URL:-http://34.71.147.163:8899} pnpm --filter @sdp/api-integration exec vitest run src/tests/private-channels.test.ts",
     "test:scripts": "node --test scripts/*.test.mjs",
     "secrets:print:cloudflare": "node scripts/project-secrets.mjs cloudflare",
     "secrets:print:docker": "node scripts/project-secrets.mjs docker",
