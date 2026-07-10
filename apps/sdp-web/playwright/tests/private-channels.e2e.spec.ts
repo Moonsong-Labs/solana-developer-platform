@@ -1,0 +1,67 @@
+import { expect, test } from "@playwright/test";
+import { getPlaywrightAdminSession } from "../support/auth-session";
+import {
+  ensureLinkedOrg,
+  resolvePlaywrightProjectId,
+  seedProjectCookie,
+} from "../support/local-dashboard-bootstrap";
+import { getBootstrapApiBaseUrl } from "../support/local-issuance-bootstrap";
+
+const privateChannelsEnabled = process.env.NEXT_PUBLIC_PAYMENTS_PRIVATE_CHANNELS_ENABLED === "true";
+
+test.describe
+  .serial("dashboard private channels feature flag", () => {
+    let bootstrapProjectId = "";
+
+    test.beforeAll(async ({ browser }) => {
+      const session = await getPlaywrightAdminSession(browser);
+      await ensureLinkedOrg(session.identity, { tier: "enterprise" });
+      bootstrapProjectId = await resolvePlaywrightProjectId(
+        getBootstrapApiBaseUrl(),
+        session.getBearerToken
+      );
+      await session.page.close();
+    });
+
+    test.beforeEach(async ({ page }) => {
+      await seedProjectCookie(page, bootstrapProjectId);
+    });
+
+    test("hides private channels when the dashboard feature flag is disabled", async ({ page }) => {
+      test.skip(privateChannelsEnabled, "Covered by the feature-enabled private channels test");
+
+      await page.goto("/dashboard/payments");
+      await expect(page.getByRole("link", { name: "Private Channels" })).toHaveCount(0);
+
+      await page.goto("/dashboard/payments/private-channels");
+      await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+    });
+
+    test("shows private channels when the dashboard feature flag is enabled", async ({ page }) => {
+      test.skip(
+        !privateChannelsEnabled,
+        "Requires NEXT_PUBLIC_PAYMENTS_PRIVATE_CHANNELS_ENABLED=true"
+      );
+
+      await page.goto("/dashboard/payments");
+      await expect(page.getByRole("link", { name: "Private Channels" })).toBeVisible();
+      await page.getByRole("link", { name: "Private Channels" }).click();
+      await expect(page).toHaveURL(/\/dashboard\/payments\/private-channels$/);
+
+      await expect(
+        page.locator("main").getByText("Connect Private Channel", { exact: true })
+      ).toBeVisible();
+
+      const gatewayInput = page.locator("#gateway-url");
+      await expect(gatewayInput).toBeVisible();
+      await expect(gatewayInput).toHaveValue("http://34.71.147.163:8899");
+
+      const testButton = page.getByRole("button", { name: "Test connection", exact: true });
+      await expect(testButton).toBeVisible();
+      await expect(testButton).toBeEnabled();
+
+      const connectButton = page.getByRole("button", { name: "Connect", exact: true });
+      await expect(connectButton).toBeVisible();
+      await expect(connectButton).toBeDisabled();
+    });
+  });
