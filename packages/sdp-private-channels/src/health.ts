@@ -1,4 +1,3 @@
-import { restRequest } from "./http";
 import type { GatewayHealth } from "./types";
 import { normalizeHttpBase } from "./url";
 
@@ -36,11 +35,19 @@ async function probe(url: string): Promise<GatewayProbeResponse> {
   // server-side — a potential SSRF vector. Before this handles untrusted input,
   // consider hardening (e.g. an allowlist of gateway hosts, or blocking
   // private/link-local IP ranges, plus manual redirect handling).
-  const { status, ok, raw, parsed } = await restRequest(url, {
+  const response = await fetch(url, {
+    method: "GET",
     headers: { Accept: "application/json" },
-    timeoutMs: PROBE_TIMEOUT_MS,
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
   });
-  return { status, ok, body: parsed !== undefined ? parsed : raw };
+  const raw = await response.text();
+  let body: unknown = raw;
+  try {
+    if (raw) body = JSON.parse(raw);
+  } catch {
+    // Non-JSON body — keep the raw text.
+  }
+  return { status: response.status, ok: response.ok, body };
 }
 
 function extractDegradedReason(body: unknown): string {

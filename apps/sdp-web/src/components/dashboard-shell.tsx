@@ -32,6 +32,7 @@ import { SentryUserContext } from "@/components/sentry-user-context";
 import { Badge } from "@/components/ui/badge";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
+import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { isRecurringPaymentsDashboardEnabled } from "@/lib/recurring-payments-feature";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,9 @@ function getPaymentsActions(): SubNavItem[] {
     ...PAYMENTS_ACTIONS,
     ...(isRecurringPaymentsDashboardEnabled()
       ? [{ label: "Recurring", href: "/dashboard/payments/recurring" }]
+      : []),
+    ...(isPrivateChannelsDashboardEnabled()
+      ? [{ label: "Private Channels", href: "/dashboard/payments/private-channels" }]
       : []),
   ];
 }
@@ -291,6 +295,12 @@ function getWalletBackAction(pathname: string): DashboardPageConfig["backAction"
   };
 }
 
+function getPaymentsActionCenteredTitle(pathname: string): string {
+  const action = PAYMENTS_ACTIONS.find((item) => pathname.startsWith(item.href));
+  if (action) return action.label;
+  return pathname.endsWith("/receive") ? "Receive" : "Send";
+}
+
 function getDashboardPageConfig(pathname: string): DashboardPageConfig {
   if (pathname === "/dashboard") {
     return {
@@ -408,16 +418,15 @@ function getDashboardPageConfig(pathname: string): DashboardPageConfig {
       },
     };
   }
+  if (pathname === "/dashboard/payments/private-channels") {
+    return {
+      title: "Private Channels",
+      contentWidthClass: "max-w-none",
+    };
+  }
   if (pathname.startsWith("/dashboard/payments/")) {
-    const action = PAYMENTS_ACTIONS.find((item) => pathname.startsWith(item.href));
-    const centeredTitle = action
-      ? action.label
-      : pathname.endsWith("/receive")
-        ? "Receive"
-        : "Send";
-
     return actionPageConfig({
-      centeredTitle,
+      centeredTitle: getPaymentsActionCenteredTitle(pathname),
       backHref: "/dashboard/payments",
       backLabel: "Back to payments",
       contentWidthClass: "max-w-none",

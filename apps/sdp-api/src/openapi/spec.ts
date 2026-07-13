@@ -41,7 +41,7 @@ const OPENAPI_TAG = {
   },
   PRIVATE_CHANNELS: {
     name: "Private Channels",
-    description: "Solana Private Channels instance, balances, and internal transfers.",
+    description: "Connected Solana Private Channels instance and gateway health.",
   },
   COMPLIANCE: { name: "Compliance", description: "Risk and compliance screening endpoints." },
   COUNTERPARTIES: {

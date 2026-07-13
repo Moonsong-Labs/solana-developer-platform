@@ -5,14 +5,17 @@
  * concerns: instance config resolution and gateway health probing.
  */
 
-import { type GatewayHealthResult, probeGatewayHealth } from "@sdp/private-channels";
+import {
+  type GatewayHealthResult,
+  probeGatewayHealth,
+  resolvePrivateChannelConfig,
+} from "@sdp/private-channels";
 import type { PrivateChannelHealth, PrivateChannelInstanceInfo } from "@sdp/types";
 import type { Env } from "@/types/env";
-import { getPrivateChannelConfig } from "./config";
 
 /** Connect + health snapshot for the configured SPC instance. */
 export async function getInstanceInfo(env: Env): Promise<PrivateChannelInstanceInfo> {
-  const config = getPrivateChannelConfig(env);
+  const config = resolvePrivateChannelConfig(env);
   const health = await probeGatewayHealth(config.gatewayUrl);
 
   return {

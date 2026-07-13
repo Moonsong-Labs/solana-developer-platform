@@ -1,6 +1,10 @@
 "use client";
 
-import { type PrivateChannelAuthMode, type PrivateChannelHealth, SANDBOX_DEFAULTS } from "@sdp/types";
+import {
+  type PrivateChannelAuthMode,
+  type PrivateChannelHealth,
+  SANDBOX_DEFAULTS,
+} from "@sdp/types";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -180,6 +184,14 @@ export function PrivateChannelsConnectForm() {
         ) : null}
       </div>
 
+      {/*
+        TODO(private-channels): implement Connect once instance persistence lands.
+        Should persist the entered fields (gatewayUrl, devnetRpcUrl, escrow/withdraw
+        program IDs, escrowInstanceAddr, authMode/authUrl) as the org's connected SPC
+        instance, so GET /v1/private-channels/instance reads from the DB instead of only
+        PRIVATE_CHANNEL_* env, and the deferred balance/transfer/escrow pathways have a
+        target. Until then the button stays disabled ("Test connection" is read-only).
+      */}
       <div className="flex justify-end">
         <Button type="button" disabled title="Persistence lands in the next slice">
           Connect

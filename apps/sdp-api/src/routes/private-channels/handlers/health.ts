@@ -13,9 +13,8 @@ import { healthQuerySchema } from "../schemas";
  *
  * Note: per product decision the probe does NOT block private/loopback hosts
  * (self-host operators may run internal gateways). It stays behind sdp-api auth
- * + `payments:read`, on the Worker, with `redirect: "manual"` in the probe. If a
- * multi-tenant deployment needs SSRF hardening, add an env-gated private-host
- * block in `probeGatewayHealth`.
+ * + `payments:read`, on the Worker. If a multi-tenant deployment needs SSRF
+ * hardening, add an env-gated private-host block in `probeGatewayHealth`.
  */
 export async function getPrivateChannelHealth(c: AppContext) {
   const parsed = healthQuerySchema.safeParse({ gatewayUrl: c.req.query("gatewayUrl") });
