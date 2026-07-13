@@ -1,4 +1,5 @@
 import { KoraClient } from "@sdp/api/services/adapters";
+import { probeGatewayHealth } from "@sdp/private-channels";
 import { env } from "#env-impl";
 import { getIntegrationCustodyProvider } from "./custody-provider";
 
@@ -147,7 +148,7 @@ function getPrivateChannelGatewayUrl(): string | undefined {
 
 // Validate connectivity to the Solana Private Channels (SPC) gateway before any
 // SPC test runs. The gateway exposes GET /health and speaks a Solana JSON-RPC
-// subset where getLatestBlockhash is the documented health probe (SPC-INTEGRATION.md §4.2).
+// subset where getLatestBlockhash is the documented health probe.
 async function preflightSpc(): Promise<void> {
   const gatewayUrl = getPrivateChannelGatewayUrl();
   if (!gatewayUrl) {
@@ -156,12 +157,9 @@ async function preflightSpc(): Promise<void> {
   }
 
   await withLabel("PrivateChannels.health", async () => {
-    const res = await withTimeout(
-      15_000,
-      fetch(new URL("/health", gatewayUrl).toString(), { method: "GET" })
-    );
-    if (!res.ok) {
-      throw new Error(`gateway /health returned ${res.status}`);
+    const health = await probeGatewayHealth(gatewayUrl);
+    if (health.status === "unreachable") {
+      throw new Error(`gateway health probe failed: ${health.error}`);
     }
   });
 

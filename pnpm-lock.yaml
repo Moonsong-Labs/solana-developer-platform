@@ -83,15 +83,15 @@ importers:
       '@sdp/payments':
         specifier: workspace:*
         version: link:../../packages/sdp-payments
+      '@sdp/private-channels':
+        specifier: workspace:*
+        version: link:../../packages/sdp-private-channels
       '@sdp/rpc':
         specifier: workspace:*
         version: link:../../packages/sdp-rpc
       '@sdp/solana':
         specifier: workspace:*
         version: link:../../packages/sdp-solana
-      '@sdp/spc':
-        specifier: workspace:*
-        version: link:../../packages/sdp-spc
       '@sdp/types':
         specifier: workspace:*
         version: link:../../packages/sdp-types
@@ -416,12 +416,12 @@ importers:
 
   packages/sdp-api-integration:
     dependencies:
+      '@sdp/private-channels':
+        specifier: workspace:*
+        version: link:../sdp-private-channels
       '@sdp/rpc':
         specifier: workspace:*
         version: link:../sdp-rpc
-      '@sdp/spc':
-        specifier: workspace:*
-        version: link:../sdp-spc
       '@sdp/types':
         specifier: workspace:*
         version: link:../sdp-types
@@ -585,6 +585,25 @@ importers:
         version: 6.0.3
 
   packages/sdp-private-channels:
+    dependencies:
+      '@sdp/rpc':
+        specifier: workspace:*
+        version: link:../sdp-rpc
+      '@sdp/solana':
+        specifier: workspace:*
+        version: link:../sdp-solana
+      '@sdp/types':
+        specifier: workspace:*
+        version: link:../sdp-types
+      '@solana-program/token':
+        specifier: 'catalog:'
+        version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
+      '@solana-program/token-2022':
+        specifier: 'catalog:'
+        version: 0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3))
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
     devDependencies:
       vitest:
         specifier: ^4.1.8
@@ -629,27 +648,6 @@ importers:
       tsx:
         specifier: 4.22.4
         version: 4.22.4
-
-  packages/sdp-spc:
-    dependencies:
-      '@sdp/rpc':
-        specifier: workspace:*
-        version: link:../sdp-rpc
-      '@sdp/solana':
-        specifier: workspace:*
-        version: link:../sdp-solana
-      '@sdp/types':
-        specifier: workspace:*
-        version: link:../sdp-types
-      '@solana-program/token':
-        specifier: 'catalog:'
-        version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
-      '@solana-program/token-2022':
-        specifier: 'catalog:'
-        version: 0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3))
-      '@solana/kit':
-        specifier: 'catalog:'
-        version: 6.8.0(typescript@6.0.3)
 
   packages/sdp-types:
     dependencies:
@@ -14251,7 +14249,7 @@ snapshots:
       eslint: 10.4.1(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@10.4.1(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@10.4.1(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@10.4.1(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@10.4.1(jiti@2.7.0))
@@ -14284,7 +14282,7 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@10.4.1(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -14299,7 +14297,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@10.4.1(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9

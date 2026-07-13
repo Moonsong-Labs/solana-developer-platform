@@ -1,8 +1,6 @@
 "use client";
 
-import { SANDBOX_DEFAULTS } from "@sdp/private-channels/constants";
-import type { GatewayHealthResult } from "@sdp/private-channels/health";
-import type { AuthMode } from "@sdp/private-channels/types";
+import { type PrivateChannelAuthMode, type PrivateChannelHealth, SANDBOX_DEFAULTS } from "@sdp/types";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { testGatewayHealthAction } from "./actions";
 
 const STATUS_META: Record<
-  GatewayHealthResult["status"],
+  PrivateChannelHealth["status"],
   { label: string; dotClass: string; textClass: string }
 > = {
   ready: {
@@ -30,7 +28,7 @@ const STATUS_META: Record<
   },
 };
 
-function statusDetail(result: GatewayHealthResult): string | null {
+function statusDetail(result: PrivateChannelHealth): string | null {
   if (result.status === "ready") return null;
   if (result.status === "degraded") return result.reason;
   return result.error;
@@ -46,9 +44,9 @@ export function PrivateChannelsConnectForm() {
   const [escrowInstanceAddr, setEscrowInstanceAddr] = useState<string>(
     SANDBOX_DEFAULTS.escrowInstanceAddr
   );
-  const [authMode, setAuthMode] = useState<AuthMode>(SANDBOX_DEFAULTS.authMode);
+  const [authMode, setAuthMode] = useState<PrivateChannelAuthMode>(SANDBOX_DEFAULTS.authMode);
   const [authUrl, setAuthUrl] = useState<string>(SANDBOX_DEFAULTS.authUrl);
-  const [result, setResult] = useState<GatewayHealthResult | null>(null);
+  const [result, setResult] = useState<PrivateChannelHealth | null>(null);
   const [isTesting, startTesting] = useTransition();
 
   const handleTest = () => {
@@ -160,7 +158,7 @@ export function PrivateChannelsConnectForm() {
             name="authMode"
             className="h-10 w-full min-w-0 rounded-lg border border-[rgba(28,28,29,0.16)] bg-white px-3 text-sm text-[#1c1c1d]"
             value={authMode}
-            onChange={(event) => setAuthMode(event.currentTarget.value as AuthMode)}
+            onChange={(event) => setAuthMode(event.currentTarget.value as PrivateChannelAuthMode)}
           >
             <option value="none">None</option>
             <option value="jwt">JWT</option>

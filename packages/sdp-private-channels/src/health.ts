@@ -1,9 +1,12 @@
+import { restRequest } from "./http";
+import type { GatewayHealth } from "./types";
+import { normalizeHttpBase } from "./url";
+
 const PROBE_TIMEOUT_MS = 5000;
 
-export interface GatewayProbeResponse {
-  status: number;
-  ok: boolean;
-  body: unknown;
+export interface GatewayProbeResponse extends GatewayHealth {
+  /** Parsed upstream body. Omitted when the caller redacts it (e.g. the sdp-api boundary). */
+  body?: unknown;
 }
 
 export type GatewayHealthResult =
@@ -28,45 +31,15 @@ export type GatewayHealthResult =
       ready?: GatewayProbeResponse;
     };
 
-function normalizeBase(input: string): { base: string } | { error: string } {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return { error: "Gateway URL is required." };
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return { error: `Invalid URL: ${trimmed}` };
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { error: `Unsupported protocol: ${parsed.protocol}` };
-  }
-  const base = `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/$/, "")}`;
-  return { base };
-}
-
 async function probe(url: string): Promise<GatewayProbeResponse> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: controller.signal,
-      headers: { Accept: "application/json" },
-    });
-    const text = await res.text();
-    let body: unknown = text;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      // Non-JSON — keep as text.
-    }
-    return { status: res.status, ok: res.ok, body };
-  } finally {
-    clearTimeout(timeout);
-  }
+  // `redirect: "manual"` so a 3xx to an internal/metadata host is never followed
+  // (SSRF guard) — a real gateway `/health` responds 200 directly.
+  const { status, ok, raw, parsed } = await restRequest(url, {
+    redirect: "manual",
+    headers: { Accept: "application/json" },
+    timeoutMs: PROBE_TIMEOUT_MS,
+  });
+  return { status, ok, body: parsed !== undefined ? parsed : raw };
 }
 
 function extractDegradedReason(body: unknown): string {
@@ -82,7 +55,8 @@ function extractDegradedReason(body: unknown): string {
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    if (error.name === "AbortError") {
+    // `AbortSignal.timeout` rejects with a `TimeoutError`; keep `AbortError` too.
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
       return `Timed out after ${PROBE_TIMEOUT_MS} ms.`;
     }
     return error.message || "Request failed.";
@@ -96,7 +70,7 @@ function toErrorMessage(error: unknown): string {
  */
 export async function probeGatewayHealth(gatewayUrl: string): Promise<GatewayHealthResult> {
   const startedAt = Date.now();
-  const normalized = normalizeBase(gatewayUrl);
+  const normalized = normalizeHttpBase(gatewayUrl);
   if ("error" in normalized) {
     return { status: "unreachable", latencyMs: 0, error: normalized.error };
   }

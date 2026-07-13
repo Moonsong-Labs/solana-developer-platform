@@ -4,6 +4,8 @@ import {
   errorResponseSchema,
   privateChannelBalanceSchema,
   privateChannelBalancesQuerySchema,
+  privateChannelHealthQuerySchema,
+  privateChannelHealthSchema,
   privateChannelInstanceSchema,
   privateChannelTransferRequestSchema,
   privateChannelTransferResultSchema,
@@ -33,6 +35,25 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         ),
       },
       ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/health",
+    tags: [TAG],
+    summary: "Probe a candidate gateway's health",
+    operationId: "getPrivateChannelHealth",
+    description:
+      "Probes a candidate SPC gateway's /health and /ready (a pre-connect test). Returns 200 with the probe result for all outcomes (ready/degraded/unreachable).",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, query: privateChannelHealthQuerySchema },
+    responses: {
+      200: {
+        description: "Gateway health probe result",
+        content: jsonContent(successResponseSchema(privateChannelHealthSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403]),
     },
   });
 

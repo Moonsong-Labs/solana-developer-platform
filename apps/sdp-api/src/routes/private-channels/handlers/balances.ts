@@ -1,7 +1,11 @@
 import type { Address } from "@solana/kit";
 import { badRequest } from "@/lib/errors";
 import { success } from "@/lib/response";
-import { getSpcConfig, getWalletChannelBalances, mapSpcError } from "@/services/private-channels";
+import {
+  getPrivateChannelConfig,
+  getWalletChannelBalances,
+  mapPrivateChannelError,
+} from "@/services/private-channels";
 import type { AppContext } from "../context";
 import { requireAddress, resolveReadWalletPubkey } from "../context";
 import { balancesQuerySchema } from "../schemas";
@@ -22,7 +26,7 @@ export async function getPrivateChannelBalances(c: AppContext) {
 
     const walletPubkey = await resolveReadWalletPubkey(c, query.data.wallet);
 
-    const config = getSpcConfig(c.env);
+    const config = getPrivateChannelConfig(c.env);
     const mints: Address[] = query.data.mints
       ? query.data.mints
           .split(",")
@@ -39,9 +43,9 @@ export async function getPrivateChannelBalances(c: AppContext) {
       );
     }
 
-    const balances = await getWalletChannelBalances(c.env, { wallet: walletPubkey, mints });
+    const balances = await getWalletChannelBalances(config, { wallet: walletPubkey, mints });
     return success(c, { balances });
   } catch (error) {
-    throw mapSpcError(error);
+    throw mapPrivateChannelError(error);
   }
 }

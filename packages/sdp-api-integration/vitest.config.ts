@@ -43,7 +43,7 @@ const koraApiKey = getEnv("KORA_API_KEY");
 const koraTimeoutMs = getEnv("KORA_TIMEOUT_MS");
 const koraSurfpoolShim = getEnv("KORA_SURFPOOL_SHIM");
 // Solana Private Channels gateway — only in scope when explicitly set (e.g. via
-// `pnpm test:spc`), so normal integration runs neither run SPC tests nor probe it.
+// `pnpm test:private-channels`), so normal integration runs neither run the suite nor probe it.
 const privateChannelGatewayUrl = getEnv("PRIVATE_CHANNEL_GATEWAY_URL");
 const privateChannelAuthBaseUrl = getEnv("PRIVATE_CHANNEL_AUTH_BASE_URL");
 const privateChannelAuthMode = getEnv("PRIVATE_CHANNEL_AUTH_MODE");
@@ -51,7 +51,6 @@ const privateChannelEscrowProgramId = getEnv("PRIVATE_CHANNEL_ESCROW_PROGRAM_ID"
 const privateChannelWithdrawProgramId = getEnv("PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID");
 const privateChannelEscrowInstance = getEnv("PRIVATE_CHANNEL_ESCROW_INSTANCE");
 const privateChannelUsdcMint = getEnv("PRIVATE_CHANNEL_USDC_MINT");
-const privateChannelL1RpcUrl = getEnv("PRIVATE_CHANNEL_L1_RPC_URL");
 // Explicit preflight suite selector (e.g. "spc", "kora,spc"). Unset = infer from config.
 const integrationSuite = getEnv("SDP_INTEGRATION_SUITE");
 const integrationCustodyProvider = getEnv("SDP_INTEGRATION_CUSTODY_PROVIDER");
@@ -112,7 +111,6 @@ export default defineConfig({
             PRIVATE_CHANNEL_ESCROW_INSTANCE: privateChannelEscrowInstance,
           }),
           ...(privateChannelUsdcMint && { PRIVATE_CHANNEL_USDC_MINT: privateChannelUsdcMint }),
-          ...(privateChannelL1RpcUrl && { PRIVATE_CHANNEL_L1_RPC_URL: privateChannelL1RpcUrl }),
           ...(integrationSuite && { SDP_INTEGRATION_SUITE: integrationSuite }),
           ...(integrationCustodyProvider && {
             SDP_INTEGRATION_CUSTODY_PROVIDER: integrationCustodyProvider,

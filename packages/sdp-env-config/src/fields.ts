@@ -656,10 +656,10 @@ export const FIELDS: EnvField[] = [
     kind: "select",
     label: "Auth mode",
     help: "Per-instance RBAC fact: whether the gateway enforces JWT-gated reads.",
-    defaultValue: "off",
+    defaultValue: "none",
     options: [
-      { value: "off", label: "off" },
-      { value: "on", label: "on" },
+      { value: "none", label: "none" },
+      { value: "jwt", label: "jwt" },
     ],
   },
   {
@@ -685,27 +685,6 @@ export const FIELDS: EnvField[] = [
     section: "private-channels",
     kind: "text",
     label: "Channel USDC mint",
-  },
-  {
-    key: "PRIVATE_CHANNEL_L1_RPC_URL",
-    section: "private-channels",
-    kind: "url",
-    label: "L1 RPC URL",
-    help: "Devnet/mainnet RPC for escrow deposit/withdraw legs. Falls back to SOLANA_RPC_URL.",
-  },
-  {
-    key: "PRIVATE_CHANNEL_INDEXER_DATABASE_URL",
-    section: "private-channels",
-    kind: "text",
-    label: "Indexer database URL",
-    help: "Postgres read-replica of the SPC indexer for settlement reconciliation. Not implemented yet.",
-  },
-  {
-    key: "PRIVATE_CHANNEL_STREAMER_WS_URL",
-    section: "private-channels",
-    kind: "text",
-    label: "Streamer WebSocket URL",
-    help: "SPC streamer /ws firehose (:8902, internal-only). Not consumed yet.",
   },
 ];
 

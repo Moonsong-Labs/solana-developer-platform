@@ -1,15 +1,13 @@
 /**
  * Channel balance reads.
  *
- * The gateway does NOT implement `getTokenAccountsByOwner` (SPC-INTEGRATION.md
- * §4.2), so balances are read by deriving the ATA per `(wallet, mint)` and
- * calling `getTokenAccountBalance`. The caller supplies the mint set — the
- * package holds no instance/allowed-mint knowledge.
+ * The gateway does NOT implement `getTokenAccountsByOwner`, so balances are read
+ * by deriving the ATA per `(wallet, mint)` and calling `getTokenAccountBalance`.
+ * The caller supplies the mint set — the package holds no instance/allowed-mint
+ * knowledge.
  *
  * Limitation: only the ATA is inspected; non-ATA token accounts are
  * undiscoverable through the gateway.
- *
- * Worker-safe: no Node built-ins, no DB.
  */
 
 import { getAccountInfo, type SolanaRpc } from "@sdp/rpc/solana";
@@ -18,7 +16,7 @@ import { SPL_TOKEN_PROGRAMS } from "@sdp/types";
 import type { Address } from "@solana/kit";
 import { findAssociatedTokenPda } from "@solana-program/token-2022";
 import { badRequest, gatewayUnavailable } from "./errors";
-import type { SpcBalance } from "./types";
+import type { PrivateChannelBalanceRaw } from "./types";
 
 const SPL_TOKEN_PROGRAM_ID = SPL_TOKEN_PROGRAMS["spl-token"] as Address;
 const SPL_TOKEN_2022_PROGRAM_ID = SPL_TOKEN_PROGRAMS["token-2022"] as Address;
@@ -35,6 +33,15 @@ export interface BalanceRequest {
   decimals?: number;
 }
 
+// TODO(private-channels): the token-program detection + ATA-based balance reads
+// below (resolveTokenProgram, deriveChannelAta, getChannelBalance) duplicate logic
+// that already exists in apps/sdp-api/src/routes/payments/token-accounts.ts
+// (resolveMintTokenProgram / assertSupportedTokenProgram, resolveSourceTokenAccountOrAta,
+// getSplTokenBalances). It was copied rather than reused because that code lives in the
+// app layer and a workspace package cannot depend on apps/. General fix: extract a
+// shared token-account helper (program detection, ATA derivation, balance read) into
+// @sdp/solana, then repoint BOTH the payments route and this package at it so there is a
+// single implementation.
 /** Resolve which SPL program owns a mint (classic SPL vs Token-2022). */
 export async function resolveTokenProgram(rpc: SolanaRpc, mint: Address): Promise<Address> {
   const info = await getAccountInfo(rpc, mint);
@@ -69,7 +76,7 @@ export async function deriveChannelAta(params: {
 export async function getChannelBalance(
   rpc: SolanaRpc,
   request: BalanceRequest
-): Promise<SpcBalance> {
+): Promise<PrivateChannelBalanceRaw> {
   const tokenProgram = request.tokenProgram ?? (await resolveTokenProgram(rpc, request.mint));
   const ata = await deriveChannelAta({ wallet: request.wallet, mint: request.mint, tokenProgram });
 
@@ -117,6 +124,6 @@ export async function getChannelBalance(
 export function getChannelBalances(
   rpc: SolanaRpc,
   requests: BalanceRequest[]
-): Promise<SpcBalance[]> {
+): Promise<PrivateChannelBalanceRaw[]> {
   return Promise.all(requests.map((request) => getChannelBalance(rpc, request)));
 }

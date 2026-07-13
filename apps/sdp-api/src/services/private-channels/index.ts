@@ -1,8 +1,9 @@
-export { getSpcConfig, isSpcConfigured } from "./config";
-export { mapSpcError } from "./errors";
+export { getPrivateChannelConfig } from "./config";
+export { mapPrivateChannelError } from "./errors";
 export {
   type ExecuteChannelTransferParams,
   executeChannelTransfer,
   getInstanceInfo,
   getWalletChannelBalances,
+  probeInstanceHealth,
 } from "./service";

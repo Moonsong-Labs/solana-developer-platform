@@ -2,7 +2,7 @@ import type { Address } from "@solana/kit";
 import { getAuth } from "@/lib/auth";
 import { badRequest } from "@/lib/errors";
 import { success } from "@/lib/response";
-import { executeChannelTransfer, mapSpcError } from "@/services/private-channels";
+import { executeChannelTransfer, mapPrivateChannelError } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import { requireAddress, resolveManagedWallet } from "../context";
 import { transferBodySchema } from "../schemas";
@@ -40,6 +40,6 @@ export async function createPrivateChannelTransfer(c: AppContext) {
 
     return success(c, { transfer });
   } catch (error) {
-    throw mapSpcError(error);
+    throw mapPrivateChannelError(error);
   }
 }

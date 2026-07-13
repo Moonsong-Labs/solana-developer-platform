@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@sdp/rpc": "workspace:*",
-    "@sdp/spc": "workspace:*",
+    "@sdp/private-channels": "workspace:*",
     "@sdp/types": "workspace:*",
     "@solana-program/system": "catalog:",
     "@solana/keychain-cdp": "1.3.0",

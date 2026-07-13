@@ -8,15 +8,16 @@
 
 import { assertValidAddress } from "@sdp/solana/address";
 import { badRequest } from "./errors";
-import type { SpcInstanceConfig, SpcNetwork } from "./types";
+import type { PrivateChannelConfig, PrivateChannelNetwork } from "./types";
+import { assertHttpUrl } from "./url";
 
 /** Structural env subset the SPC client reads. */
-export interface SpcEnv {
+export interface PrivateChannelEnv {
   /** JSON-RPC gateway base URL (`:8899`); its presence enables the feature. */
   PRIVATE_CHANNEL_GATEWAY_URL?: string;
   /** Auth service base URL (`:8903`), when the instance exposes it. */
   PRIVATE_CHANNEL_AUTH_BASE_URL?: string;
-  /** RBAC mode; `"on"` enables JWT-gated reads, anything else is `"off"`. */
+  /** RBAC mode; `"jwt"` enables JWT-gated reads, anything else is `"none"`. */
   PRIVATE_CHANNEL_AUTH_MODE?: string;
   /** Escrow program id (L1); validated as an address when set. */
   PRIVATE_CHANNEL_ESCROW_PROGRAM_ID?: string;
@@ -26,10 +27,6 @@ export interface SpcEnv {
   PRIVATE_CHANNEL_ESCROW_INSTANCE?: string;
   /** Canonical channel USDC mint; validated as an address when set. */
   PRIVATE_CHANNEL_USDC_MINT?: string;
-  /** L1 RPC for escrow legs; falls back to `SOLANA_RPC_URL`. */
-  PRIVATE_CHANNEL_L1_RPC_URL?: string;
-  /** Shared Solana RPC URL, used as the L1 fallback. */
-  SOLANA_RPC_URL?: string;
   /** Cluster selector; `"mainnet-beta"` → mainnet, otherwise devnet. */
   SOLANA_NETWORK?: string;
 }
@@ -40,50 +37,39 @@ function trimmed(value: string | undefined): string | undefined {
   return v && v !== "" ? v : undefined;
 }
 
-/** Return `value` if it parses as a URL, else throw a `BAD_REQUEST` naming `field`. */
-function assertUrl(value: string, field: string): string {
-  try {
-    new URL(value);
-  } catch {
-    throw badRequest(`Invalid URL for ${field}: ${value}`);
-  }
-  return value;
-}
-
 /** True when a gateway URL is configured (feature is otherwise off). */
-export function isSpcConfigured(env: SpcEnv): boolean {
+export function isPrivateChannelConfigured(env: PrivateChannelEnv): boolean {
   return !!trimmed(env.PRIVATE_CHANNEL_GATEWAY_URL);
 }
 
 /**
- * Resolve a full `SpcInstanceConfig` from env. Requires `PRIVATE_CHANNEL_GATEWAY_URL`
+ * Resolve a full `PrivateChannelConfig` from env. Requires `PRIVATE_CHANNEL_GATEWAY_URL`
  * (throws `BAD_REQUEST` otherwise); validates every URL and address, and leaves
  * optional facts unset when absent.
  */
-export function resolveSpcConfig(env: SpcEnv): SpcInstanceConfig {
+export function resolvePrivateChannelConfig(env: PrivateChannelEnv): PrivateChannelConfig {
   const gatewayUrl = trimmed(env.PRIVATE_CHANNEL_GATEWAY_URL);
   if (!gatewayUrl) {
     throw badRequest("PRIVATE_CHANNEL_GATEWAY_URL is not set.");
   }
 
-  const network: SpcNetwork = env.SOLANA_NETWORK === "mainnet-beta" ? "mainnet-beta" : "devnet";
-  const authMode = trimmed(env.PRIVATE_CHANNEL_AUTH_MODE) === "on" ? "on" : "off";
+  const network: PrivateChannelNetwork =
+    env.SOLANA_NETWORK === "mainnet-beta" ? "mainnet-beta" : "devnet";
+  const authMode = trimmed(env.PRIVATE_CHANNEL_AUTH_MODE) === "jwt" ? "jwt" : "none";
 
   const authBaseUrl = trimmed(env.PRIVATE_CHANNEL_AUTH_BASE_URL);
-  const l1RpcUrl = trimmed(env.PRIVATE_CHANNEL_L1_RPC_URL) ?? trimmed(env.SOLANA_RPC_URL);
   const escrowProgramId = trimmed(env.PRIVATE_CHANNEL_ESCROW_PROGRAM_ID);
   const withdrawProgramId = trimmed(env.PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID);
   const escrowInstance = trimmed(env.PRIVATE_CHANNEL_ESCROW_INSTANCE);
   const usdcMint = trimmed(env.PRIVATE_CHANNEL_USDC_MINT);
 
   return {
-    gatewayUrl: assertUrl(gatewayUrl, "PRIVATE_CHANNEL_GATEWAY_URL"),
+    gatewayUrl: assertHttpUrl(gatewayUrl, "PRIVATE_CHANNEL_GATEWAY_URL"),
     authMode,
     network,
     ...(authBaseUrl
-      ? { authBaseUrl: assertUrl(authBaseUrl, "PRIVATE_CHANNEL_AUTH_BASE_URL") }
+      ? { authBaseUrl: assertHttpUrl(authBaseUrl, "PRIVATE_CHANNEL_AUTH_BASE_URL") }
       : {}),
-    ...(l1RpcUrl ? { l1RpcUrl: assertUrl(l1RpcUrl, "PRIVATE_CHANNEL_L1_RPC_URL") } : {}),
     ...(escrowProgramId
       ? {
           escrowProgramId: assertValidAddress(escrowProgramId, "PRIVATE_CHANNEL_ESCROW_PROGRAM_ID"),

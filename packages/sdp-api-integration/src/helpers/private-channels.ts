@@ -1,29 +1,30 @@
 /**
  * Solana Private Channels (SPC) — integration test helpers.
  *
- * Thin wrapper over `@sdp/spc`: the library IS the client, so these helpers just
+ * Thin wrapper over `@sdp/private-channels`: the library IS the client, so these helpers just
  * build the SPC env from `#env-impl` and expose the gateway client + config.
- * Deliberately app-free (imports only `@sdp/spc`), so the connectivity/balance
+ * Deliberately app-free (imports only `@sdp/private-channels`), so the connectivity/balance
  * suites don't drag the SDP app into their module graph.
  *
  * Run:
- *   pnpm test:spc
+ *   pnpm test:private-channels
  * Override the target instance:
- *   PRIVATE_CHANNEL_GATEWAY_URL=http://host:8899 pnpm test:spc
+ *   PRIVATE_CHANNEL_GATEWAY_URL=http://host:8899 pnpm test:private-channels
  */
-import type { SolanaRpc } from "@sdp/rpc/solana";
+
 import {
-  isSpcConfigured,
-  resolveSpcConfig,
-  type SpcEnv,
-  type SpcInstanceConfig,
+  isPrivateChannelConfigured,
+  type PrivateChannelConfig,
+  type PrivateChannelEnv,
+  resolvePrivateChannelConfig,
   createGatewayRpc as spcCreateGatewayRpc,
-} from "@sdp/spc";
+} from "@sdp/private-channels";
+import type { SolanaRpc } from "@sdp/rpc/solana";
 import { env } from "#env-impl";
 
 export const RUN_INTEGRATION_TESTS = env.RUN_INTEGRATION_TESTS === "true";
 
-function spcEnv(): SpcEnv {
+function spcEnv(): PrivateChannelEnv {
   const e = env as Record<string, unknown>;
   const s = (key: string): string | undefined =>
     typeof e[key] === "string" ? (e[key] as string) : undefined;
@@ -35,22 +36,20 @@ function spcEnv(): SpcEnv {
     PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID: s("PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID"),
     PRIVATE_CHANNEL_ESCROW_INSTANCE: s("PRIVATE_CHANNEL_ESCROW_INSTANCE"),
     PRIVATE_CHANNEL_USDC_MINT: s("PRIVATE_CHANNEL_USDC_MINT"),
-    PRIVATE_CHANNEL_L1_RPC_URL: s("PRIVATE_CHANNEL_L1_RPC_URL"),
-    SOLANA_RPC_URL: s("SOLANA_RPC_URL"),
     SOLANA_NETWORK: s("SOLANA_NETWORK"),
   };
 }
 
-export const SPC_CONFIGURED = isSpcConfigured(spcEnv());
+export const PRIVATE_CHANNEL_CONFIGURED = isPrivateChannelConfigured(spcEnv());
 
 /** Transfer suite also needs a custody key + a mint to move. */
-export const SPC_TRANSFER_CONFIGURED =
-  SPC_CONFIGURED &&
+export const PRIVATE_CHANNEL_TRANSFER_CONFIGURED =
+  PRIVATE_CHANNEL_CONFIGURED &&
   !!(env as { CUSTODY_PRIVATE_KEY?: string }).CUSTODY_PRIVATE_KEY &&
   !!(env as { PRIVATE_CHANNEL_USDC_MINT?: string }).PRIVATE_CHANNEL_USDC_MINT;
 
-export function getSpcConfig(): SpcInstanceConfig {
-  return resolveSpcConfig(spcEnv());
+export function getPrivateChannelConfig(): PrivateChannelConfig {
+  return resolvePrivateChannelConfig(spcEnv());
 }
 
 export function getUsdcMint(): string | undefined {
@@ -63,7 +62,7 @@ export function getCustodyPrivateKey(): string | undefined {
 
 /** SDP's RPC client pointed at the gateway (optional Bearer for the auth-ON path). */
 export function createGatewayRpc(options?: { bearer?: string }): SolanaRpc {
-  return spcCreateGatewayRpc(getSpcConfig(), options);
+  return spcCreateGatewayRpc(getPrivateChannelConfig(), options);
 }
 
 type JsonRpcResult<T> =
@@ -78,7 +77,7 @@ export async function rawGatewayRpc<T = unknown>(
   method: string,
   params: unknown[] = []
 ): Promise<JsonRpcResult<T>> {
-  const res = await fetch(getSpcConfig().gatewayUrl, {
+  const res = await fetch(getPrivateChannelConfig().gatewayUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),

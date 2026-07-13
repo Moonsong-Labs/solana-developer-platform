@@ -1,7 +1,7 @@
 /**
  * SPC internal transfer — custody-signed, live.
  *
- * Gated on SPC_TRANSFER_CONFIGURED (CUSTODY_PRIVATE_KEY + a USDC mint). Also
+ * Gated on PRIVATE_CHANNEL_TRANSFER_CONFIGURED (CUSTODY_PRIVATE_KEY + a USDC mint). Also
  * needs the custody wallet to actually hold channel balance; when it doesn't,
  * the test soft-skips (the sandbox is not funded by default). Proves
  * build → custody-sign → submit → finality end to end.
@@ -10,18 +10,22 @@
  * app-free connectivity/balance suite.
  */
 import { createSignerFromBase58 } from "@sdp/api/services/solana";
-import { executeInternalTransfer, getChannelBalance, resolveTokenProgram } from "@sdp/spc";
+import {
+  executeInternalTransfer,
+  getChannelBalance,
+  resolveTokenProgram,
+} from "@sdp/private-channels";
 import type { Address } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 import {
   createGatewayRpc,
   getCustodyPrivateKey,
   getUsdcMint,
+  PRIVATE_CHANNEL_TRANSFER_CONFIGURED,
   RUN_INTEGRATION_TESTS,
-  SPC_TRANSFER_CONFIGURED,
 } from "../helpers/private-channels";
 
-describe.skipIf(!SPC_TRANSFER_CONFIGURED || !RUN_INTEGRATION_TESTS)(
+describe.skipIf(!PRIVATE_CHANNEL_TRANSFER_CONFIGURED || !RUN_INTEGRATION_TESTS)(
   "Private Channels internal transfer",
   () => {
     it("build → custody-sign → submit → finalize a self-transfer", async () => {

@@ -3,27 +3,19 @@
  *
  * Signer-agnostic by design: `executeInternalTransfer` takes an injected
  * `@solana/kit` `TransactionSigner` (the sdp-api service resolves it from
- * custody; a browser wallet could supply one later). `buildInternalTransfer`
- * returns the unsigned wire tx to keep the SPC-native client-signed path
- * first-class.
+ * custody; a browser wallet could supply one later).
  *
  * The channel is gasless, so the fee payer is the transfer authority. Both the
  * source and destination ATAs must already exist on the channel.
- *
- * Worker-safe: no Node built-ins, no DB.
  */
 
 import { getRecentBlockhash, type Signature, type SolanaRpc } from "@sdp/rpc/solana";
 import {
   type Address,
   appendTransactionMessageInstructions,
-  compileTransaction,
-  createNoopSigner,
   createTransactionMessage,
-  getBase64EncodedWireTransaction,
   getTransactionEncoder,
   pipe,
-  setTransactionMessageFeePayer,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
@@ -33,9 +25,9 @@ import { getTransferCheckedInstruction } from "@solana-program/token";
 import { deriveChannelAta } from "./balances";
 import { badRequest } from "./errors";
 import { awaitFinalized, submitToGateway } from "./gateway";
-import type { PreparedInternalTransfer, SpcTransferReceipt } from "./types";
+import type { PrivateChannelTransferReceipt } from "./types";
 
-/** Fields shared by the build and execute transfer inputs. */
+/** Fields shared by the internal transfer inputs. */
 interface TransferBase {
   rpc: SolanaRpc;
   /** Source wallet owner (holds the channel balance). */
@@ -48,12 +40,6 @@ interface TransferBase {
   /** Amount in base units. */
   amount: bigint;
   decimals: number;
-}
-
-/** Inputs to build an unsigned internal transfer (client will sign). */
-export interface BuildInternalTransferInput extends TransferBase {
-  /** The transfer authority (== `from`), as an address (client will sign). */
-  authority: Address;
 }
 
 /** Inputs to build, sign, submit, and confirm an internal transfer. */
@@ -74,47 +60,12 @@ async function resolveAtas(input: TransferBase): Promise<{ fromAta: Address; toA
 }
 
 /**
- * Build an unsigned internal transfer. Fee payer + authority are the `from`
- * owner (channel gasless). Returned base64 is ready for a client wallet to sign.
- */
-export async function buildInternalTransfer(
-  input: BuildInternalTransferInput
-): Promise<PreparedInternalTransfer> {
-  const { fromAta, toAta } = await resolveAtas(input);
-  const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(input.rpc, "confirmed");
-  const authoritySigner = createNoopSigner(input.authority);
-
-  const instruction = getTransferCheckedInstruction(
-    {
-      source: fromAta,
-      mint: input.mint,
-      destination: toAta,
-      authority: authoritySigner,
-      amount: input.amount,
-      decimals: input.decimals,
-    },
-    { programAddress: input.tokenProgram }
-  );
-
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayer(input.authority, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions([instruction], m)
-  );
-
-  const transactionBase64 = getBase64EncodedWireTransaction(compileTransaction(message));
-
-  return { transactionBase64, blockhash, lastValidBlockHeight, fromAta, toAta };
-}
-
-/**
  * Build, sign (with the injected authority), submit to the gateway, and await
  * finality. Rejects if the signer does not control the source wallet.
  */
 export async function executeInternalTransfer(
   input: ExecuteInternalTransferInput
-): Promise<SpcTransferReceipt> {
+): Promise<PrivateChannelTransferReceipt> {
   if (input.authority.address !== input.from) {
     throw badRequest("Transfer authority signer does not control the source wallet.", {
       authority: input.authority.address,

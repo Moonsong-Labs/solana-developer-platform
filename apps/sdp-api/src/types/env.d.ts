@@ -201,14 +201,11 @@ export interface Env {
   // Solana Private Channels (SPC) configuration
   PRIVATE_CHANNEL_GATEWAY_URL?: string;
   PRIVATE_CHANNEL_AUTH_BASE_URL?: string;
-  PRIVATE_CHANNEL_AUTH_MODE?: "on" | "off";
+  PRIVATE_CHANNEL_AUTH_MODE?: "none" | "jwt";
   PRIVATE_CHANNEL_ESCROW_PROGRAM_ID?: string;
   PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID?: string;
   PRIVATE_CHANNEL_ESCROW_INSTANCE?: string;
   PRIVATE_CHANNEL_USDC_MINT?: string;
-  PRIVATE_CHANNEL_L1_RPC_URL?: string;
-  PRIVATE_CHANNEL_INDEXER_DATABASE_URL?: string;
-  PRIVATE_CHANNEL_STREAMER_WS_URL?: string;
 
   // Recurring payments backend feature flag
   PAYMENTS_RECURRING_ENABLED?: string;
