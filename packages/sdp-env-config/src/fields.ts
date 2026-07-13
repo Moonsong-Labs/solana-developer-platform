@@ -9,12 +9,6 @@ export const SECTIONS: SectionMeta[] = [
   { id: "signing", title: "Signing provider", comment: "Signing provider" },
   { id: "fee", title: "Fee payment", comment: "Fee payment" },
   {
-    id: "private-channels",
-    title: "Private Channels",
-    comment: "Solana Private Channels (SPC) — optional",
-    advanced: true,
-  },
-  {
     id: "secrets",
     title: "Secrets",
     comment: "App secrets — generated locally",
@@ -635,56 +629,6 @@ export const FIELDS: EnvField[] = [
     kind: "url",
     label: "Sentry DSN",
     help: "Optional error reporting. Leave blank to disable Sentry.",
-  },
-  {
-    key: "PRIVATE_CHANNEL_GATEWAY_URL",
-    section: "private-channels",
-    kind: "url",
-    label: "Gateway URL",
-    help: "SPC JSON-RPC gateway (:8899). Set this to enable /v1/private-channels/*.",
-  },
-  {
-    key: "PRIVATE_CHANNEL_AUTH_BASE_URL",
-    section: "private-channels",
-    kind: "url",
-    label: "Auth service URL",
-    help: "SPC auth service (:8903), when the instance exposes it.",
-  },
-  {
-    key: "PRIVATE_CHANNEL_AUTH_MODE",
-    section: "private-channels",
-    kind: "select",
-    label: "Auth mode",
-    help: "Per-instance RBAC fact: whether the gateway enforces JWT-gated reads.",
-    defaultValue: "none",
-    options: [
-      { value: "none", label: "none" },
-      { value: "jwt", label: "jwt" },
-    ],
-  },
-  {
-    key: "PRIVATE_CHANNEL_ESCROW_PROGRAM_ID",
-    section: "private-channels",
-    kind: "text",
-    label: "Escrow program ID",
-  },
-  {
-    key: "PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID",
-    section: "private-channels",
-    kind: "text",
-    label: "Withdraw program ID",
-  },
-  {
-    key: "PRIVATE_CHANNEL_ESCROW_INSTANCE",
-    section: "private-channels",
-    kind: "text",
-    label: "Escrow instance address",
-  },
-  {
-    key: "PRIVATE_CHANNEL_USDC_MINT",
-    section: "private-channels",
-    kind: "text",
-    label: "Channel USDC mint",
   },
 ];
 
