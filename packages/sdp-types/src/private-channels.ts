@@ -73,36 +73,3 @@ export type PrivateChannelHealth =
   | { status: "ready"; latencyMs: number }
   | { status: "degraded"; latencyMs: number; reason: string }
   | { status: "unreachable"; latencyMs: number; error: string };
-
-/** A resolved channel balance for one `(wallet, mint)` pair. */
-export interface PrivateChannelBalance {
-  /** Owner wallet the balance belongs to. */
-  wallet: string;
-  /** Token mint the balance is denominated in. */
-  mint: string;
-  /** SPL program that owns the mint (classic SPL Token or Token-2022). */
-  tokenProgram: string;
-  /** Derived associated token account. */
-  ata: string;
-  /** Base-unit balance as a string. */
-  amount: string;
-  /** Human-readable amount. */
-  uiAmount: string;
-  /** Mint decimals. */
-  decimals: number;
-  /** False when the ATA does not exist on the channel yet. */
-  exists: boolean;
-}
-
-/** Commitment reported for a submitted channel transaction. */
-export type PrivateChannelConfirmationStatus = "processed" | "confirmed" | "finalized";
-
-/** Result of a money-moving channel operation. */
-export interface PrivateChannelTransferResult {
-  /** The channel transaction signature. */
-  signature: string;
-  /** Confirmation slot as a string. */
-  slot: string;
-  /** Commitment reached for the transaction. */
-  confirmationStatus: PrivateChannelConfirmationStatus;
-}

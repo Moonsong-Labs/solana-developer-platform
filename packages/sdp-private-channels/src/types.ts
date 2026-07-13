@@ -6,8 +6,8 @@
  * `@sdp/types/private-channels`; the sdp-api service maps between them.
  */
 
-import type { PrivateChannelAuthMode, PrivateChannelConfirmationStatus } from "@sdp/types";
-import type { Address, Signature } from "@solana/kit";
+import type { PrivateChannelAuthMode } from "@sdp/types";
+import type { Address } from "@solana/kit";
 
 /**
  * Per-instance RBAC fact: whether the gateway enforces JWT-gated reads.
@@ -25,8 +25,6 @@ export type PrivateChannelNetwork = "devnet" | "mainnet-beta";
 export interface PrivateChannelConfig {
   /** JSON-RPC gateway base URL (`:8899`). */
   gatewayUrl: string;
-  /** Auth service base URL (`:8903`), when the instance exposes it. */
-  authBaseUrl?: string;
   /** Whether gateway RBAC is enabled for this instance. */
   authMode: AuthMode;
   /** Escrow program (L1). */
@@ -49,32 +47,3 @@ export interface GatewayHealth {
   status: number;
 }
 
-/** A single `(wallet, mint)` channel balance, resolved via the derived ATA. */
-export interface PrivateChannelBalanceRaw {
-  /** Owner wallet the balance belongs to. */
-  wallet: Address;
-  /** Token mint the balance is denominated in. */
-  mint: Address;
-  /** SPL program that owns the mint (classic SPL Token or Token-2022). */
-  tokenProgram: Address;
-  /** Derived associated token account. */
-  ata: Address;
-  /** Base-unit balance; `0n` when the ATA does not exist. */
-  amount: bigint;
-  /** Mint decimals used to render `uiAmount`. */
-  decimals: number;
-  /** Human-readable amount (`formatDecimalAmount`). */
-  uiAmount: string;
-  /** False when the ATA does not exist on the channel yet. */
-  exists: boolean;
-}
-
-/** Result of submitting a money-moving transaction to the channel. */
-export interface PrivateChannelTransferReceipt {
-  /** The submitted transaction's signature. */
-  signature: Signature;
-  /** Slot the transaction was confirmed in. */
-  slot: bigint;
-  /** Commitment reached (the channel jumps straight to `finalized`). */
-  confirmationStatus: PrivateChannelConfirmationStatus;
-}

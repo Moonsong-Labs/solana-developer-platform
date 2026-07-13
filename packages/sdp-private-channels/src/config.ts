@@ -15,8 +15,6 @@ import { assertHttpUrl } from "./url";
 export interface PrivateChannelEnv {
   /** JSON-RPC gateway base URL (`:8899`); its presence enables the feature. */
   PRIVATE_CHANNEL_GATEWAY_URL?: string;
-  /** Auth service base URL (`:8903`), when the instance exposes it. */
-  PRIVATE_CHANNEL_AUTH_BASE_URL?: string;
   /** RBAC mode; `"jwt"` enables JWT-gated reads, anything else is `"none"`. */
   PRIVATE_CHANNEL_AUTH_MODE?: string;
   /** Escrow program id (L1); validated as an address when set. */
@@ -57,7 +55,6 @@ export function resolvePrivateChannelConfig(env: PrivateChannelEnv): PrivateChan
     env.SOLANA_NETWORK === "mainnet-beta" ? "mainnet-beta" : "devnet";
   const authMode = trimmed(env.PRIVATE_CHANNEL_AUTH_MODE) === "jwt" ? "jwt" : "none";
 
-  const authBaseUrl = trimmed(env.PRIVATE_CHANNEL_AUTH_BASE_URL);
   const escrowProgramId = trimmed(env.PRIVATE_CHANNEL_ESCROW_PROGRAM_ID);
   const withdrawProgramId = trimmed(env.PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID);
   const escrowInstance = trimmed(env.PRIVATE_CHANNEL_ESCROW_INSTANCE);
@@ -67,9 +64,6 @@ export function resolvePrivateChannelConfig(env: PrivateChannelEnv): PrivateChan
     gatewayUrl: assertHttpUrl(gatewayUrl, "PRIVATE_CHANNEL_GATEWAY_URL"),
     authMode,
     network,
-    ...(authBaseUrl
-      ? { authBaseUrl: assertHttpUrl(authBaseUrl, "PRIVATE_CHANNEL_AUTH_BASE_URL") }
-      : {}),
     ...(escrowProgramId
       ? {
           escrowProgramId: assertValidAddress(escrowProgramId, "PRIVATE_CHANNEL_ESCROW_PROGRAM_ID"),

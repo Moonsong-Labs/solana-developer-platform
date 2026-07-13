@@ -200,7 +200,6 @@ export interface Env {
 
   // Solana Private Channels (SPC) configuration
   PRIVATE_CHANNEL_GATEWAY_URL?: string;
-  PRIVATE_CHANNEL_AUTH_BASE_URL?: string;
   PRIVATE_CHANNEL_AUTH_MODE?: "none" | "jwt";
   PRIVATE_CHANNEL_ESCROW_PROGRAM_ID?: string;
   PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID?: string;

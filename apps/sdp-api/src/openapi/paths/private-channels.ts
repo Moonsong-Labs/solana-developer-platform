@@ -2,13 +2,9 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 
 import {
   errorResponseSchema,
-  privateChannelBalanceSchema,
-  privateChannelBalancesQuerySchema,
   privateChannelHealthQuerySchema,
   privateChannelHealthSchema,
   privateChannelInstanceSchema,
-  privateChannelTransferRequestSchema,
-  privateChannelTransferResultSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -54,51 +50,6 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelHealthSchema)),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403]),
-    },
-  });
-
-  registry.registerPath({
-    method: "get",
-    path: "/v1/private-channels/balances",
-    tags: [TAG],
-    summary: "List channel balances for a wallet",
-    operationId: "getPrivateChannelBalances",
-    description:
-      "Reads channel balances for a wallet across a mint set, deriving each ATA (the gateway does not implement getTokenAccountsByOwner).",
-    security: [{ apiKeyAuth: [] }],
-    request: { headers: projectScopeHeaders, query: privateChannelBalancesQuerySchema },
-    responses: {
-      200: {
-        description: "Channel balances",
-        content: jsonContent(
-          successResponseSchema(z.object({ balances: z.array(privateChannelBalanceSchema) }))
-        ),
-      },
-      ...errorResponses(errorResponseSchema, [400, 401, 403, 500, 503]),
-    },
-  });
-
-  registry.registerPath({
-    method: "post",
-    path: "/v1/private-channels/transfers",
-    tags: [TAG],
-    summary: "Execute an internal channel transfer",
-    operationId: "createPrivateChannelTransfer",
-    description:
-      "Builds, custody-signs, submits, and confirms an internal SPL transfer on the channel. The source must be an SDP-managed custody wallet.",
-    security: [{ apiKeyAuth: [] }],
-    request: {
-      headers: projectScopeHeaders,
-      body: { required: true, content: jsonContent(privateChannelTransferRequestSchema) },
-    },
-    responses: {
-      200: {
-        description: "Transfer result",
-        content: jsonContent(
-          successResponseSchema(z.object({ transfer: privateChannelTransferResultSchema }))
-        ),
-      },
-      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
     },
   });
 }

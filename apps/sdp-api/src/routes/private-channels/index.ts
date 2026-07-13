@@ -4,12 +4,7 @@ import { isPrivateChannelsEnabled } from "@/lib/feature-flags";
 import { requirePermissions, unifiedAuthMiddleware } from "@/middleware/auth";
 import { projectContextMiddleware } from "@/middleware/project-context";
 import type { Env } from "@/types/env";
-import {
-  createPrivateChannelTransfer,
-  getPrivateChannelBalances,
-  getPrivateChannelHealth,
-  getPrivateChannelInstance,
-} from "./handlers";
+import { getPrivateChannelHealth, getPrivateChannelInstance } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
 
@@ -38,18 +33,6 @@ privateChannels.get(
   requirePrivateChannelsFeature,
   requirePermissions("payments:read"),
   getPrivateChannelInstance
-);
-privateChannels.get(
-  "/balances",
-  requirePrivateChannelsFeature,
-  requirePermissions("payments:read", "wallets:read"),
-  getPrivateChannelBalances
-);
-privateChannels.post(
-  "/transfers",
-  requirePrivateChannelsFeature,
-  requirePermissions("payments:write", "wallets:read"),
-  createPrivateChannelTransfer
 );
 
 export default privateChannels;

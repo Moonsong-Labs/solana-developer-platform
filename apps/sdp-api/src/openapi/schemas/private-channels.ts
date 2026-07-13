@@ -16,61 +16,6 @@ export const privateChannelInstanceSchema = z
   })
   .openapi({ description: "Connected Private Channels instance connection + health snapshot." });
 
-export const privateChannelBalanceSchema = z
-  .object({
-    wallet: solanaAddressSchema,
-    mint: solanaAddressSchema,
-    tokenProgram: solanaAddressSchema,
-    ata: solanaAddressSchema,
-    amount: z.string().openapi({ description: "Base-unit balance.", example: "1000000" }),
-    uiAmount: z.string().openapi({ description: "Human-readable amount.", example: "1" }),
-    decimals: z.number().int().nonnegative().openapi({ example: 6 }),
-    exists: z
-      .boolean()
-      .openapi({ description: "Whether the ATA exists on the channel.", example: true }),
-  })
-  .openapi({ description: "A channel balance for one (wallet, mint)." });
-
-export const privateChannelTransferRequestSchema = z
-  .object({
-    from: z
-      .string()
-      .min(1)
-      .openapi({ description: "Source SDP-managed wallet id or pubkey.", example: "wal_example" }),
-    to: solanaAddressSchema,
-    mint: solanaAddressSchema,
-    amount: z.string().min(1).openapi({ description: "Decimal amount.", example: "1.5" }),
-  })
-  .openapi({ description: "Internal channel transfer request (custody-signed)." });
-
-export const privateChannelTransferResultSchema = z
-  .object({
-    signature: z.string().openapi({ description: "Channel transaction signature." }),
-    slot: z.string().openapi({ description: "Confirmation slot.", example: "12345" }),
-    confirmationStatus: z
-      .enum(["processed", "confirmed", "finalized"])
-      .openapi({ example: "finalized" }),
-  })
-  .openapi({ description: "Result of a channel transfer." });
-
-export const privateChannelBalancesQuerySchema = z.object({
-  wallet: z
-    .string()
-    .min(1)
-    .openapi({
-      param: { name: "wallet", in: "query" },
-      description: "Managed wallet id or a Solana address.",
-      example: "wal_example",
-    }),
-  mints: z
-    .string()
-    .optional()
-    .openapi({
-      param: { name: "mints", in: "query" },
-      description: "Comma-separated mint addresses; defaults to the configured USDC mint.",
-    }),
-});
-
 export const privateChannelHealthSchema = z
   .discriminatedUnion("status", [
     z.object({ status: z.literal("ready"), latencyMs: z.number() }),
