@@ -32,10 +32,11 @@ export type GatewayHealthResult =
     };
 
 async function probe(url: string): Promise<GatewayProbeResponse> {
-  // `redirect: "manual"` so a 3xx to an internal/metadata host is never followed
-  // (SSRF guard) — a real gateway `/health` responds 200 directly.
+  // TODO: `url` comes from a caller-supplied gateway URL that we fetch
+  // server-side — a potential SSRF vector. Before this handles untrusted input,
+  // consider hardening (e.g. an allowlist of gateway hosts, or blocking
+  // private/link-local IP ranges, plus manual redirect handling).
   const { status, ok, raw, parsed } = await restRequest(url, {
-    redirect: "manual",
     headers: { Accept: "application/json" },
     timeoutMs: PROBE_TIMEOUT_MS,
   });

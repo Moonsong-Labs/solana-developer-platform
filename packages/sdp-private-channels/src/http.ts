@@ -28,8 +28,6 @@ export interface RestRequestInit {
   body?: string;
   /** Per-request timeout, enforced via `AbortSignal.timeout`. */
   timeoutMs: number;
-  /** Passed through to `fetch` (e.g. `"manual"` as an SSRF guard). */
-  redirect?: RequestInit["redirect"];
   /** Injectable `fetch` for tests; defaults to the global. */
   fetchImpl?: typeof fetch;
 }
@@ -46,7 +44,6 @@ export async function restRequest(url: string, init: RestRequestInit): Promise<R
     method: init.method ?? "GET",
     ...(init.headers ? { headers: init.headers } : {}),
     ...(init.body !== undefined ? { body: init.body } : {}),
-    ...(init.redirect ? { redirect: init.redirect } : {}),
     signal: AbortSignal.timeout(init.timeoutMs),
   });
   const raw = await response.text();
