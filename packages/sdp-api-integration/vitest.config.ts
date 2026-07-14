@@ -42,6 +42,16 @@ const koraRpcUrl = getEnv("KORA_RPC_URL");
 const koraApiKey = getEnv("KORA_API_KEY");
 const koraTimeoutMs = getEnv("KORA_TIMEOUT_MS");
 const koraSurfpoolShim = getEnv("KORA_SURFPOOL_SHIM");
+// Solana Private Channels gateway — only in scope when explicitly set (e.g. via
+// `pnpm test:private-channels`), so normal integration runs neither run the suite nor probe it.
+const privateChannelGatewayUrl = getEnv("PRIVATE_CHANNEL_GATEWAY_URL");
+const privateChannelAuthMode = getEnv("PRIVATE_CHANNEL_AUTH_MODE");
+const privateChannelEscrowProgramId = getEnv("PRIVATE_CHANNEL_ESCROW_PROGRAM_ID");
+const privateChannelWithdrawProgramId = getEnv("PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID");
+const privateChannelEscrowInstance = getEnv("PRIVATE_CHANNEL_ESCROW_INSTANCE");
+const privateChannelUsdcMint = getEnv("PRIVATE_CHANNEL_USDC_MINT");
+// Explicit preflight suite selector (e.g. "spc", "kora,spc"). Unset = infer from config.
+const integrationSuite = getEnv("SDP_INTEGRATION_SUITE");
 const integrationCustodyProvider = getEnv("SDP_INTEGRATION_CUSTODY_PROVIDER");
 const custodyPrivateKey = getEnv("CUSTODY_PRIVATE_KEY");
 const privyAppId = getEnv("PRIVY_APP_ID");
@@ -68,7 +78,9 @@ export default defineConfig({
           RUN_INTEGRATION_TESTS: "true",
           SOLANA_MOCK: "false",
           API_KEY_PEPPER: getEnv("API_KEY_PEPPER", "test-pepper-for-integration"),
-          SOLANA_RPC_URL: getEnv("SOLANA_RPC_URL"),
+          // Fallback keeps the Workers pool binding defined for SPC-only runs; real
+          // integration runs always override it via run-workspace-tests.mjs.
+          SOLANA_RPC_URL: getEnv("SOLANA_RPC_URL", "https://api.devnet.solana.com"),
           SOLANA_NETWORK: getEnv("SOLANA_NETWORK", "devnet"),
           CUSTODY_ENCRYPTION_KEY: custodyEncryptionKey,
           // Kora configuration - only set if explicitly configured
@@ -81,6 +93,21 @@ export default defineConfig({
             ...(koraTimeoutMs && { KORA_TIMEOUT_MS: koraTimeoutMs }),
           }),
           ...(koraSurfpoolShim && { KORA_SURFPOOL_SHIM: koraSurfpoolShim }),
+          ...(privateChannelGatewayUrl && {
+            PRIVATE_CHANNEL_GATEWAY_URL: privateChannelGatewayUrl,
+          }),
+          ...(privateChannelAuthMode && { PRIVATE_CHANNEL_AUTH_MODE: privateChannelAuthMode }),
+          ...(privateChannelEscrowProgramId && {
+            PRIVATE_CHANNEL_ESCROW_PROGRAM_ID: privateChannelEscrowProgramId,
+          }),
+          ...(privateChannelWithdrawProgramId && {
+            PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID: privateChannelWithdrawProgramId,
+          }),
+          ...(privateChannelEscrowInstance && {
+            PRIVATE_CHANNEL_ESCROW_INSTANCE: privateChannelEscrowInstance,
+          }),
+          ...(privateChannelUsdcMint && { PRIVATE_CHANNEL_USDC_MINT: privateChannelUsdcMint }),
+          ...(integrationSuite && { SDP_INTEGRATION_SUITE: integrationSuite }),
           ...(integrationCustodyProvider && {
             SDP_INTEGRATION_CUSTODY_PROVIDER: integrationCustodyProvider,
           }),

@@ -1,4 +1,5 @@
 import { KoraClient } from "@sdp/api/services/adapters";
+import { probeGatewayHealth } from "@sdp/private-channels";
 import { env } from "#env-impl";
 import { getIntegrationCustodyProvider } from "./custody-provider";
 
@@ -37,6 +38,40 @@ export async function ensureIntegrationPreflight(): Promise<void> {
 }
 
 async function runPreflight(): Promise<void> {
+  // Suite scope is explicit when SDP_INTEGRATION_SUITE is set (e.g. `spc`, or
+  // `kora,spc`); otherwise it is inferred from configured env for back-compat, so
+  // existing Kora/on-chain shards keep working unchanged. Explicit scope stops a
+  // stray KORA_RPC_URL (e.g. in .dev.vars) from pulling Kora into an SPC-only run.
+  const requested = getRequestedSuites();
+  const koraInScope = requested ? requested.has("kora") : !!env.KORA_RPC_URL;
+  const spcInScope = requested ? requested.has("spc") : !!getPrivateChannelGatewayUrl();
+
+  if (!koraInScope && !spcInScope) {
+    throw new Error(
+      "Integration preflight: no suite in scope. Set KORA_RPC_URL (Kora/on-chain) or PRIVATE_CHANNEL_GATEWAY_URL (SPC), or select explicitly with SDP_INTEGRATION_SUITE=kora,spc."
+    );
+  }
+
+  await Promise.all([
+    koraInScope ? preflightKoraSuite() : Promise.resolve(),
+    spcInScope ? preflightSpc() : Promise.resolve(),
+  ]);
+}
+
+function getRequestedSuites(): Set<string> | null {
+  const raw = (env as { SDP_INTEGRATION_SUITE?: string }).SDP_INTEGRATION_SUITE;
+  if (!raw || raw.trim() === "") {
+    return null;
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map((suite) => suite.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+async function preflightKoraSuite(): Promise<void> {
   const integrationCustodyProvider = getIntegrationCustodyProvider();
   const missing: string[] = [];
   if (!env.SOLANA_RPC_URL) missing.push("SOLANA_RPC_URL");
@@ -104,6 +139,32 @@ async function runPreflight(): Promise<void> {
       `Kora preflight failed: fee payer balance too low (${feePayerLamports} lamports, min ${minLamports}).`
     );
   }
+}
+
+function getPrivateChannelGatewayUrl(): string | undefined {
+  const raw = (env as { PRIVATE_CHANNEL_GATEWAY_URL?: string }).PRIVATE_CHANNEL_GATEWAY_URL;
+  return raw && raw.trim() !== "" ? raw : undefined;
+}
+
+// Validate connectivity to the Solana Private Channels (SPC) gateway before any
+// SPC test runs. The gateway exposes GET /health and speaks a Solana JSON-RPC
+// subset where getLatestBlockhash is the documented health probe.
+async function preflightSpc(): Promise<void> {
+  const gatewayUrl = getPrivateChannelGatewayUrl();
+  if (!gatewayUrl) {
+    // Unreachable: runPreflight only calls this when the URL is present.
+    throw new Error("SPC preflight internal error: PRIVATE_CHANNEL_GATEWAY_URL was missing.");
+  }
+
+  await withLabel("PrivateChannels.health", async () => {
+    const health = await probeGatewayHealth(gatewayUrl);
+    if (health.status === "unreachable") {
+      throw new Error(`gateway health probe failed: ${health.error}`);
+    }
+  });
+
+  // Reuses the Solana RPC health probe (getLatestBlockhash) against the gateway.
+  await assertSolanaRpcHealthy(gatewayUrl);
 }
 
 function getRequiredKoraAllowedPrograms(): readonly string[] {

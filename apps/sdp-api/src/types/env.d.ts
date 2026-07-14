@@ -198,6 +198,14 @@ export interface Env {
   MAGICBLOCK_PRIVATE_PAYMENTS_API_BASE_URL?: string;
   MAGICBLOCK_PRIVATE_PAYMENTS_AUTH_TOKEN?: string;
 
+  // Solana Private Channels (SPC) configuration
+  PRIVATE_CHANNEL_GATEWAY_URL?: string;
+  PRIVATE_CHANNEL_AUTH_MODE?: "none" | "jwt";
+  PRIVATE_CHANNEL_ESCROW_PROGRAM_ID?: string;
+  PRIVATE_CHANNEL_WITHDRAW_PROGRAM_ID?: string;
+  PRIVATE_CHANNEL_ESCROW_INSTANCE?: string;
+  PRIVATE_CHANNEL_USDC_MINT?: string;
+
   // Recurring payments backend feature flag
   PAYMENTS_RECURRING_ENABLED?: string;
   PAYMENTS_RECURRING_COLLECTION_ENABLED?: string;
