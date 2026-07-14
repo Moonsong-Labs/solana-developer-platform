@@ -1,3 +1,5 @@
+import { parseHttpUrl } from "./url";
+
 const PROBE_TIMEOUT_MS = 5000;
 
 export type SolanaRpcProbeResult =
@@ -13,7 +15,10 @@ interface SolanaRpcVersionResponse {
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    if (error.name === "AbortError") return `Timed out after ${PROBE_TIMEOUT_MS} ms.`;
+    // `AbortSignal.timeout` rejects with a `TimeoutError`; keep `AbortError` too.
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
+      return `Timed out after ${PROBE_TIMEOUT_MS} ms.`;
+    }
     return error.message || "RPC probe failed.";
   }
   return "RPC probe failed.";
@@ -27,28 +32,16 @@ function toErrorMessage(error: unknown): string {
  */
 export async function probeSolanaRpc(url: string): Promise<SolanaRpcProbeResult> {
   const startedAt = Date.now();
-
-  const trimmed = url.trim();
-  if (!trimmed) {
-    return { ok: false, latencyMs: 0, error: "Chain RPC URL is required." };
+  const parsed = parseHttpUrl(url, "Chain RPC URL");
+  if ("error" in parsed) {
+    return { ok: false, latencyMs: 0, error: parsed.error };
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return { ok: false, latencyMs: 0, error: `Invalid URL: ${trimmed}` };
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { ok: false, latencyMs: 0, error: `Unsupported protocol: ${parsed.protocol}` };
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  const target = parsed.url.toString();
 
   try {
-    const res = await fetch(trimmed, {
+    const res = await fetch(target, {
       method: "POST",
-      signal: controller.signal,
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       // User-Agent is required — public RPCs behind Cloudflare's WAF 403
       // Workers' default (empty-UA) fetch.
       headers: {
@@ -92,7 +85,5 @@ export async function probeSolanaRpc(url: string): Promise<SolanaRpcProbeResult>
     return { ok: true, latencyMs, version };
   } catch (error) {
     return { ok: false, latencyMs: Date.now() - startedAt, error: toErrorMessage(error) };
-  } finally {
-    clearTimeout(timeout);
   }
 }
