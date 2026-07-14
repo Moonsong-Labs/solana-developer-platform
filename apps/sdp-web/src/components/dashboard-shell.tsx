@@ -418,7 +418,7 @@ function getDashboardPageConfig(pathname: string): DashboardPageConfig {
       },
     };
   }
-  if (pathname === "/dashboard/payments/private-channels") {
+  if (pathname.startsWith("/dashboard/payments/private-channels")) {
     return {
       title: "Private Channels",
       contentWidthClass: "max-w-none",
