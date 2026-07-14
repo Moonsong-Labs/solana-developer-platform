@@ -43,6 +43,7 @@
     "format:check": "biome format .",
     "test": "scripts/doppler/run-with-config.sh node scripts/run-workspace-tests.mjs unit",
     "test:integration": "scripts/doppler/run-with-config.sh node scripts/run-workspace-tests.mjs integration",
+    "test:private-channels": "SDP_PRIVATE_CHANNELS_SMOKE=1 pnpm --filter @sdp/private-channels test:unit",
     "test:scripts": "node --test scripts/*.test.mjs",
     "secrets:print:cloudflare": "node scripts/project-secrets.mjs cloudflare",
     "secrets:print:docker": "node scripts/project-secrets.mjs docker",

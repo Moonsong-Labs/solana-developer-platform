@@ -11,3 +11,9 @@ export const connectPrivateChannelInstanceSchema = z.intersection(
 export type ConnectPrivateChannelInstanceInput = z.infer<
   typeof connectPrivateChannelInstanceSchema
 >;
+
+/** Query params for `GET /health`. */
+export const healthQuerySchema = z.object({
+  /** Candidate SPC gateway base URL to probe. */
+  gatewayUrl: z.string().min(1),
+});

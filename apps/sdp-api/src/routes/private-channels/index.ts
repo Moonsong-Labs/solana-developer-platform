@@ -8,24 +8,34 @@ import {
   connectPrivateChannelInstance,
   deletePrivateChannelInstance,
   disconnectPrivateChannelInstance,
+  getPrivateChannelHealth,
   getPrivateChannelInstance,
 } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
 
+/**
+ * Router-wide gate: 503 PROVIDER_NOT_CONFIGURED unless the feature is enabled.
+ * Applied once as middleware so every current and future route inherits it.
+ */
 async function requirePrivateChannelsFeature(c: Context<{ Bindings: Env }>, next: Next) {
   if (!isPrivateChannelsEnabled(c.env)) {
-    throw new AppError("FORBIDDEN", "Private Channels are not enabled for this environment");
+    throw new AppError(
+      "PROVIDER_NOT_CONFIGURED",
+      "Private Channels are not enabled for this environment."
+    );
   }
   await next();
 }
 
-// Middleware applies to every sub-route. Future sub-features (channels, members,
-// deposit-intents, transfer-intents, withdrawal-intents, events) mount under
-// the same base and inherit this stack — see PROPOSAL.md §5.
 privateChannels.use("*", requirePrivateChannelsFeature);
 privateChannels.use("*", unifiedAuthMiddleware({ allowClerk: true, allowSession: true }));
 privateChannels.use("*", projectContextMiddleware());
+
+// --- /health --------------------------------------------------------------
+// Pre-connect test of a caller-supplied gateway URL. Always 200 with a
+// PrivateChannelHealth DTO (ready/degraded/unreachable); only a missing URL is 400.
+privateChannels.get("/health", requirePermissions("payments:read"), getPrivateChannelHealth);
 
 // --- /instance ------------------------------------------------------------
 const instance = new Hono<{ Bindings: Env }>();

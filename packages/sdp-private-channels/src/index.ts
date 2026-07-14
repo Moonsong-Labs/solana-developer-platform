@@ -1,5 +1,10 @@
 export { SANDBOX_DEFAULTS } from "./constants";
 export {
+  type PrivateChannelErrorCode,
+  PrivateChannelError,
+  badRequest,
+} from "./errors";
+export {
   type GatewayHealthResult,
   type GatewayProbeResponse,
   probeGatewayHealth,
@@ -15,7 +20,9 @@ export {
   privateChannelInstanceInputSchema,
 } from "./schema";
 export type {
+  GatewayHealth,
   PrivateChannelInstance,
   PrivateChannelInstanceConfig,
   PrivateChannelInstanceInput,
 } from "./types";
+export { assertHttpUrl, normalizeHttpBase, parseHttpUrl } from "./url";

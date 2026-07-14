@@ -42,6 +42,7 @@ const koraRpcUrl = getEnv("KORA_RPC_URL");
 const koraApiKey = getEnv("KORA_API_KEY");
 const koraTimeoutMs = getEnv("KORA_TIMEOUT_MS");
 const koraSurfpoolShim = getEnv("KORA_SURFPOOL_SHIM");
+const integrationSuite = getEnv("SDP_INTEGRATION_SUITE");
 const integrationCustodyProvider = getEnv("SDP_INTEGRATION_CUSTODY_PROVIDER");
 const custodyPrivateKey = getEnv("CUSTODY_PRIVATE_KEY");
 const privyAppId = getEnv("PRIVY_APP_ID");
@@ -68,7 +69,9 @@ export default defineConfig({
           RUN_INTEGRATION_TESTS: "true",
           SOLANA_MOCK: "false",
           API_KEY_PEPPER: getEnv("API_KEY_PEPPER", "test-pepper-for-integration"),
-          SOLANA_RPC_URL: getEnv("SOLANA_RPC_URL"),
+          // Fallback keeps the Workers pool binding defined for SPC-only runs; real
+          // integration runs always override it via run-workspace-tests.mjs.
+          SOLANA_RPC_URL: getEnv("SOLANA_RPC_URL", "https://api.devnet.solana.com"),
           SOLANA_NETWORK: getEnv("SOLANA_NETWORK", "devnet"),
           CUSTODY_ENCRYPTION_KEY: custodyEncryptionKey,
           // Kora configuration - only set if explicitly configured
@@ -81,6 +84,7 @@ export default defineConfig({
             ...(koraTimeoutMs && { KORA_TIMEOUT_MS: koraTimeoutMs }),
           }),
           ...(koraSurfpoolShim && { KORA_SURFPOOL_SHIM: koraSurfpoolShim }),
+          ...(integrationSuite && { SDP_INTEGRATION_SUITE: integrationSuite }),
           ...(integrationCustodyProvider && {
             SDP_INTEGRATION_CUSTODY_PROVIDER: integrationCustodyProvider,
           }),

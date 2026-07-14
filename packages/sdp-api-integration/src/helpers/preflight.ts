@@ -37,6 +37,35 @@ export async function ensureIntegrationPreflight(): Promise<void> {
 }
 
 async function runPreflight(): Promise<void> {
+  // Suite scope is explicit when SDP_INTEGRATION_SUITE is set (e.g. `kora`);
+  // otherwise it is inferred from configured env for back-compat, so existing
+  // Kora/on-chain shards keep working unchanged.
+  const requested = getRequestedSuites();
+  const koraInScope = requested ? requested.has("kora") : !!env.KORA_RPC_URL;
+
+  if (!koraInScope) {
+    throw new Error(
+      "Integration preflight: no suite in scope. Set KORA_RPC_URL, or select explicitly with SDP_INTEGRATION_SUITE=kora."
+    );
+  }
+
+  await preflightKoraSuite();
+}
+
+function getRequestedSuites(): Set<string> | null {
+  const raw = (env as { SDP_INTEGRATION_SUITE?: string }).SDP_INTEGRATION_SUITE;
+  if (!raw || raw.trim() === "") {
+    return null;
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map((suite) => suite.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+async function preflightKoraSuite(): Promise<void> {
   const integrationCustodyProvider = getIntegrationCustodyProvider();
   const missing: string[] = [];
   if (!env.SOLANA_RPC_URL) missing.push("SOLANA_RPC_URL");

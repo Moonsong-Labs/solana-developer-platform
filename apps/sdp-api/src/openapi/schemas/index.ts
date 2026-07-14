@@ -11,5 +11,6 @@ export * from "./issuance";
 export * from "./onboarding";
 export * from "./organizations";
 export * from "./payments";
+export * from "./private-channels";
 export * from "./projects";
 export * from "./rpc";

@@ -1,11 +1,11 @@
+import type { GatewayHealth } from "./types";
 import { normalizeHttpBase } from "./url";
 
 const PROBE_TIMEOUT_MS = 5000;
 
-export interface GatewayProbeResponse {
-  status: number;
-  ok: boolean;
-  body: unknown;
+export interface GatewayProbeResponse extends GatewayHealth {
+  /** Parsed upstream body. Omitted when the caller redacts it (e.g. the sdp-api boundary). */
+  body?: unknown;
 }
 
 export type GatewayHealthResult =
@@ -39,7 +39,7 @@ async function probe(url: string): Promise<GatewayProbeResponse> {
   const text = await res.text();
   let body: unknown = text;
   try {
-    body = JSON.parse(text);
+    if (text) body = JSON.parse(text);
   } catch {
     // Non-JSON — keep as text.
   }

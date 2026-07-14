@@ -1,14 +1,13 @@
 // Private Channels: SDP-side connection metadata for a Solana Private Channels
-// (SPC) instance. One record per project. See PROPOSAL.md §5.1.
+// (SPC) instance. One record per project.
+
+/** Per-instance RBAC fact: `"jwt"` = gateway enforces JWT-gated reads, `"none"` = open. */
+export type PrivateChannelAuthMode = "none" | "jwt";
 
 /**
  * User-editable connection fields. These populate the connect form and are
  * validated identically on the client and server via the zod schema in
  * `@sdp/private-channels/schema`.
- *
- * SPC's auth service is a separate binary from the gateway (sandbox gateway is
- * `:8899`, auth is `:8903`). When `useAuth` is true, `authUrl` must be present
- * and non-empty. When false, `authUrl` is the empty string and ignored.
  */
 export interface PrivateChannelInstanceInput {
   gatewayUrl: string;
@@ -21,13 +20,9 @@ export interface PrivateChannelInstanceInput {
 }
 
 /**
- * Persisted instance row projected to the API contract. Only the input fields
- * plus scoping and bookkeeping — probe status is intentionally NOT persisted;
- * it's a transient UX signal produced by the Test Connection button.
- *
- * `isActive` distinguishes the currently-connected instance from historical
- * rows that a project has disconnected from but not deleted. At most one
- * active row exists per project at any time.
+ * Persisted instance row projected to the API contract. `isActive` distinguishes
+ * the currently-connected instance from historical rows the project has
+ * disconnected from but not deleted. At most one active row per project.
  */
 export interface PrivateChannelInstance extends PrivateChannelInstanceInput {
   id: string;
@@ -46,3 +41,13 @@ export interface PrivateChannelInstanceResponse {
 export interface PrivateChannelInstanceEnvelope {
   instance: PrivateChannelInstance | null;
 }
+
+/**
+ * Result of probing a candidate gateway's `/health` + `/ready` (the connect
+ * form's "Test connection"). JSON-safe; upstream response bodies are not
+ * surfaced. Discriminated on `status`.
+ */
+export type PrivateChannelHealth =
+  | { status: "ready"; latencyMs: number }
+  | { status: "degraded"; latencyMs: number; reason: string }
+  | { status: "unreachable"; latencyMs: number; error: string };

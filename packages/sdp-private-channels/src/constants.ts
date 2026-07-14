@@ -1,8 +1,8 @@
 import type { PrivateChannelInstanceConfig } from "./types";
 
 /**
- * Public sandbox instance operated by the SPC upstream team. See PROPOSAL.md §0.
- * All identifiers are on-chain public keys, not secrets.
+ * Public sandbox instance operated by the SPC upstream team. All identifiers
+ * are on-chain public keys, not secrets.
  *
  * `chainRpcUrl` points at Helius rather than `api.devnet.solana.com`: the
  * latter is Cloudflare-fronted and rejects Worker-originated fetches at the
