@@ -19,6 +19,21 @@
       "import": "./src/health.ts",
       "default": "./src/health.ts"
     },
+    "./probe": {
+      "types": "./src/probe.ts",
+      "import": "./src/probe.ts",
+      "default": "./src/probe.ts"
+    },
+    "./rpc": {
+      "types": "./src/rpc.ts",
+      "import": "./src/rpc.ts",
+      "default": "./src/rpc.ts"
+    },
+    "./schema": {
+      "types": "./src/schema.ts",
+      "import": "./src/schema.ts",
+      "default": "./src/schema.ts"
+    },
     "./types": {
       "types": "./src/types.ts",
       "import": "./src/types.ts",
@@ -30,7 +45,10 @@
     "lint": "biome check src/",
     "test:unit": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@sdp/types": "workspace:*",
+    "zod": "4.4.3"
+  },
   "devDependencies": {
     "vitest": "^4.1.8"
   }

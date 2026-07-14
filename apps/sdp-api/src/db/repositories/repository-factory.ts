@@ -18,6 +18,8 @@ import type { PaymentsRepository } from "./payments.repository";
 import { createPostgresPaymentsRepository } from "./payments.repository.postgres";
 import type { PolicyRepository } from "./policy.repository";
 import { createPostgresPolicyRepository } from "./policy.repository.postgres";
+import type { PrivateChannelInstanceRepository } from "./private-channel-instance.repository";
+import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 import type { TokenRepository } from "./token.repository";
 import { createPostgresTokenRepository } from "./token.repository.postgres";
 
@@ -61,4 +63,8 @@ export function createPolicyRepository(env: Env): PolicyRepository {
 
 export function createAssetProfilesRepository(env: Env): AssetProfilesRepository {
   return createPostgresAssetProfilesRepository(getDb(env));
+}
+
+export function createPrivateChannelInstanceRepository(env: Env): PrivateChannelInstanceRepository {
+  return createPostgresPrivateChannelInstanceRepository(getDb(env));
 }

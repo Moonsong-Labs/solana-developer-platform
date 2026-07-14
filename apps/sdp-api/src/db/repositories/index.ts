@@ -157,6 +157,20 @@ export type {
   WalletPolicyEvaluationAuditRow,
 } from "./policy.repository";
 export { createPostgresPolicyRepository } from "./policy.repository.postgres";
+export type {
+  CreateActiveInstanceInput,
+  FindByGatewayInput,
+  PrivateChannelInstanceRepository,
+  PrivateChannelInstanceRepositoryContext,
+  PrivateChannelInstanceRow,
+  ProjectScope,
+  ReactivateInstanceInput,
+} from "./private-channel-instance.repository";
+export {
+  generatePrivateChannelInstanceId,
+  mapPrivateChannelInstanceRow,
+} from "./private-channel-instance.repository";
+export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 export {
   createAssetProfilesRepository,
   createCounterpartiesRepository,
@@ -166,6 +180,7 @@ export {
   createPaymentsRepository,
   createPaymentTransferBatchesRepository,
   createPolicyRepository,
+  createPrivateChannelInstanceRepository,
   createTokenRepository,
 } from "./repository-factory";
 export type {

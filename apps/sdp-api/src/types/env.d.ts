@@ -207,6 +207,9 @@ export interface Env {
   // Asset Profiles backend feature flag
   ASSET_PROFILES_ENABLED?: string;
 
+  // Private Channels backend feature flag
+  PRIVATE_CHANNELS_ENABLED?: string;
+
   // Compliance providers
   RANGE_API_KEY?: string;
   RANGE_API_BASE_URL?: string;

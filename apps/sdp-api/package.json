@@ -46,6 +46,7 @@
     "@sdp/env-config": "workspace:*",
     "@sdp/issuance": "workspace:*",
     "@sdp/payments": "workspace:*",
+    "@sdp/private-channels": "workspace:*",
     "@sdp/rpc": "workspace:*",
     "@sdp/solana": "workspace:*",
     "@sdp/types": "workspace:*",

@@ -80,6 +80,9 @@ importers:
       '@sdp/payments':
         specifier: workspace:*
         version: link:../../packages/sdp-payments
+      '@sdp/private-channels':
+        specifier: workspace:*
+        version: link:../../packages/sdp-private-channels
       '@sdp/rpc':
         specifier: workspace:*
         version: link:../../packages/sdp-rpc
@@ -292,6 +295,9 @@ importers:
       '@clerk/nextjs':
         specifier: 7.4.3
         version: 7.4.3(next@16.2.7(@opentelemetry/api@1.9.1)(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@sdp/private-channels':
+        specifier: workspace:*
+        version: link:../../packages/sdp-private-channels
       '@sdp/solana':
         specifier: workspace:*
         version: link:../../packages/sdp-solana
@@ -574,6 +580,19 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+
+  packages/sdp-private-channels:
+    dependencies:
+      '@sdp/types':
+        specifier: workspace:*
+        version: link:../sdp-types
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/sdp-rpc:
     dependencies:
@@ -14215,7 +14234,7 @@ snapshots:
       eslint: 10.4.1(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@10.4.1(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@10.4.1(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@10.4.1(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@10.4.1(jiti@2.7.0))
@@ -14248,7 +14267,7 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@10.4.1(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -14263,7 +14282,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@10.4.1(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)))(eslint@10.4.1(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9

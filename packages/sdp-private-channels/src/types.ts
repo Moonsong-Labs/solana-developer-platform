@@ -1,11 +1,6 @@
-export type AuthMode = "none" | "jwt";
+export type { PrivateChannelInstance, PrivateChannelInstanceInput } from "@sdp/types";
 
-export interface PrivateChannelInstanceConfig {
-  gatewayUrl: string;
-  devnetRpcUrl: string;
-  escrowProgramId: string;
-  withdrawProgramId: string;
-  escrowInstanceAddr: string;
-  authMode: AuthMode;
-  authUrl: string;
-}
+// The user-editable configuration matches the API input shape one-for-one.
+// Kept as a local alias so package consumers don't need @sdp/types just to read
+// `SANDBOX_DEFAULTS`.
+export type PrivateChannelInstanceConfig = import("@sdp/types").PrivateChannelInstanceInput;

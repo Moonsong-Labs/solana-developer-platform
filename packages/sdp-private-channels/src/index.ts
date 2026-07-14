@@ -4,4 +4,18 @@ export {
   type GatewayProbeResponse,
   probeGatewayHealth,
 } from "./health";
-export type { AuthMode, PrivateChannelInstanceConfig } from "./types";
+export {
+  type ConnectionProbeInput,
+  type ConnectionProbeResult,
+  probeConnection,
+} from "./probe";
+export { probeSolanaRpc, type SolanaRpcProbeResult } from "./rpc";
+export {
+  type PrivateChannelInstanceInputSchema,
+  privateChannelInstanceInputSchema,
+} from "./schema";
+export type {
+  PrivateChannelInstance,
+  PrivateChannelInstanceConfig,
+  PrivateChannelInstanceInput,
+} from "./types";

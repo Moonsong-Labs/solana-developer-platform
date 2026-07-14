@@ -52,9 +52,8 @@ async function probe(url: string): Promise<GatewayProbeResponse> {
   try {
     const res = await fetch(url, {
       method: "GET",
-      cache: "no-store",
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "Cache-Control": "no-store" },
     });
     const text = await res.text();
     let body: unknown = text;

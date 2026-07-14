@@ -62,6 +62,21 @@ test.describe
 
       const connectButton = page.getByRole("button", { name: "Connect", exact: true });
       await expect(connectButton).toBeVisible();
+      await expect(connectButton).toBeEnabled();
+
+      // Clearing a required field disables Connect and surfaces the inline error.
+      await gatewayInput.fill("");
       await expect(connectButton).toBeDisabled();
+      await expect(page.getByText("Gateway URL is required.")).toBeVisible();
+
+      // Setting an invalid URL keeps Connect disabled with a format error.
+      await gatewayInput.fill("not-a-url");
+      await expect(connectButton).toBeDisabled();
+      await expect(page.getByText("Gateway URL must be a valid http/https URL.")).toBeVisible();
+
+      // Restoring a valid value re-enables Connect and clears the error.
+      await gatewayInput.fill("http://34.71.147.163:8899");
+      await expect(connectButton).toBeEnabled();
+      await expect(page.getByText("Gateway URL is required.")).toHaveCount(0);
     });
   });
