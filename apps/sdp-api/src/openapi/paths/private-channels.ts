@@ -6,6 +6,8 @@ import {
   privateChannelHealthSchema,
   privateChannelInstanceInputSchema,
   privateChannelInstanceSchema,
+  privateChannelProbeBodySchema,
+  privateChannelProbeResultSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -93,6 +95,28 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(z.object({ deleted: z.literal(true) }))),
       },
       ...errorResponses(errorResponseSchema, [401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/probe",
+    tags: [TAG],
+    summary: "Probe a candidate SPC configuration",
+    operationId: "probePrivateChannelConnection",
+    description:
+      "Full pre-connect probe: gateway `/health` + `/ready` and chain RPC `getVersion`. Always 200 with the raw probe result; only a malformed body is 400. The Connect handler runs the same probe internally, so `probe.ok === true` here means Connect will not fail on the probe step.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      body: { content: jsonContent(privateChannelProbeBodySchema) },
+    },
+    responses: {
+      200: {
+        description: "Full connect-time probe result.",
+        content: jsonContent(successResponseSchema(privateChannelProbeResultSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 503]),
     },
   });
 

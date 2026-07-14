@@ -5,3 +5,4 @@ export {
   disconnectPrivateChannelInstance,
   getPrivateChannelInstance,
 } from "./handlers/instance";
+export { probePrivateChannelConnection } from "./handlers/probe";

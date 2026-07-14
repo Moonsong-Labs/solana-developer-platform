@@ -1,2 +1,2 @@
 export { mapPrivateChannelError } from "./errors";
-export { probeInstanceHealth } from "./service";
+export { probeInstanceHealth, verifyInstanceConnection } from "./service";

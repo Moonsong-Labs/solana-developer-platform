@@ -10,6 +10,7 @@ import {
   disconnectPrivateChannelInstance,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
+  probePrivateChannelConnection,
 } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
@@ -33,9 +34,13 @@ privateChannels.use("*", unifiedAuthMiddleware({ allowClerk: true, allowSession:
 privateChannels.use("*", projectContextMiddleware());
 
 // --- /health --------------------------------------------------------------
-// Pre-connect test of a caller-supplied gateway URL. Always 200 with a
-// PrivateChannelHealth DTO (ready/degraded/unreachable); only a missing URL is 400.
+// Gateway-only probe of a caller-supplied URL. Returns PrivateChannelHealth DTO.
 privateChannels.get("/health", requirePermissions("payments:read"), getPrivateChannelHealth);
+
+// --- /probe ---------------------------------------------------------------
+// Full connect-time probe (gateway + chain RPC). What the connect flow's
+// re-probe runs; wired here so the web's Test-connection matches Connect.
+privateChannels.post("/probe", requirePermissions("payments:read"), probePrivateChannelConnection);
 
 // --- /instance ------------------------------------------------------------
 const instance = new Hono<{ Bindings: Env }>();

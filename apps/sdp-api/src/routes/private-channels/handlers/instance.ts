@@ -1,4 +1,3 @@
-import { probeConnection } from "@sdp/private-channels";
 import type { PrivateChannelInstanceEnvelope, PrivateChannelInstanceResponse } from "@sdp/types";
 import { z } from "zod";
 import {
@@ -8,6 +7,7 @@ import {
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
+import { verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository } from "../context";
 import { connectPrivateChannelInstanceSchema } from "../schemas";
@@ -55,7 +55,7 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
   }
 
   // Re-probe server-side: a tampered client could otherwise POST unreachable config.
-  const probe = await probeConnection({
+  const probe = await verifyInstanceConnection({
     gatewayUrl: input.gatewayUrl,
     chainRpcUrl: input.chainRpcUrl,
   });

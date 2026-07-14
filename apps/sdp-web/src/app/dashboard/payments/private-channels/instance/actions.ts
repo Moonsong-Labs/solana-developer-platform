@@ -3,7 +3,6 @@
 import {
   type ConnectionProbeResult,
   privateChannelInstanceInputSchema,
-  probeConnection,
 } from "@sdp/private-channels";
 import type { PrivateChannelInstance, PrivateChannelInstanceInput } from "@sdp/types";
 import { revalidatePath } from "next/cache";
@@ -11,14 +10,26 @@ import { createSdpApiClient } from "@/lib/sdp-api";
 
 export type TestConnectionResult = ConnectionProbeResult;
 
+// Routes through the API so the probe runs in the same Worker runtime as
+// Connect's re-probe — a success here means Connect will not fail on the probe.
 export async function testConnectionAction(input: {
   gatewayUrl: string;
   chainRpcUrl: string;
 }): Promise<TestConnectionResult> {
-  return probeConnection({
-    gatewayUrl: input.gatewayUrl,
-    chainRpcUrl: input.chainRpcUrl,
-  });
+  try {
+    const client = await createSdpApiClient();
+    return await client.fetch<ConnectionProbeResult>("/v1/private-channels/probe", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Probe request failed.";
+    return {
+      ok: false,
+      gateway: { status: "unreachable", latencyMs: 0, error: message },
+      rpc: { ok: false, latencyMs: 0, error: message },
+    };
+  }
 }
 
 export type FieldErrors = Partial<Record<keyof PrivateChannelInstanceInput, string>>;
