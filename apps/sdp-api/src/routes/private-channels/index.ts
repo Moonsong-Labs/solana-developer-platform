@@ -10,6 +10,7 @@ import {
   disconnectPrivateChannelInstance,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
+  getPrivateChannelOverview,
   probePrivateChannelConnection,
 } from "./handlers";
 
@@ -52,6 +53,7 @@ instance.post(
   requirePermissions("payments:write"),
   disconnectPrivateChannelInstance
 );
+instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
 privateChannels.route("/instance", instance);
 
 export default privateChannels;

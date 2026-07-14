@@ -51,3 +51,31 @@ export type PrivateChannelHealth =
   | { status: "ready"; latencyMs: number }
   | { status: "degraded"; latencyMs: number; reason: string }
   | { status: "unreachable"; latencyMs: number; error: string };
+
+/**
+ * Post-connect overview. Two data sources:
+ *   - `gateway.*` — SPC channel chain via the gateway's JSON-RPC passthrough
+ *   - `chainRpc.*` — Solana L1 via the direct chain RPC URL (where the escrow
+ *     program and its instance actually live)
+ * Every field independently nullable so a partial outage still renders.
+ */
+export interface PrivateChannelInstanceOverview {
+  gateway: {
+    health: PrivateChannelHealth;
+    /** Channel chain slot (activity/freshness signal). */
+    channelSlot: number | null;
+    /** Channel chain latest blockhash. */
+    latestBlockhash: string | null;
+  };
+  chainRpc:
+    | { ok: true; solanaVersion: string | null }
+    | { ok: false; error: string };
+  escrowInstance:
+    | { present: true; owner: string; ownerMatchesProgram: boolean; lamports: number }
+    | { present: false; error: string };
+  escrowProgram:
+    | { present: true; executable: boolean }
+    | { present: false; error: string };
+  /** Null when `useAuth === false` — the auth service isn't in the deployment. */
+  auth: { reachable: boolean; error: string | null } | null;
+}

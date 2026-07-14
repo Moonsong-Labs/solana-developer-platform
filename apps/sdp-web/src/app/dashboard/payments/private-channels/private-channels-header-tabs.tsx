@@ -3,25 +3,38 @@
 import { Tab, TabList, Tabs } from "@solana/design-system/tabs";
 import { usePathname, useRouter } from "next/navigation";
 
-// Adding a new Private Channels sub-page (e.g. transfers, channels, members):
+// Adding a new sub-page (transfers, channels, members, …):
 //   1. Create app/dashboard/payments/private-channels/<slug>/page.tsx
-//   2. Append { id, label, href } here.
-// The tab bar auto-surfaces once TABS has ≥ 2 entries; nothing else to wire.
+//   2. Append { id, label, href, requiresActive: true } ABOVE the Instance entry
+//      (Instance always stays last so the connect/disconnect surface is at the
+//      end of the tab bar even as new features land).
 const TABS = [
+  {
+    id: "overview",
+    label: "Overview",
+    href: "/dashboard/payments/private-channels/overview",
+    requiresActive: true,
+  },
   {
     id: "instance",
     label: "Instance",
     href: "/dashboard/payments/private-channels/instance",
+    requiresActive: false,
   },
 ] as const;
 
-export function PrivateChannelsHeaderTabs() {
+interface Props {
+  isConnected: boolean;
+}
+
+export function PrivateChannelsHeaderTabs({ isConnected }: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
-  if (TABS.length < 2) return null;
+  const visible = TABS.filter((t) => isConnected || !t.requiresActive);
+  if (visible.length < 2) return null;
 
-  const activeId = TABS.find((t) => pathname.startsWith(t.href))?.id ?? TABS[0].id;
+  const activeId = visible.find((t) => pathname.startsWith(t.href))?.id ?? visible[0].id;
 
   return (
     <div className="mb-6">
@@ -29,12 +42,12 @@ export function PrivateChannelsHeaderTabs() {
         bordered
         value={activeId}
         onValueChange={(value) => {
-          const next = TABS.find((t) => t.id === value);
+          const next = visible.find((t) => t.id === value);
           if (next) router.push(next.href);
         }}
       >
         <TabList>
-          {TABS.map((tab) => (
+          {visible.map((tab) => (
             <Tab key={tab.id} value={tab.id}>
               {tab.label}
             </Tab>

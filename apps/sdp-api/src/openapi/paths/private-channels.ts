@@ -6,6 +6,7 @@ import {
   privateChannelHealthSchema,
   privateChannelInstanceInputSchema,
   privateChannelInstanceSchema,
+  privateChannelOverviewSchema,
   privateChannelProbeBodySchema,
   privateChannelProbeResultSchema,
   successResponseSchema,
@@ -58,6 +59,30 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         ),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 409, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/instance/overview",
+    tags: [TAG],
+    summary: "Post-connect instance overview (gateway health + chain reads)",
+    operationId: "getPrivateChannelOverview",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders },
+    responses: {
+      200: {
+        description: "Active instance + overview snapshot.",
+        content: jsonContent(
+          successResponseSchema(
+            z.object({
+              instance: privateChannelInstanceSchema,
+              overview: privateChannelOverviewSchema,
+            })
+          )
+        ),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 404, 500, 503]),
     },
   });
 

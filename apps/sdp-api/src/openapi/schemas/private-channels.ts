@@ -72,6 +72,40 @@ const gatewayProbeResponseSchema = z.object({
   body: z.unknown().optional(),
 });
 
+export const privateChannelOverviewSchema = z
+  .object({
+    gateway: z.object({
+      health: z.discriminatedUnion("status", [
+        z.object({ status: z.literal("ready"), latencyMs: z.number() }),
+        z.object({ status: z.literal("degraded"), latencyMs: z.number(), reason: z.string() }),
+        z.object({ status: z.literal("unreachable"), latencyMs: z.number(), error: z.string() }),
+      ]),
+      channelSlot: z.number().nullable(),
+      latestBlockhash: z.string().nullable(),
+    }),
+    chainRpc: z.union([
+      z.object({ ok: z.literal(true), solanaVersion: z.string().nullable() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+    escrowInstance: z.union([
+      z.object({
+        present: z.literal(true),
+        owner: z.string(),
+        ownerMatchesProgram: z.boolean(),
+        lamports: z.number(),
+      }),
+      z.object({ present: z.literal(false), error: z.string() }),
+    ]),
+    escrowProgram: z.union([
+      z.object({ present: z.literal(true), executable: z.boolean() }),
+      z.object({ present: z.literal(false), error: z.string() }),
+    ]),
+    auth: z
+      .object({ reachable: z.boolean(), error: z.string().nullable() })
+      .nullable(),
+  })
+  .openapi({ description: "Post-connect instance overview." });
+
 export const privateChannelProbeResultSchema = z
   .object({
     ok: z.boolean(),
