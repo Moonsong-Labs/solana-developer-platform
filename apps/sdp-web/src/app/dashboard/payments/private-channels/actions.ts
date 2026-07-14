@@ -2,7 +2,6 @@
 
 import type { PrivateChannelHealth } from "@sdp/types";
 import { probePrivateChannelHealth } from "@/lib/private-channels";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 
 /**
@@ -13,13 +12,6 @@ import { createSdpApiClient } from "@/lib/sdp-api";
  * `unreachable` result so the form UX stays intact.
  */
 export async function testGatewayHealthAction(gatewayUrl: string): Promise<PrivateChannelHealth> {
-  if (!isPrivateChannelsDashboardEnabled()) {
-    return {
-      status: "unreachable",
-      latencyMs: 0,
-      error: "Private Channels dashboard is disabled.",
-    };
-  }
   try {
     const client = await createSdpApiClient();
     return await probePrivateChannelHealth(client, gatewayUrl);

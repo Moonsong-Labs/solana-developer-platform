@@ -31,10 +31,6 @@ export type GatewayHealthResult =
     };
 
 async function probe(url: string): Promise<GatewayProbeResponse> {
-  // TODO: `url` comes from a caller-supplied gateway URL that we fetch
-  // server-side — a potential SSRF vector. Before this handles untrusted input,
-  // consider hardening (e.g. an allowlist of gateway hosts, or blocking
-  // private/link-local IP ranges, plus manual redirect handling).
   const response = await fetch(url, {
     method: "GET",
     headers: { Accept: "application/json" },

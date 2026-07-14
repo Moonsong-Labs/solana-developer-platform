@@ -9,10 +9,9 @@ import { getPrivateChannelHealth, getPrivateChannelInstance } from "./handlers";
 const privateChannels = new Hono<{ Bindings: Env }>();
 
 /**
- * Per-route gate: 503 PROVIDER_NOT_CONFIGURED unless the feature is enabled (a
- * gateway is configured). Attached to the instance-bound routes only, so the
- * candidate-gateway `/health` probe (a pre-connect test) stays reachable before
- * any instance is configured.
+ * Router-wide gate: 503 PROVIDER_NOT_CONFIGURED unless the feature is enabled (a
+ * gateway is configured). Applied once at the routing middleware so every route
+ * inherits it, rather than guarding each route (or later stage) individually.
  */
 async function requirePrivateChannelsFeature(c: Context<{ Bindings: Env }>, next: Next) {
   if (!isPrivateChannelsEnabled(c.env)) {
@@ -24,15 +23,11 @@ async function requirePrivateChannelsFeature(c: Context<{ Bindings: Env }>, next
   await next();
 }
 
+privateChannels.use("*", requirePrivateChannelsFeature);
 privateChannels.use("*", unifiedAuthMiddleware({ allowClerk: true, allowSession: true }));
 privateChannels.use("*", projectContextMiddleware());
 
 privateChannels.get("/health", requirePermissions("payments:read"), getPrivateChannelHealth);
-privateChannels.get(
-  "/instance",
-  requirePrivateChannelsFeature,
-  requirePermissions("payments:read"),
-  getPrivateChannelInstance
-);
+privateChannels.get("/instance", requirePermissions("payments:read"), getPrivateChannelInstance);
 
 export default privateChannels;
