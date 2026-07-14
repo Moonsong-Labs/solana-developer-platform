@@ -54,7 +54,7 @@ export async function connectPrivateChannelAction(
         body: JSON.stringify({ ...parsed.data, confirmReactivate }),
       }
     );
-    revalidatePath("/dashboard/payments/private-channels");
+    revalidatePath("/dashboard/payments/private-channels/instance");
     return { ok: true, instance: response.instance };
   } catch (error) {
     return interpretApiError(error);
@@ -72,7 +72,7 @@ export async function disconnectPrivateChannelAction(): Promise<DisconnectResult
       "/v1/private-channels/instance/disconnect",
       { method: "POST", body: "{}" }
     );
-    revalidatePath("/dashboard/payments/private-channels");
+    revalidatePath("/dashboard/payments/private-channels/instance");
     return { ok: true, instance: response.instance };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Unknown error." };
@@ -85,7 +85,7 @@ export async function deletePrivateChannelAction(): Promise<DeleteResult> {
   try {
     const client = await createSdpApiClient();
     await client.fetch<{ deleted: true }>("/v1/private-channels/instance", { method: "DELETE" });
-    revalidatePath("/dashboard/payments/private-channels");
+    revalidatePath("/dashboard/payments/private-channels/instance");
     return { ok: true };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Unknown error." };

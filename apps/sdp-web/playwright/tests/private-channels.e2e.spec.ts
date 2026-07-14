@@ -46,7 +46,7 @@ test.describe
       await page.goto("/dashboard/payments");
       await expect(page.getByRole("link", { name: "Private Channels" })).toBeVisible();
       await page.getByRole("link", { name: "Private Channels" }).click();
-      await expect(page).toHaveURL(/\/dashboard\/payments\/private-channels$/);
+      await expect(page).toHaveURL(/\/dashboard\/payments\/private-channels\/instance$/);
 
       await expect(
         page.locator("main").getByText("Connect Private Channel", { exact: true })

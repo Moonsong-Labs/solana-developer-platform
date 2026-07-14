@@ -69,7 +69,7 @@ function getPaymentsActions(): SubNavItem[] {
       ? [{ label: "Recurring", href: "/dashboard/payments/recurring" }]
       : []),
     ...(isPrivateChannelsDashboardEnabled()
-      ? [{ label: "Private Channels", href: "/dashboard/payments/private-channels" }]
+      ? [{ label: "Private Channels", href: "/dashboard/payments/private-channels/instance" }]
       : []),
   ];
 }
