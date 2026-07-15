@@ -122,12 +122,11 @@ export async function getInstanceOverview(
       ),
       (v) => v.value.blockhash
     ),
-    Promise.allSettled([
-      jsonRpc<{ "solana-core"?: string }>(input.chainRpcUrl, "getVersion"),
-    ]).then(([r]): PrivateChannelInstanceOverview["chainRpc"] =>
-      r.status === "fulfilled"
-        ? { ok: true, solanaVersion: r.value["solana-core"] ?? null }
-        : { ok: false, error: toError(r.reason) }
+    Promise.allSettled([jsonRpc<{ "solana-core"?: string }>(input.chainRpcUrl, "getVersion")]).then(
+      ([r]): PrivateChannelInstanceOverview["chainRpc"] =>
+        r.status === "fulfilled"
+          ? { ok: true, solanaVersion: r.value["solana-core"] ?? null }
+          : { ok: false, error: toError(r.reason) }
     ),
     Promise.allSettled([
       jsonRpc<AccountInfoResult>(input.chainRpcUrl, "getAccountInfo", [
@@ -136,8 +135,7 @@ export async function getInstanceOverview(
       ]),
     ]).then(([r]): PrivateChannelInstanceOverview["escrowInstance"] => {
       if (r.status === "rejected") return { present: false, error: toError(r.reason) };
-      if (r.value.value === null)
-        return { present: false, error: "Account not found on-chain." };
+      if (r.value.value === null) return { present: false, error: "Account not found on-chain." };
       return {
         present: true,
         owner: r.value.value.owner,
@@ -186,4 +184,3 @@ export async function getInstanceOverview(
     auth,
   };
 }
-

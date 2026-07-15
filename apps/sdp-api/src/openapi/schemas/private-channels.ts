@@ -6,9 +6,7 @@ export const privateChannelInstanceSchema = z
     organizationId: z.string(),
     projectId: z.string(),
     gatewayUrl: z.string().openapi({ example: "http://34.71.147.163:8899" }),
-    chainRpcUrl: z
-      .string()
-      .openapi({ example: "https://devnet.helius-rpc.com/?api-key=…" }),
+    chainRpcUrl: z.string().openapi({ example: "https://devnet.helius-rpc.com/?api-key=…" }),
     escrowProgramId: solanaAddressSchema,
     withdrawProgramId: solanaAddressSchema,
     escrowInstanceAddr: solanaAddressSchema,
@@ -30,13 +28,10 @@ export const privateChannelInstanceInputSchema = z
     escrowInstanceAddr: solanaAddressSchema,
     useAuth: z.boolean(),
     authUrl: z.string(),
-    confirmReactivate: z
-      .boolean()
-      .optional()
-      .openapi({
-        description:
-          "Required (true) to reactivate an inactive same-gateway row and overwrite its config.",
-      }),
+    confirmReactivate: z.boolean().optional().openapi({
+      description:
+        "Required (true) to reactivate an inactive same-gateway row and overwrite its config.",
+    }),
   })
   .openapi({ description: "Connect request body." });
 
@@ -100,9 +95,7 @@ export const privateChannelOverviewSchema = z
       z.object({ present: z.literal(true), executable: z.boolean() }),
       z.object({ present: z.literal(false), error: z.string() }),
     ]),
-    auth: z
-      .object({ reachable: z.boolean(), error: z.string().nullable() })
-      .nullable(),
+    auth: z.object({ reachable: z.boolean(), error: z.string().nullable() }).nullable(),
   })
   .openapi({ description: "Post-connect instance overview." });
 
@@ -137,3 +130,44 @@ export const privateChannelProbeResultSchema = z
     ]),
   })
   .openapi({ description: "Full connect-time probe result (gateway + chain RPC)." });
+
+export const privateChannelSchema = z
+  .object({
+    id: z.string().openapi({ example: "pch_9f1c..." }),
+    name: z.string().openapi({ example: "Treasury" }),
+    description: z.string().nullable().openapi({ example: "Ops payouts" }),
+    isDefault: z
+      .boolean()
+      .openapi({
+        description: "The connected instance's auto-provisioned default channel.",
+        example: false,
+      }),
+    status: z
+      .enum(["active", "archived"])
+      .openapi({ description: "Soft-delete lifecycle status.", example: "active" }),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi({ description: "A logical channel." });
+
+export const privateChannelListSchema = z.object({
+  channels: z.array(privateChannelSchema),
+});
+
+export const createPrivateChannelBodySchema = z
+  .object({
+    name: z.string().min(1).max(64).openapi({ example: "Treasury" }),
+    description: z.string().optional().openapi({ example: "Ops payouts" }),
+  })
+  .openapi({ description: "Create a named private channel." });
+
+export const privateChannelIdParamSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "id", in: "path" },
+      description: "Private channel id.",
+      example: "pch_9f1c...",
+    }),
+});

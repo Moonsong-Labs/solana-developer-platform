@@ -1,14 +1,18 @@
 import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 
 import {
+  createPrivateChannelBodySchema,
   errorResponseSchema,
   privateChannelHealthQuerySchema,
   privateChannelHealthSchema,
+  privateChannelIdParamSchema,
   privateChannelInstanceInputSchema,
   privateChannelInstanceSchema,
+  privateChannelListSchema,
   privateChannelOverviewSchema,
   privateChannelProbeBodySchema,
   privateChannelProbeResultSchema,
+  privateChannelSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -161,6 +165,79 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelHealthSchema)),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/channels",
+    tags: [TAG],
+    summary: "List channels for the connected instance",
+    operationId: "listPrivateChannels",
+    description:
+      "Lists logical channels for the project's active instance (newest first). Ensures the auto-provisioned `default` channel exists.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders },
+    responses: {
+      200: {
+        description: "Channels",
+        content: jsonContent(successResponseSchema(privateChannelListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/channels",
+    tags: [TAG],
+    summary: "Create a channel",
+    operationId: "createPrivateChannel",
+    description:
+      "Creates a named channel in the project's active instance. Names are unique per instance.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      body: { content: jsonContent(createPrivateChannelBodySchema) },
+    },
+    responses: {
+      201: {
+        description: "Created channel",
+        content: jsonContent(successResponseSchema(privateChannelSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 409, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/channels/{id}",
+    tags: [TAG],
+    summary: "Get a channel",
+    operationId: "getPrivateChannel",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelIdParamSchema },
+    responses: {
+      200: {
+        description: "Channel",
+        content: jsonContent(successResponseSchema(privateChannelSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/v1/private-channels/channels/{id}",
+    tags: [TAG],
+    summary: "Delete a channel",
+    operationId: "deletePrivateChannel",
+    description: "Deletes a channel. The auto-provisioned default channel cannot be deleted.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelIdParamSchema },
+    responses: {
+      204: { description: "Deleted" },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 409, 500, 503]),
     },
   });
 }

@@ -4,10 +4,7 @@
 
 import { badRequest } from "./errors";
 
-export function parseHttpUrl(
-  input: string,
-  label = "URL"
-): { url: URL } | { error: string } {
+export function parseHttpUrl(input: string, label = "URL"): { url: URL } | { error: string } {
   const trimmed = input.trim();
   if (!trimmed) {
     return { error: `${label} is required.` };

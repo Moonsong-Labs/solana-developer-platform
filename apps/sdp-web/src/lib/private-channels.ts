@@ -1,4 +1,6 @@
 import type {
+  CreatePrivateChannelRequest,
+  PrivateChannelDto,
   PrivateChannelHealth,
   PrivateChannelInstance,
   PrivateChannelInstanceEnvelope,
@@ -33,4 +35,30 @@ export function fetchPrivateChannelOverview(client: SdpApiClient): Promise<{
   overview: PrivateChannelInstanceOverview;
 }> {
   return client.fetch("/v1/private-channels/instance/overview");
+}
+
+/** List channels for the active instance (newest first); ensures the default channel exists. */
+export async function fetchPrivateChannels(client: SdpApiClient): Promise<PrivateChannelDto[]> {
+  const { channels } = await client.fetch<{ channels: PrivateChannelDto[] }>(
+    "/v1/private-channels/channels"
+  );
+  return channels;
+}
+
+/** Create a named channel in the current project. */
+export function createPrivateChannel(
+  client: SdpApiClient,
+  body: CreatePrivateChannelRequest
+): Promise<PrivateChannelDto> {
+  return client.fetch<PrivateChannelDto>("/v1/private-channels/channels", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Delete (archive) a channel by id. The default channel cannot be deleted. */
+export function deletePrivateChannel(client: SdpApiClient, id: string): Promise<unknown> {
+  return client.fetch(`/v1/private-channels/channels/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }

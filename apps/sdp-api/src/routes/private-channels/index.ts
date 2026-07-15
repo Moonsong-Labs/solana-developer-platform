@@ -6,26 +6,28 @@ import { projectContextMiddleware } from "@/middleware/project-context";
 import type { Env } from "@/types/env";
 import {
   connectPrivateChannelInstance,
+  createChannel,
+  deleteChannel,
   deletePrivateChannelInstance,
   disconnectPrivateChannelInstance,
+  getChannel,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
+  listChannels,
   probePrivateChannelConnection,
 } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
 
 /**
- * Router-wide gate: 503 PROVIDER_NOT_CONFIGURED unless the feature is enabled.
- * Applied once as middleware so every current and future route inherits it.
+ * Router-wide gate: 403 FORBIDDEN unless the feature flag is enabled. Applied
+ * once as middleware so every current and future route inherits it. Kept separate
+ * from "is an instance configured/ready" (that check belongs to the handlers).
  */
 async function requirePrivateChannelsFeature(c: Context<{ Bindings: Env }>, next: Next) {
   if (!isPrivateChannelsEnabled(c.env)) {
-    throw new AppError(
-      "PROVIDER_NOT_CONFIGURED",
-      "Private Channels are not enabled for this environment."
-    );
+    throw new AppError("FORBIDDEN", "Private Channels are not enabled for this environment.");
   }
   await next();
 }
@@ -55,5 +57,12 @@ instance.post(
 );
 instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
 privateChannels.route("/instance", instance);
+
+// --- /channels ------------------------------------------------------------
+// Logical channels: instance-scoped metadata, enforced entirely by SDP.
+privateChannels.get("/channels", requirePermissions("payments:read"), listChannels);
+privateChannels.post("/channels", requirePermissions("payments:write"), createChannel);
+privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
+privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
 
 export default privateChannels;

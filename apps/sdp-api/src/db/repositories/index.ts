@@ -158,6 +158,14 @@ export type {
 } from "./policy.repository";
 export { createPostgresPolicyRepository } from "./policy.repository.postgres";
 export type {
+  CreatePrivateChannelInput,
+  PrivateChannelRepository,
+  PrivateChannelRepositoryContext,
+  PrivateChannelRow,
+} from "./private-channel.repository";
+export { generatePrivateChannelId } from "./private-channel.repository";
+export { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
+export type {
   CreateActiveInstanceInput,
   FindByGatewayInput,
   PrivateChannelInstanceRepository,
@@ -181,6 +189,7 @@ export {
   createPaymentTransferBatchesRepository,
   createPolicyRepository,
   createPrivateChannelInstanceRepository,
+  createPrivateChannelRepository,
   createTokenRepository,
 } from "./repository-factory";
 export type {

@@ -1,15 +1,12 @@
 import type { PrivateChannelInstanceEnvelope, PrivateChannelInstanceResponse } from "@sdp/types";
 import { z } from "zod";
-import {
-  mapPrivateChannelInstanceRow,
-  type PrivateChannelInstanceRow,
-} from "@/db/repositories";
+import { mapPrivateChannelInstanceRow, type PrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
-import { getPrivateChannelInstanceRepository } from "../context";
+import { getPrivateChannelInstanceRepository, getPrivateChannelRepository } from "../context";
 import { connectPrivateChannelInstanceSchema } from "../schemas";
 
 export const getPrivateChannelInstance = async (c: AppContext) => {
@@ -103,6 +100,23 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
 
   if (!row) {
     throw badRequest("Failed to persist the private channel instance.");
+  }
+
+  // Ensure the instance's default channel exists once connected. Idempotent +
+  // best-effort: a hiccup here must not fail the connect (the channels list
+  // endpoint ensures the default too).
+  try {
+    await getPrivateChannelRepository(c).getOrCreateDefault({
+      instanceId: row.id,
+      organizationId: row.organization_id,
+      projectId: row.project_id,
+    });
+  } catch (error) {
+    console.warn("connectPrivateChannelInstance: failed to ensure default channel", {
+      organizationId: auth.organizationId,
+      projectId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   const response: PrivateChannelInstanceResponse = {

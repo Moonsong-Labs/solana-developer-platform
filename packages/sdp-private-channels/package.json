@@ -9,6 +9,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./channels": {
+      "types": "./src/channels.ts",
+      "import": "./src/channels.ts",
+      "default": "./src/channels.ts"
+    },
     "./constants": {
       "types": "./src/constants.ts",
       "import": "./src/constants.ts",

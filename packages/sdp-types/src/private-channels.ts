@@ -79,3 +79,23 @@ export interface PrivateChannelInstanceOverview {
   /** Null when `useAuth === false` — the auth service isn't in the deployment. */
   auth: { reachable: boolean; error: string | null } | null;
 }
+
+/** Soft-delete lifecycle for a channel. */
+export type PrivateChannelStatusDto = "active" | "archived";
+
+/** A logical channel. Exactly one channel per instance is the default (`isDefault`). */
+export interface PrivateChannelDto {
+  id: string;
+  name: string;
+  description: string | null;
+  isDefault: boolean;
+  status: PrivateChannelStatusDto;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Request body for creating a channel (`POST /v1/private-channels/channels`). */
+export interface CreatePrivateChannelRequest {
+  name: string;
+  description?: string;
+}

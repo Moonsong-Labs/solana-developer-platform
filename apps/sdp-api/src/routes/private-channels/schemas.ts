@@ -22,3 +22,9 @@ export const probeConnectionSchema = z.object({
 export const healthQuerySchema = z.object({
   gatewayUrl: z.string().min(1),
 });
+
+/** Request body for `POST /channels`. Name content is validated in the domain layer. */
+export const createChannelBodySchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+});

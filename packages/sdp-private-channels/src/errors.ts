@@ -2,8 +2,9 @@
  * SPC client errors.
  *
  * Mirrors the `SdpPaymentsError` shape (`packages/sdp-payments/src/errors.ts`)
- * so the sdp-api adapter can map `PrivateChannelError.code` → `AppError` in one place. The
- * library throws only `PrivateChannelError`; it never reaches for the app's `AppError`.
+ * so the sdp-api adapter can map `PrivateChannelError.code` → `AppError` in one
+ * place. The library throws only `PrivateChannelError`; it never reaches for the
+ * app's `AppError`.
  */
 
 /** Machine-readable error classifications, each mapped to an HTTP status below. */

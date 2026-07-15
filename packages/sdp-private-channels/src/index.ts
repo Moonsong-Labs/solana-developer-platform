@@ -1,8 +1,9 @@
+export * from "./channels";
 export { SANDBOX_DEFAULTS } from "./constants";
 export {
-  type PrivateChannelErrorCode,
-  PrivateChannelError,
   badRequest,
+  PrivateChannelError,
+  type PrivateChannelErrorCode,
 } from "./errors";
 export {
   type GatewayHealthResult,
