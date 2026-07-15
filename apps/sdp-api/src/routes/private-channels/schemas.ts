@@ -28,3 +28,8 @@ export const createChannelBodySchema = z.object({
   name: z.string(),
   description: z.string().optional(),
 });
+
+/** Path params for `POST /wallets/:walletId/verify`. */
+export const verifyWalletParamsSchema = z.object({
+  walletId: z.string().min(1),
+});

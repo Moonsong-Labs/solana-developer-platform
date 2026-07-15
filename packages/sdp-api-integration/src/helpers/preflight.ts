@@ -37,19 +37,60 @@ export async function ensureIntegrationPreflight(): Promise<void> {
 }
 
 async function runPreflight(): Promise<void> {
-  // Suite scope is explicit when SDP_INTEGRATION_SUITE is set (e.g. `kora`);
+  // Suite scope is explicit when SDP_INTEGRATION_SUITE is set (e.g. `kora`, `spc`);
   // otherwise it is inferred from configured env for back-compat, so existing
-  // Kora/on-chain shards keep working unchanged.
+  // Kora/on-chain shards keep working unchanged. SPC is explicit-only so it never
+  // pulls its preflight into a default Kora run.
   const requested = getRequestedSuites();
   const koraInScope = requested ? requested.has("kora") : !!env.KORA_RPC_URL;
+  const spcInScope = requested ? requested.has("spc") : false;
 
-  if (!koraInScope) {
+  if (!koraInScope && !spcInScope) {
     throw new Error(
-      "Integration preflight: no suite in scope. Set KORA_RPC_URL, or select explicitly with SDP_INTEGRATION_SUITE=kora."
+      "Integration preflight: no suite in scope. Set KORA_RPC_URL, or select explicitly with SDP_INTEGRATION_SUITE=kora|spc."
     );
   }
 
-  await preflightKoraSuite();
+  if (koraInScope) {
+    await preflightKoraSuite();
+  }
+  if (spcInScope) {
+    await preflightSpc();
+  }
+}
+
+/**
+ * SPC wallet-verification suite preflight: assert the SPC-specific env is present
+ * and the auth service is reachable, so failures are explicit up front rather
+ * than mid-test. Independent of Kora.
+ */
+async function preflightSpc(): Promise<void> {
+  const e = env as unknown as Record<string, string | undefined>;
+  const missing: string[] = [];
+  if (!e.SPC_AUTH_URL) missing.push("SPC_AUTH_URL");
+  if (!e.PRIVATE_CHANNEL_POC_AUTH_SECRET) missing.push("PRIVATE_CHANNEL_POC_AUTH_SECRET");
+  if (e.PRIVATE_CHANNELS_ENABLED !== "true") missing.push("PRIVATE_CHANNELS_ENABLED=true");
+  if (!e.PRIVY_APP_ID) missing.push("PRIVY_APP_ID");
+  if (!e.PRIVY_APP_SECRET) missing.push("PRIVY_APP_SECRET");
+
+  if (missing.length > 0) {
+    throw new Error(`SPC integration tests require the following env vars: ${missing.join(", ")}.`);
+  }
+
+  const authUrl = e.SPC_AUTH_URL as string;
+  let res: Response;
+  try {
+    res = await withTimeout(
+      10_000,
+      fetch(new URL("/health", authUrl).toString(), { method: "GET" })
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`SPC auth preflight failed: cannot reach ${authUrl}/health (${message}).`);
+  }
+  if (!res.ok) {
+    throw new Error(`SPC auth preflight failed: GET ${authUrl}/health returned ${res.status}.`);
+  }
 }
 
 function getRequestedSuites(): Set<string> | null {

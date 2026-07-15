@@ -13,6 +13,9 @@ import {
   privateChannelProbeBodySchema,
   privateChannelProbeResultSchema,
   privateChannelSchema,
+  privateChannelVerifiedWalletListSchema,
+  privateChannelVerifiedWalletSchema,
+  privateChannelVerifyWalletParamSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -238,6 +241,45 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     responses: {
       204: { description: "Deleted" },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 409, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/wallets",
+    tags: [TAG],
+    summary: "List verified wallets for the connected instance",
+    operationId: "listPrivateChannelVerifiedWallets",
+    description: "Lists the project's custody wallets that have completed SPC verification.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders },
+    responses: {
+      200: {
+        description: "Verified wallets",
+        content: jsonContent(successResponseSchema(privateChannelVerifiedWalletListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/wallets/{walletId}/verify",
+    tags: [TAG],
+    summary: "Verify a custody wallet with the SPC auth service",
+    operationId: "verifyPrivateChannelWallet",
+    description:
+      "Runs the SPC challenge → sign → verify handshake for a custody wallet (any SDP provider), then records the verification. Idempotent per project scope. Requires the connected instance to have auth enabled.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelVerifyWalletParamSchema },
+    responses: {
+      200: {
+        description: "The verified wallet.",
+        content: jsonContent(
+          successResponseSchema(z.object({ wallet: privateChannelVerifiedWalletSchema }))
+        ),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
     },
   });
 }

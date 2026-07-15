@@ -54,6 +54,14 @@ const turnkeyApiPrivateKey = getEnv("TURNKEY_API_PRIVATE_KEY");
 const turnkeyOrganizationId = getEnv("TURNKEY_ORGANIZATION_ID");
 const turnkeyApiBaseUrl = getEnv("TURNKEY_API_BASE_URL");
 const turnkeyRequestDelayMs = getEnv("TURNKEY_REQUEST_DELAY_MS");
+// Private Channels (SPC) wallet-verification suite.
+const privateChannelsEnabled = getEnv("PRIVATE_CHANNELS_ENABLED");
+const privateChannelPocAuthSecret = getEnv("PRIVATE_CHANNEL_POC_AUTH_SECRET");
+const spcAuthUrl = getEnv("SPC_AUTH_URL");
+const spcGatewayUrl = getEnv("SPC_GATEWAY_URL");
+const spcEscrowProgramId = getEnv("SPC_ESCROW_PROGRAM_ID");
+const spcWithdrawProgramId = getEnv("SPC_WITHDRAW_PROGRAM_ID");
+const spcEscrowInstanceAddr = getEnv("SPC_ESCROW_INSTANCE_ADDR");
 
 export default defineConfig({
   plugins: [
@@ -108,6 +116,16 @@ export default defineConfig({
           ...(turnkeyRequestDelayMs && {
             TURNKEY_REQUEST_DELAY_MS: turnkeyRequestDelayMs,
           }),
+          // Private Channels (SPC) wallet-verification suite.
+          ...(privateChannelsEnabled && { PRIVATE_CHANNELS_ENABLED: privateChannelsEnabled }),
+          ...(privateChannelPocAuthSecret && {
+            PRIVATE_CHANNEL_POC_AUTH_SECRET: privateChannelPocAuthSecret,
+          }),
+          ...(spcAuthUrl && { SPC_AUTH_URL: spcAuthUrl }),
+          ...(spcGatewayUrl && { SPC_GATEWAY_URL: spcGatewayUrl }),
+          ...(spcEscrowProgramId && { SPC_ESCROW_PROGRAM_ID: spcEscrowProgramId }),
+          ...(spcWithdrawProgramId && { SPC_WITHDRAW_PROGRAM_ID: spcWithdrawProgramId }),
+          ...(spcEscrowInstanceAddr && { SPC_ESCROW_INSTANCE_ADDR: spcEscrowInstanceAddr }),
         },
       },
     }),

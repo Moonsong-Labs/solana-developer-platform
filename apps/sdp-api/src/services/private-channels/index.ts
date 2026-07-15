@@ -4,3 +4,7 @@ export {
   probeInstanceHealth,
   verifyInstanceConnection,
 } from "./service";
+export {
+  listPrivateChannelVerifiedWallets,
+  verifyPrivateChannelWallet,
+} from "./verification";

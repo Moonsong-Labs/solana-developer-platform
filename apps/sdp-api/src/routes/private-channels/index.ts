@@ -15,7 +15,9 @@ import {
   getPrivateChannelInstance,
   getPrivateChannelOverview,
   listChannels,
+  listVerifiedWallets,
   probePrivateChannelConnection,
+  verifyWallet,
 } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
@@ -64,5 +66,15 @@ privateChannels.get("/channels", requirePermissions("payments:read"), listChanne
 privateChannels.post("/channels", requirePermissions("payments:write"), createChannel);
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
 privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
+
+// --- /wallets -------------------------------------------------------------
+// Wallet verification: the gate for money-movement. Verifying signs an SPC
+// auth challenge with the custody wallet (any SDP provider) and records it.
+privateChannels.get("/wallets", requirePermissions("payments:read"), listVerifiedWallets);
+privateChannels.post(
+  "/wallets/:walletId/verify",
+  requirePermissions("payments:write"),
+  verifyWallet
+);
 
 export default privateChannels;

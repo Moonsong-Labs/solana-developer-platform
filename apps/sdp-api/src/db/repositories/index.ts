@@ -179,6 +179,19 @@ export {
   mapPrivateChannelInstanceRow,
 } from "./private-channel-instance.repository";
 export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
+export type {
+  PrivateChannelVerifiedWalletRepository,
+  PrivateChannelVerifiedWalletRepositoryContext,
+  PrivateChannelVerifiedWalletRow,
+  PrivateChannelVerifiedWalletStatus,
+  UpsertVerifiedWalletInput,
+  VerifiedWalletScope,
+} from "./private-channel-verified-wallet.repository";
+export {
+  generatePrivateChannelVerifiedWalletId,
+  mapPrivateChannelVerifiedWalletRow,
+} from "./private-channel-verified-wallet.repository";
+export { createPostgresPrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository.postgres";
 export {
   createAssetProfilesRepository,
   createCounterpartiesRepository,
@@ -190,6 +203,7 @@ export {
   createPolicyRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelVerifiedWalletRepository,
   createTokenRepository,
 } from "./repository-factory";
 export type {

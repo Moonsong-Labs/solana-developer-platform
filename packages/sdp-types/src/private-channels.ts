@@ -67,15 +67,11 @@ export interface PrivateChannelInstanceOverview {
     /** Channel chain latest blockhash. */
     latestBlockhash: string | null;
   };
-  chainRpc:
-    | { ok: true; solanaVersion: string | null }
-    | { ok: false; error: string };
+  chainRpc: { ok: true; solanaVersion: string | null } | { ok: false; error: string };
   escrowInstance:
     | { present: true; owner: string; ownerMatchesProgram: boolean; lamports: number }
     | { present: false; error: string };
-  escrowProgram:
-    | { present: true; executable: boolean }
-    | { present: false; error: string };
+  escrowProgram: { present: true; executable: boolean } | { present: false; error: string };
   /** Null when `useAuth === false` — the auth service isn't in the deployment. */
   auth: { reachable: boolean; error: string | null } | null;
 }
@@ -98,4 +94,21 @@ export interface PrivateChannelDto {
 export interface CreatePrivateChannelRequest {
   name: string;
   description?: string;
+}
+
+/** Verified-wallet lifecycle. */
+export type PrivateChannelVerifiedWalletStatusDto = "active" | "revoked";
+
+/**
+ * A custody wallet that has completed the SPC challenge → verify handshake for
+ * the project's connected instance. Returned by the verify + list endpoints.
+ */
+export interface PrivateChannelVerifiedWalletDto {
+  id: string;
+  /** SDP managed custody wallet id (the `walletId` from GET /v1/wallets). */
+  walletId: string;
+  /** The verified Solana pubkey (base58). */
+  pubkey: string;
+  status: PrivateChannelVerifiedWalletStatusDto;
+  verifiedAt: string;
 }

@@ -583,9 +583,21 @@ importers:
 
   packages/sdp-private-channels:
     dependencies:
+      '@sdp/rpc':
+        specifier: workspace:*
+        version: link:../sdp-rpc
+      '@sdp/solana':
+        specifier: workspace:*
+        version: link:../sdp-solana
       '@sdp/types':
         specifier: workspace:*
         version: link:../sdp-types
+      '@solana-program/token-2022':
+        specifier: 'catalog:'
+        version: 0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3))
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
       zod:
         specifier: 4.4.3
         version: 4.4.3

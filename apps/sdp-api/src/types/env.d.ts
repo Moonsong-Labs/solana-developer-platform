@@ -209,6 +209,10 @@ export interface Env {
 
   // Private Channels backend feature flag
   PRIVATE_CHANNELS_ENABLED?: string;
+  // POC-only secret used to derive a deterministic SPC auth user (username +
+  // password) from the SDP (org, project) identity. Throwaway shim — replaced
+  // when real SPC auth infra lands.
+  PRIVATE_CHANNEL_POC_AUTH_SECRET?: string;
 
   // Compliance providers
   RANGE_API_KEY?: string;
