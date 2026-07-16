@@ -7,6 +7,7 @@ import { success } from "@/lib/response";
 import { verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository, getPrivateChannelRepository } from "../context";
+import { emitLifecycle } from "../helpers";
 import { connectPrivateChannelInstanceSchema } from "../schemas";
 
 export const getPrivateChannelInstance = async (c: AppContext) => {
@@ -119,6 +120,10 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
     });
   }
 
+  await emitLifecycle(c, row, "lifecycle.instance.connected", {
+    payload: { gatewayUrl: row.gateway_url },
+  });
+
   const response: PrivateChannelInstanceResponse = {
     instance: mapPrivateChannelInstanceRow(row),
   };
@@ -137,6 +142,10 @@ export const disconnectPrivateChannelInstance = async (c: AppContext) => {
   if (!row) {
     throw notFound("Active private channel instance");
   }
+
+  await emitLifecycle(c, row, "lifecycle.instance.disconnected", {
+    payload: { gatewayUrl: row.gateway_url },
+  });
 
   const response: PrivateChannelInstanceResponse = {
     instance: mapPrivateChannelInstanceRow(row),

@@ -1,4 +1,5 @@
 export { createChannel, deleteChannel, getChannel, listChannels } from "./handlers/channels";
+export { listChannelEvents, listProjectEvents } from "./handlers/events";
 export { getPrivateChannelHealth } from "./handlers/health";
 export {
   connectPrivateChannelInstance,

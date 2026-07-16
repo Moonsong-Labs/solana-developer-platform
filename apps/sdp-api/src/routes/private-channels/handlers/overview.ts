@@ -5,6 +5,7 @@ import { success } from "@/lib/response";
 import { getInstanceOverview } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository } from "../context";
+import { recordInstanceError } from "../helpers";
 
 // GET /instance/overview — active instance snapshot: gateway health + a few
 // cheap Solana reads via the gateway's JSON-RPC passthrough. 404 when no
@@ -24,5 +25,13 @@ export async function getPrivateChannelOverview(c: AppContext) {
 
   const instance = mapPrivateChannelInstanceRow(row);
   const overview = await getInstanceOverview(instance);
+
+  const health = overview.gateway.health;
+  if (health.status === "unreachable") {
+    await recordInstanceError(c, row, "error.spc_unreachable", new Error(health.error), {
+      payload: { gatewayUrl: instance.gatewayUrl, latencyMs: health.latencyMs },
+    });
+  }
+
   return success(c, { instance, overview });
 }

@@ -28,3 +28,11 @@ export const createChannelBodySchema = z.object({
   name: z.string(),
   description: z.string().optional(),
 });
+
+/** Query params for `GET /channels/:id/events`. */
+export const privateChannelEventsQuerySchema = z.object({
+  family: z.enum(["member", "transfer", "error", "lifecycle"]).optional(),
+  type: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  before: z.string().min(1).optional(),
+});

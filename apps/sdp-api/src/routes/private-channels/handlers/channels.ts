@@ -1,15 +1,10 @@
 import type { PrivateChannelRow } from "@sdp/private-channels/channels";
 import { validatePrivateChannelName } from "@sdp/private-channels/channels";
 import type { PrivateChannelDto } from "@sdp/types";
-import type { PrivateChannelInstanceRow } from "@/db/repositories";
-import { getAuth, requireProjectId } from "@/lib/auth";
-import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
+import { badRequest, conflict, notFound } from "@/lib/errors";
 import { created, noContent, success } from "@/lib/response";
-import {
-  type AppContext,
-  getPrivateChannelInstanceRepository,
-  getPrivateChannelRepository,
-} from "../context";
+import { type AppContext, getPrivateChannelRepository } from "../context";
+import { emitLifecycle, requireActiveInstance } from "../helpers";
 import { createChannelBodySchema } from "../schemas";
 
 function toPrivateChannelDto(row: PrivateChannelRow): PrivateChannelDto {
@@ -22,23 +17,6 @@ function toPrivateChannelDto(row: PrivateChannelRow): PrivateChannelDto {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-/** Channels live under the project's active instance; resolve it or 503. */
-async function requireActiveInstance(c: AppContext): Promise<PrivateChannelInstanceRow> {
-  const { organizationId } = getAuth(c);
-  const projectId = requireProjectId(c);
-  const instance = await getPrivateChannelInstanceRepository(c).getActiveByProject({
-    organizationId,
-    projectId,
-  });
-  if (!instance) {
-    throw new AppError(
-      "PROVIDER_NOT_CONFIGURED",
-      "No active Private Channels instance is connected for this project."
-    );
-  }
-  return instance;
 }
 
 /** GET /channels — ensure the default channel exists, then list all (newest first). */
@@ -82,6 +60,11 @@ export async function createChannel(c: AppContext) {
     throw conflict("A channel with this name already exists in the instance");
   }
 
+  await emitLifecycle(c, instance, "lifecycle.channel.created", {
+    channelId: channel.id,
+    payload: { name: channel.name },
+  });
+
   return created(c, toPrivateChannelDto(channel));
 }
 
@@ -120,5 +103,9 @@ export async function deleteChannel(c: AppContext) {
   }
 
   await repo.archiveChannel({ channelId, instanceId: instance.id });
+  await emitLifecycle(c, instance, "lifecycle.channel.archived", {
+    channelId: channel.id,
+    payload: { name: channel.name },
+  });
   return noContent(c);
 }

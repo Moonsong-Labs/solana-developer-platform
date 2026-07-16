@@ -67,15 +67,11 @@ export interface PrivateChannelInstanceOverview {
     /** Channel chain latest blockhash. */
     latestBlockhash: string | null;
   };
-  chainRpc:
-    | { ok: true; solanaVersion: string | null }
-    | { ok: false; error: string };
+  chainRpc: { ok: true; solanaVersion: string | null } | { ok: false; error: string };
   escrowInstance:
     | { present: true; owner: string; ownerMatchesProgram: boolean; lamports: number }
     | { present: false; error: string };
-  escrowProgram:
-    | { present: true; executable: boolean }
-    | { present: false; error: string };
+  escrowProgram: { present: true; executable: boolean } | { present: false; error: string };
   /** Null when `useAuth === false` — the auth service isn't in the deployment. */
   auth: { reachable: boolean; error: string | null } | null;
 }
@@ -98,4 +94,54 @@ export interface PrivateChannelDto {
 export interface CreatePrivateChannelRequest {
   name: string;
   description?: string;
+}
+
+// --- Private Channel Events ---------------------------------------------
+
+export type PrivateChannelEventFamily = "member" | "transfer" | "error" | "lifecycle";
+export type PrivateChannelEventStatus = "pending" | "confirmed" | "failed" | "stale" | "info";
+
+/** Known event type strings used by producers. */
+export type PrivateChannelEventType =
+  | "lifecycle.instance.connected"
+  | "lifecycle.instance.disconnected"
+  | "lifecycle.channel.created"
+  | "lifecycle.channel.archived"
+  | "member.added"
+  | "member.revoked"
+  | "member.role_changed"
+  | "member.wallet_challenge_requested"
+  | "member.wallet_verified"
+  | "member.wallet_verification_revoked"
+  | "transfer.deposit.submitted"
+  | "transfer.deposit.credited"
+  | "transfer.transfer.submitted"
+  | "transfer.transfer.confirmed"
+  | "transfer.withdrawal.submitted"
+  | "transfer.withdrawal.released"
+  | "error.spc_unreachable"
+  | "error.intent.submit_rejected"
+  | "error.jwt_refresh_failed"
+  | "error.reconciliation_mismatch";
+
+export interface PrivateChannelEventDto {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  instanceId: string;
+  channelId: string | null;
+  sdpUserId: string | null;
+  family: PrivateChannelEventFamily;
+  type: string;
+  status: PrivateChannelEventStatus;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface PrivateChannelEventListEnvelope {
+  events: PrivateChannelEventDto[];
+  hasMore: boolean;
+  /** Opaque cursor for the next page; null when there are no more events. */
+  nextCursor: string | null;
 }

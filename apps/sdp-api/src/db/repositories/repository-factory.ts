@@ -20,6 +20,8 @@ import type { PolicyRepository } from "./policy.repository";
 import { createPostgresPolicyRepository } from "./policy.repository.postgres";
 import type { PrivateChannelRepository } from "./private-channel.repository";
 import { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
+import type { PrivateChannelEventRepository } from "./private-channel-event.repository";
+import { createPostgresPrivateChannelEventRepository } from "./private-channel-event.repository.postgres";
 import type { PrivateChannelInstanceRepository } from "./private-channel-instance.repository";
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 import type { TokenRepository } from "./token.repository";
@@ -73,4 +75,8 @@ export function createPrivateChannelInstanceRepository(env: Env): PrivateChannel
 
 export function createPrivateChannelRepository(env: Env): PrivateChannelRepository {
   return createPostgresPrivateChannelRepository(getDb(env));
+}
+
+export function createPrivateChannelEventRepository(env: Env): PrivateChannelEventRepository {
+  return createPostgresPrivateChannelEventRepository(getDb(env));
 }

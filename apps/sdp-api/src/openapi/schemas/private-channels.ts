@@ -136,12 +136,10 @@ export const privateChannelSchema = z
     id: z.string().openapi({ example: "pch_9f1c..." }),
     name: z.string().openapi({ example: "Treasury" }),
     description: z.string().nullable().openapi({ example: "Ops payouts" }),
-    isDefault: z
-      .boolean()
-      .openapi({
-        description: "The connected instance's auto-provisioned default channel.",
-        example: false,
-      }),
+    isDefault: z.boolean().openapi({
+      description: "The connected instance's auto-provisioned default channel.",
+      example: false,
+    }),
     status: z
       .enum(["active", "archived"])
       .openapi({ description: "Soft-delete lifecycle status.", example: "active" }),
@@ -169,5 +167,74 @@ export const privateChannelIdParamSchema = z.object({
       param: { name: "id", in: "path" },
       description: "Private channel id.",
       example: "pch_9f1c...",
+    }),
+});
+
+export const privateChannelEventFamilySchema = z.enum(["member", "transfer", "error", "lifecycle"]);
+
+export const privateChannelEventStatusSchema = z.enum([
+  "pending",
+  "confirmed",
+  "failed",
+  "stale",
+  "info",
+]);
+
+export const privateChannelEventSchema = z
+  .object({
+    id: z.string().openapi({ example: "pce_9f1c..." }),
+    organizationId: z.string(),
+    projectId: z.string(),
+    instanceId: z.string(),
+    channelId: z.string().nullable(),
+    sdpUserId: z.string().nullable(),
+    family: privateChannelEventFamilySchema,
+    type: z.string().openapi({ example: "lifecycle.channel.created" }),
+    status: privateChannelEventStatusSchema,
+    payload: z.record(z.string(), z.unknown()),
+    occurredAt: z.string(),
+    createdAt: z.string(),
+  })
+  .openapi({ description: "A Private Channels activity event." });
+
+export const privateChannelEventListSchema = z.object({
+  events: z.array(privateChannelEventSchema),
+  hasMore: z.boolean(),
+  nextCursor: z
+    .string()
+    .nullable()
+    .openapi({ description: "Opaque cursor for the next page; null when there are no more." }),
+});
+
+export const privateChannelEventsQuerySchema = z.object({
+  family: privateChannelEventFamilySchema.optional().openapi({
+    param: { name: "family", in: "query" },
+    description: "Filter by event family.",
+  }),
+  type: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "type", in: "query" },
+      description: "Exact event type match (e.g. lifecycle.channel.created).",
+    }),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .openapi({
+      param: { name: "limit", in: "query" },
+      description: "Page size (default 50, max 100).",
+    }),
+  before: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: "before", in: "query" },
+      description: "Opaque pagination cursor from a previous response's nextCursor.",
     }),
 });

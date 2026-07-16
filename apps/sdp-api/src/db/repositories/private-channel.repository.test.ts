@@ -21,9 +21,10 @@ async function seedInstance(db: ReturnType<typeof getDb>, id: string): Promise<v
       `INSERT INTO private_channel_instances
          (id, organization_id, project_id, gateway_url, chain_rpc_url,
           escrow_program_id, withdraw_program_id, escrow_instance_addr, is_active)
-       VALUES (?, ?, ?, 'http://gw', 'http://rpc', 'prog1', 'prog2', 'escrow1', ?)`
+       VALUES (?, ?, ?, ?, 'http://rpc', 'prog1', 'prog2', 'escrow1', ?)`
     )
-    .bind(id, TEST_ORG_ID, TEST_PROJECT_ID, id === TEST_INSTANCE_ID ? 1 : 0)
+    // gateway_url is unique per (project, gateway); each instance needs its own.
+    .bind(id, TEST_ORG_ID, TEST_PROJECT_ID, `http://gw/${id}`, id === TEST_INSTANCE_ID ? 1 : 0)
     .run();
 }
 
