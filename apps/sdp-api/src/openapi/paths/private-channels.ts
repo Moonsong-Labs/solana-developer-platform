@@ -13,6 +13,7 @@ import {
   privateChannelProbeBodySchema,
   privateChannelProbeResultSchema,
   privateChannelSchema,
+  privateChannelVerifiedWalletListSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -238,6 +239,24 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     responses: {
       204: { description: "Deleted" },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 409, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/wallets",
+    tags: [TAG],
+    summary: "List verified wallets for the connected instance",
+    operationId: "listPrivateChannelVerifiedWallets",
+    description: "Lists the project's custody wallets that have completed SPC verification.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders },
+    responses: {
+      200: {
+        description: "Verified wallets",
+        content: jsonContent(successResponseSchema(privateChannelVerifiedWalletListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
     },
   });
 }

@@ -15,6 +15,7 @@ import {
   getPrivateChannelInstance,
   getPrivateChannelOverview,
   listChannels,
+  listVerifiedWallets,
   probePrivateChannelConnection,
 } from "./handlers";
 
@@ -64,5 +65,10 @@ privateChannels.get("/channels", requirePermissions("payments:read"), listChanne
 privateChannels.post("/channels", requirePermissions("payments:write"), createChannel);
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
 privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
+
+// --- /wallets -------------------------------------------------------------
+// Read model for wallets verified against the connected instance. The verify
+// write path (SPC challenge → sign → verify) lands with the SPC auth subsystem.
+privateChannels.get("/wallets", requirePermissions("payments:read"), listVerifiedWallets);
 
 export default privateChannels;

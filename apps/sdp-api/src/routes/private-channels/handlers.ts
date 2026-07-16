@@ -8,3 +8,4 @@ export {
 } from "./handlers/instance";
 export { getPrivateChannelOverview } from "./handlers/overview";
 export { probePrivateChannelConnection } from "./handlers/probe";
+export { listVerifiedWallets } from "./handlers/wallets";

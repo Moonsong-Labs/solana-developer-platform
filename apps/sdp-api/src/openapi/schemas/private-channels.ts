@@ -136,12 +136,10 @@ export const privateChannelSchema = z
     id: z.string().openapi({ example: "pch_9f1c..." }),
     name: z.string().openapi({ example: "Treasury" }),
     description: z.string().nullable().openapi({ example: "Ops payouts" }),
-    isDefault: z
-      .boolean()
-      .openapi({
-        description: "The connected instance's auto-provisioned default channel.",
-        example: false,
-      }),
+    isDefault: z.boolean().openapi({
+      description: "The connected instance's auto-provisioned default channel.",
+      example: false,
+    }),
     status: z
       .enum(["active", "archived"])
       .openapi({ description: "Soft-delete lifecycle status.", example: "active" }),
@@ -170,4 +168,19 @@ export const privateChannelIdParamSchema = z.object({
       description: "Private channel id.",
       example: "pch_9f1c...",
     }),
+});
+
+export const privateChannelVerifiedWalletSchema = z
+  .object({
+    id: z.string().openapi({ example: "pcvw_9f1c..." }),
+    walletId: z
+      .string()
+      .openapi({ description: "SDP managed custody wallet id.", example: "wallet_123" }),
+    pubkey: solanaAddressSchema,
+    verifiedAt: z.string(),
+  })
+  .openapi({ description: "A custody wallet verified with the connected SPC instance." });
+
+export const privateChannelVerifiedWalletListSchema = z.object({
+  wallets: z.array(privateChannelVerifiedWalletSchema),
 });
