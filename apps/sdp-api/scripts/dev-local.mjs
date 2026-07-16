@@ -104,7 +104,48 @@ function run(command, args, options = {}) {
   });
 }
 
-const devArgs = ["dev", "--local", `--persist-to=${persistTo}`, "--port", port, ...wranglerVarArgs];
+/**
+ * Local emulation of the Cloudflare cron. In production the platform invokes the
+ * Worker's `scheduled()` handler on the `wrangler.toml` `crons` schedule; `wrangler
+ * dev` does not. With `--test-scheduled` exposing `/__scheduled`, this ticker hits
+ * it on the same cadence so the reconcilers run under local dev too. Opt out with
+ * `SDP_API_DISABLE_CRON_TICKER=1`; tune the interval with `SDP_API_CRON_TICK_MS`.
+ * Returns a stop() to clear the timer.
+ */
+function startCronTicker() {
+  const intervalMs = Number(process.env.SDP_API_CRON_TICK_MS ?? 60000);
+  if (
+    process.env.SDP_API_DISABLE_CRON_TICKER === "1" ||
+    !Number.isFinite(intervalMs) ||
+    intervalMs <= 0
+  ) {
+    return () => {};
+  }
+
+  const url = `http://127.0.0.1:${port}/__scheduled?cron=${encodeURIComponent("* * * * *")}`;
+  const timer = setInterval(() => {
+    // wrangler may still be starting up; a failed fetch is fine — retry next tick.
+    fetch(url).catch(() => {});
+  }, intervalMs);
+  // Don't let the ticker alone keep the process alive.
+  timer.unref?.();
+
+  console.log(`[dev] cron ticker: firing scheduled() every ${intervalMs} ms via /__scheduled`);
+  return () => clearInterval(timer);
+}
+
+// `--test-scheduled` exposes the `/__scheduled` route so the Worker's `scheduled()`
+// handler (the cron reconcilers) can be invoked in local dev, which otherwise does
+// not fire cron triggers on a timer.
+const devArgs = [
+  "dev",
+  "--local",
+  "--test-scheduled",
+  `--persist-to=${persistTo}`,
+  "--port",
+  port,
+  ...wranglerVarArgs,
+];
 
 try {
   if (isDopplerRun && fs.existsSync(localEnvPath)) {
@@ -121,13 +162,18 @@ try {
       DATABASE_URL: databaseUrl,
     },
   });
-  await run(wranglerBin, devArgs, {
-    env: {
-      DATABASE_URL: databaseUrl,
-      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: databaseUrl,
-      CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
-    },
-  });
+  const stopCronTicker = startCronTicker();
+  try {
+    await run(wranglerBin, devArgs, {
+      env: {
+        DATABASE_URL: databaseUrl,
+        CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: databaseUrl,
+        CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
+      },
+    });
+  } finally {
+    stopCronTicker();
+  }
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown local dev startup error";
   console.error(message);
