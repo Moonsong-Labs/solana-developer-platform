@@ -38,3 +38,20 @@ export const balanceQuerySchema = z.object({
   owner: z.string().min(1),
   mint: z.string().min(1).optional(),
 });
+
+/**
+ * Body for `POST /deposits`. `walletId` is the source custody wallet (a `walletId`
+ * from GET /v1/wallets or its public key); `amount` is a decimal string; optional
+ * `recipient` (walletId or address) is credited in the channel, defaulting to the
+ * depositor.
+ */
+export const createDepositBodySchema = z.object({
+  walletId: z.string().min(1),
+  amount: z.string().min(1),
+  recipient: z.string().min(1).optional(),
+});
+
+/** Path param for `GET /deposits/:id`. */
+export const depositIdParamSchema = z.object({
+  id: z.string().min(1),
+});

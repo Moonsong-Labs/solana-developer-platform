@@ -8,9 +8,11 @@
  */
 
 import { createApp } from "@/app";
+import { runPendingDepositsReconciliation } from "@/cron/pending-deposits";
 import { runPendingTransfersReconciliation } from "@/cron/pending-transfers";
 import { runRecurringPaymentsCollection } from "@/cron/recurring-payments";
 import {
+  isPrivateChannelsEnabled,
   isRecurringPaymentCollectionEnabled,
   isRecurringPaymentsEnabled,
 } from "@/lib/feature-flags";
@@ -41,6 +43,13 @@ const worker = {
     });
     if (isRecurringPaymentsEnabled(runtimeEnv) && isRecurringPaymentCollectionEnabled(runtimeEnv)) {
       runRecurringPaymentsCollection({
+        env: runtimeEnv,
+        bg,
+        observability,
+      });
+    }
+    if (isPrivateChannelsEnabled(runtimeEnv)) {
+      runPendingDepositsReconciliation({
         env: runtimeEnv,
         bg,
         observability,

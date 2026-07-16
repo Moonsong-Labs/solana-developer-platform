@@ -67,15 +67,11 @@ export interface PrivateChannelInstanceOverview {
     /** Channel chain latest blockhash. */
     latestBlockhash: string | null;
   };
-  chainRpc:
-    | { ok: true; solanaVersion: string | null }
-    | { ok: false; error: string };
+  chainRpc: { ok: true; solanaVersion: string | null } | { ok: false; error: string };
   escrowInstance:
     | { present: true; owner: string; ownerMatchesProgram: boolean; lamports: number }
     | { present: false; error: string };
-  escrowProgram:
-    | { present: true; executable: boolean }
-    | { present: false; error: string };
+  escrowProgram: { present: true; executable: boolean } | { present: false; error: string };
   /** Null when `useAuth === false` — the auth service isn't in the deployment. */
   auth: { reachable: boolean; error: string | null } | null;
 }
@@ -98,6 +94,45 @@ export interface PrivateChannelDto {
 export interface CreatePrivateChannelRequest {
   name: string;
   description?: string;
+}
+
+/**
+ * Deposit lifecycle: `prepared` (intent + tx built) → `submitted` (broadcast to
+ * devnet) → `confirmed` (on-chain) → `credited` (reflected in the channel balance
+ * via the gateway). `failed` is terminal.
+ */
+export type PrivateChannelDepositStatus =
+  | "prepared"
+  | "submitted"
+  | "confirmed"
+  | "credited"
+  | "failed";
+
+/**
+ * A deposit intent: moves `amount` of `mint` from the `depositor` custody wallet
+ * into the instance escrow on devnet, credited to `recipient` in the channel.
+ * `amount` is a decimal string (never numeric/float).
+ */
+export interface PrivateChannelDeposit {
+  id: string;
+  instanceId: string;
+  organizationId: string;
+  projectId: string;
+  /** Custody wallet the deposit is signed from. */
+  walletId: string;
+  /** Resolved depositor address (the custody wallet's public key). */
+  depositor: string;
+  /** Resolved recipient address credited in the channel (defaults to the depositor). */
+  recipient: string;
+  mint: string;
+  amount: string;
+  status: PrivateChannelDepositStatus;
+  /** Devnet escrow transaction signature (null until submitted). */
+  signature: string | null;
+  /** Set when `status === "failed"`. */
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**

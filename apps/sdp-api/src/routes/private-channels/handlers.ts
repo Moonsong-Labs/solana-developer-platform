@@ -1,5 +1,10 @@
 export { getPrivateChannelBalance } from "./handlers/balance";
 export { createChannel, deleteChannel, getChannel, listChannels } from "./handlers/channels";
+export {
+  createPrivateChannelDeposit,
+  getPrivateChannelDepositById,
+  listPrivateChannelDeposits,
+} from "./handlers/deposits";
 export { getPrivateChannelHealth } from "./handlers/health";
 export {
   connectPrivateChannelInstance,

@@ -7,15 +7,18 @@ import type { Env } from "@/types/env";
 import {
   connectPrivateChannelInstance,
   createChannel,
+  createPrivateChannelDeposit,
   deleteChannel,
   deletePrivateChannelInstance,
   disconnectPrivateChannelInstance,
   getChannel,
   getPrivateChannelBalance,
+  getPrivateChannelDepositById,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
   listChannels,
+  listPrivateChannelDeposits,
   probePrivateChannelConnection,
 } from "./handlers";
 
@@ -64,6 +67,21 @@ privateChannels.route("/instance", instance);
 // Balances are shared across the wallet's channels; see the handler's TODO on the
 // visibility gate that later member-modeling slices must add.
 privateChannels.get("/balance", requirePermissions("payments:read"), getPrivateChannelBalance);
+
+// --- /deposits ------------------------------------------------------------
+// Escrow deposits from a custody wallet into the instance (devnet), tracked
+// prepared -> submitted -> confirmed -> credited.
+privateChannels.post(
+  "/deposits",
+  requirePermissions("payments:write"),
+  createPrivateChannelDeposit
+);
+privateChannels.get("/deposits", requirePermissions("payments:read"), listPrivateChannelDeposits);
+privateChannels.get(
+  "/deposits/:id",
+  requirePermissions("payments:read"),
+  getPrivateChannelDepositById
+);
 
 // --- /channels ------------------------------------------------------------
 // Logical channels: instance-scoped metadata, enforced entirely by SDP.
