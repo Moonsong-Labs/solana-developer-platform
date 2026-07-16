@@ -3,10 +3,19 @@
  *
  * Moves USDC from a custody wallet into the instance escrow on the instance's
  * chain (devnet), then the operator credits it into the channel (detected later
- * via the gateway balance). The tx is server-signed: the custody wallet is the
- * escrow `user` (moves the tokens) and the Kora/native fee-payment adapter is the
- * `payer` (and tx fee payer). Broadcast targets `instance.chainRpcUrl`, NOT the
- * default RPC or the gateway.
+ * via the gateway balance). The tx is server-signed by the custody wallet, which
+ * is BOTH the escrow `user` (moves the tokens) and the escrow `payer` / tx fee
+ * payer (pays rent + the SOL fee). Broadcast targets `instance.chainRpcUrl`, NOT
+ * the default RPC or the gateway.
+ *
+ * TODO(gasless): revert to the Kora/native sponsored fee-payer model (the
+ * `payer` = `createNoopSigner(feePayment.getFeePayer())`, tx fee payer set via
+ * `setTransactionMessageFeePayer`, sign with `partiallySignTransactionMessageWithSigners`
+ * then `feePayment.signAsFeePayer`) once the escrow program `9tgHa1…` is added to
+ * Kora's allowed-program list. Today the hosted Kora relay rejects the deposit
+ * ("Program 9tgHa1… is not in the allowed list") because it only sponsors
+ * transactions that touch allow-listed programs, so the depositor pays their own
+ * fee for now. See `createFeePaymentAdapter` in `@/services/adapters/fee-payment`.
  *
  * Lifecycle here: prepared (persist) → submitted (broadcast) → confirmed (on
  * devnet). `credited` is detected asynchronously by the reconciler / the page
@@ -23,24 +32,21 @@ import type { PrivateChannelDeposit, PrivateChannelInstance } from "@sdp/types";
 import {
   type Address,
   address,
-  addSignersToTransactionMessage,
   appendTransactionMessageInstructions,
-  createNoopSigner,
   createTransactionMessage,
   getTransactionEncoder,
   pipe,
   type Signature,
-  setTransactionMessageFeePayer,
+  setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
 } from "@solana/kit";
-import { partiallySignTransactionMessageWithSigners } from "@solana/signers";
+import { signTransactionMessageWithSigners } from "@solana/signers";
 import {
   createPrivateChannelDepositRepository,
   mapPrivateChannelDepositRow,
   type PrivateChannelDepositRow,
 } from "@/db/repositories";
 import { AppError, badRequest } from "@/lib/errors";
-import { createFeePaymentAdapter } from "@/services/adapters/fee-payment";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
@@ -91,11 +97,11 @@ async function broadcastDeposit(
     throw badRequest("Resolved signing wallet does not match the deposit wallet");
   }
 
-  const feePayment = createFeePaymentAdapter(env);
-  const feePayer = await feePayment.getFeePayer();
-
+  // TODO(gasless): `payer` should be the sponsored fee payer once the escrow
+  // program is allow-listed on Kora — for now the custody wallet pays (see the
+  // module-level note). payer === user, so the wallet signs once for both.
   const depositIx = await getDepositInstructionAsync({
-    payer: createNoopSigner(feePayer),
+    payer: signer,
     user: signer,
     instance: address(input.instance.escrowInstanceAddr),
     mint: input.mint,
@@ -112,18 +118,15 @@ async function broadcastDeposit(
 
   const message = pipe(
     createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayer(feePayer, m),
+    (m) => setTransactionMessageFeePayerSigner(signer, m),
     (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions([depositIx], m),
-    (m) => addSignersToTransactionMessage([signer], m)
+    (m) => appendTransactionMessageInstructions([depositIx], m)
   );
 
-  const partiallySigned = await partiallySignTransactionMessageWithSigners(message);
-  const userSignedBytes = new Uint8Array(getTransactionEncoder().encode(partiallySigned));
-  // Add the fee-payer signature, then broadcast to the instance chain ourselves
-  // (the adapter's signAndSend targets the default RPC, not the instance chain).
-  const fullySignedBytes = await feePayment.signAsFeePayer(userSignedBytes);
-  return solanaRpc.sendTransaction(chainRpc, fullySignedBytes);
+  // The custody wallet is the only signer (payer + user); fully sign and broadcast.
+  const signed = await signTransactionMessageWithSigners(message);
+  const signedBytes = new Uint8Array(getTransactionEncoder().encode(signed));
+  return solanaRpc.sendTransaction(chainRpc, signedBytes);
 }
 
 /** Create a deposit intent: persist, broadcast to devnet, confirm on-chain. */
