@@ -11,6 +11,7 @@ import {
   deletePrivateChannelInstance,
   disconnectPrivateChannelInstance,
   getChannel,
+  getPrivateChannelBalance,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
@@ -57,6 +58,12 @@ instance.post(
 );
 instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
 privateChannels.route("/instance", instance);
+
+// --- /balance -------------------------------------------------------------
+// Read an owner's channel token balance (per wallet+mint) through the gateway.
+// Balances are shared across the wallet's channels; see the handler's TODO on the
+// visibility gate that later member-modeling slices must add.
+privateChannels.get("/balance", requirePermissions("payments:read"), getPrivateChannelBalance);
 
 // --- /channels ------------------------------------------------------------
 // Logical channels: instance-scoped metadata, enforced entirely by SDP.

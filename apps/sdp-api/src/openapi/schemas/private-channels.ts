@@ -171,3 +171,35 @@ export const privateChannelIdParamSchema = z.object({
       example: "pch_9f1c...",
     }),
 });
+
+export const privateChannelBalanceQuerySchema = z.object({
+  owner: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "owner", in: "query" },
+      description:
+        "Owner to read the balance for: a `walletId` from GET /v1/wallets, a wallet public key, or a raw Solana address.",
+      example: "7C1Pu8mbHaDDTFnGH8YTqemNDofqXP3XEotzSo6TbwHz",
+    }),
+  mint: solanaAddressSchema.optional().openapi({
+    param: { name: "mint", in: "query" },
+    description: "Token mint to read. Defaults to the instance cluster's USDC mint.",
+  }),
+});
+
+export const privateChannelBalanceSchema = z
+  .object({
+    owner: solanaAddressSchema,
+    mint: solanaAddressSchema,
+    tokenAccount: solanaAddressSchema.openapi({
+      description: "The classic-Token associated-token account probed on the channel.",
+    }),
+    amount: z.string().openapi({ description: "Raw base-unit amount.", example: "1500000" }),
+    decimals: z.number().openapi({ example: 6 }),
+    uiAmount: z.string().openapi({ description: "Human-readable amount.", example: "1.5" }),
+  })
+  .openapi({
+    description:
+      "An owner's channel token balance (per wallet+mint, via the gateway). Shared across the wallet's channels.",
+  });

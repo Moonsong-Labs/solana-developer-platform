@@ -28,3 +28,13 @@ export const createChannelBodySchema = z.object({
   name: z.string(),
   description: z.string().optional(),
 });
+
+/**
+ * Query params for `GET /balance`: `owner` (a `walletId` from GET /v1/wallets, a
+ * wallet public key, or a raw Solana address) and an optional `mint` (defaults to
+ * the instance cluster's USDC mint).
+ */
+export const balanceQuerySchema = z.object({
+  owner: z.string().min(1),
+  mint: z.string().min(1).optional(),
+});

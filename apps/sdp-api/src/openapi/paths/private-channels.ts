@@ -3,6 +3,8 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import {
   createPrivateChannelBodySchema,
   errorResponseSchema,
+  privateChannelBalanceQuerySchema,
+  privateChannelBalanceSchema,
   privateChannelHealthQuerySchema,
   privateChannelHealthSchema,
   privateChannelIdParamSchema,
@@ -165,6 +167,25 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelHealthSchema)),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/balance",
+    tags: [TAG],
+    summary: "Read an owner's channel token balance",
+    operationId: "getPrivateChannelBalance",
+    description:
+      "Reads an owner's token balance on the channel via the gateway (per wallet+mint; shared across the wallet's channels). `owner` accepts a walletId, wallet public key, or raw address; `mint` defaults to the instance cluster's USDC mint. A never-credited owner reads as a zero balance.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, query: privateChannelBalanceQuerySchema },
+    responses: {
+      200: {
+        description: "The owner's channel token balance.",
+        content: jsonContent(successResponseSchema(privateChannelBalanceSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
     },
   });
 

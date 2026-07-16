@@ -1,3 +1,4 @@
+export { getPrivateChannelBalance } from "./handlers/balance";
 export { createChannel, deleteChannel, getChannel, listChannels } from "./handlers/channels";
 export { getPrivateChannelHealth } from "./handlers/health";
 export {
