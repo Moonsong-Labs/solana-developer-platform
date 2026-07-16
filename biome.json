@@ -141,7 +141,8 @@
       "!**/dist",
       "!**/*.d.ts",
       "!**/pnpm-lock.yaml",
-      "!**/.source"
+      "!**/.source",
+      "!**/packages/sdp-spc-escrow/src/generated"
     ]
   },
   "vcs": {
