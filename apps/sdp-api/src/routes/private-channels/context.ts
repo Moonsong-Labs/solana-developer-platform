@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import {
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelUserRepository,
 } from "@/db/repositories";
 import type { Env } from "@/types/env";
 
@@ -14,4 +15,8 @@ export function getPrivateChannelInstanceRepository(c: AppContext) {
 
 export function getPrivateChannelRepository(c: AppContext) {
   return createPrivateChannelRepository(c.env);
+}
+
+export function getPrivateChannelUserRepository(c: AppContext) {
+  return createPrivateChannelUserRepository(c.env);
 }
