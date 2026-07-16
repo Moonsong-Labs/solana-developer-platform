@@ -53,6 +53,11 @@
       "types": "./src/url.ts",
       "import": "./src/url.ts",
       "default": "./src/url.ts"
+    },
+    "./gateway": {
+      "types": "./src/gateway.ts",
+      "import": "./src/gateway.ts",
+      "default": "./src/gateway.ts"
     }
   },
   "scripts": {
@@ -61,7 +66,10 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@sdp/rpc": "workspace:*",
     "@sdp/types": "workspace:*",
+    "@solana-program/token": "catalog:",
+    "@solana/kit": "catalog:",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -99,3 +99,26 @@ export interface CreatePrivateChannelRequest {
   name: string;
   description?: string;
 }
+
+/**
+ * An owner's token balance on the channel, read through the gateway. Amounts are
+ * strings to stay JSON- and precision-safe: `amount` is base units, `uiAmount` is
+ * the human-readable value. A never-credited owner reads as a zero balance.
+ *
+ * Balances live at the SPC layer, one per (wallet, mint) — logical channels are
+ * labels, so a wallet in multiple channels shows the SAME balance in each.
+ */
+export interface PrivateChannelBalance {
+  /** Resolved owner address the balance is for. */
+  owner: string;
+  /** Token mint the balance is denominated in. */
+  mint: string;
+  /** The associated-token account probed on the channel (classic Token program). */
+  tokenAccount: string;
+  /** Raw base-unit amount. */
+  amount: string;
+  /** Mint decimals. */
+  decimals: number;
+  /** Human-readable amount. */
+  uiAmount: string;
+}

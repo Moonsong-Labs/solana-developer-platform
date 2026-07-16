@@ -1,6 +1,13 @@
 export * from "./channels";
 export { SANDBOX_DEFAULTS } from "./constants";
 export {
+  type ChannelTokenAccountBalance,
+  type ChannelTokenBalanceResult,
+  createChannelGatewayRpc,
+  type GatewayClientOptions,
+  getChannelTokenBalance,
+} from "./gateway";
+export {
   badRequest,
   PrivateChannelError,
   type PrivateChannelErrorCode,
