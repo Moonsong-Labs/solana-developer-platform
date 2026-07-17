@@ -43,6 +43,11 @@ export interface PrivateChannelVerifiedWalletRepository {
    * Idempotently record a verified wallet. A re-verify of the same
    * (org, project, pubkey) refreshes the row.
    */
+  // TODO: Call this ONLY from the wallets domain module's verify-wallet logic
+  // (services/private-channels/wallets.ts) — that flow is the single writer of
+  // private_channel_verified_wallets, after a successful SPC verify. The delete
+  // flow needs a sibling method here (e.g. deleteByScopeAndPubkey) to remove a
+  // row after a successful SPC delete.
   upsert(input: UpsertVerifiedWalletInput): Promise<PrivateChannelVerifiedWalletRow>;
   // TODO (once #7 is merged): Modify this list API for dashboard pages to
   // retrieve the list of verified/unverified wallets of a user, to enable user

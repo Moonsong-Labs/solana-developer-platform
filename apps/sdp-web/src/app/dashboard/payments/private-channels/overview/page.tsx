@@ -35,6 +35,19 @@ export default async function PrivateChannelsOverviewPage() {
     redirect("/dashboard/payments/private-channels/instance");
   }
 
+  // TODO (frontend): Add a "Verified wallets" section to this dashboard page.
+  //  - Add + verify flow: let the user pick from their existing SDP wallets
+  //    (reuse getCustodyWallets — GET /v1/wallets?includeAllProviders=true, see
+  //    dashboard/custody/page.tsx; render with WalletCard / WalletProviderMark /
+  //    formatCustodyProviderName; self-custody = provider "local", Privy = "privy"),
+  //    then run challenge → sign with the selected wallet → verify against the
+  //    connected instance (future POST verify API).
+  //  - Delete flow: paired delete UX (mirror channels/channels-manager.tsx per-row
+  //    delete + the DeleteConfirmationDialog in
+  //    instance/private-channels-connect-form.tsx), calling the future DELETE wallet API.
+  //  - List: add a fetchVerifiedWallets fetcher in lib/private-channels.ts
+  //    (GET /v1/private-channels/wallets is already live) and render the current
+  //    verified wallets here.
   return (
     <div className="mx-auto w-full max-w-3xl">
       <Card>
