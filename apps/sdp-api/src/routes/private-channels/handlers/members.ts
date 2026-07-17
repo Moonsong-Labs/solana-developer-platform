@@ -2,7 +2,6 @@ import type {
   PrivateChannelMembershipChannelDto,
   PrivateChannelUserDto,
 } from "@sdp/types";
-import { getDb } from "@/db";
 import type {
   PrivateChannelMembershipWithChannelRow,
   PrivateChannelUserWithIdentityRow,
@@ -15,7 +14,9 @@ import { inviteMember, mapPrivateChannelError } from "@/services/private-channel
 import type { AppContext } from "../context";
 import {
   getPrivateChannelInstanceRepository,
+  getPrivateChannelRepository,
   getPrivateChannelUserRepository,
+  getProjectUserRepository,
 } from "../context";
 import { addMembershipBodySchema, inviteMemberBodySchema } from "../schemas";
 
@@ -39,28 +40,6 @@ function toDto(
   };
 }
 
-// Fetches an SDP user by id, verified to belong to this project via
-// project_members. Returns { email, name } for downstream use. 404 otherwise.
-async function loadProjectUser(
-  c: AppContext,
-  projectId: string,
-  userId: string
-): Promise<{ email: string; name: string | null }> {
-  const row = await getDb(c.env)
-    .prepare(
-      `SELECT u.email AS email, u.name AS name
-         FROM users u
-         JOIN project_members pm ON pm.user_id = u.id
-        WHERE pm.project_id = ?
-          AND u.id = ?`
-    )
-    .bind(projectId, userId)
-    .first<{ email: string; name: string | null }>();
-  if (!row) {
-    throw notFound("Project user");
-  }
-  return { email: row.email, name: row.name ?? null };
-}
 
 export const listPrivateChannelUsers = async (c: AppContext) => {
   const auth = getAuth(c);
@@ -82,7 +61,7 @@ export const listPrivateChannelUsers = async (c: AppContext) => {
 // Caller's own workspace membership for the active project. Returns { user: null }
 // when the caller isn't a member — the UI uses that to decide whether to show
 // invitee-specific affordances (e.g. the wallet-verify button).
-export const getMyPrivateChannelUser = async (c: AppContext) => {
+export const getAuthenticatedPrivateChannelUser = async (c: AppContext) => {
   const auth = getAuth(c);
   const projectId = requireProjectId(c);
   if (!auth.userId) {
@@ -139,7 +118,11 @@ export const invitePrivateChannelUser = async (c: AppContext) => {
     );
   }
 
-  const target = await loadProjectUser(c, projectId, parsed.data.userId);
+  const target = await getProjectUserRepository(c).getByProjectAndUserId(
+    projectId,
+    parsed.data.userId
+  );
+  if (!target) throw notFound("Project user");
 
   try {
     const repo = getPrivateChannelUserRepository(c);
@@ -205,20 +188,11 @@ export const addChannelMembership = async (c: AppContext) => {
   const user = await repo.getById(scope, parsed.data.privateChannelUserId);
   if (!user) throw notFound("Private channel user");
 
-  // Channel scoping check: verify the channel is under the active instance for
-  // this project. Reuses the existing repository via a targeted count query.
-  const channelRow = await getDb(c.env)
-    .prepare(
-      `SELECT 1
-         FROM private_channels c
-         JOIN private_channel_instances i ON i.id = c.instance_id
-        WHERE c.id = ?
-          AND i.organization_id = ?
-          AND i.project_id = ?`
-    )
-    .bind(channelId, scope.organizationId, projectId)
-    .first<{ [k: string]: unknown }>();
-  if (!channelRow) throw notFound("Channel");
+  const channel = await getPrivateChannelRepository(c).findInProject({
+    ...scope,
+    channelId,
+  });
+  if (!channel) throw notFound("Channel");
 
   const membership = await repo.addMembership({
     channelId,

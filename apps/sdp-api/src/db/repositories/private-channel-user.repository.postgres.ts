@@ -69,7 +69,7 @@ export function createPostgresPrivateChannelUserRepository(
         .prepare(
           `SELECT ${USER_SELECT}
              FROM private_channel_users pcu
-             JOIN users u ON u.id = pcu.user_id
+             INNER JOIN users u ON u.id = pcu.user_id
             WHERE pcu.organization_id = ?
               AND pcu.project_id = ?
             ORDER BY pcu.created_at DESC`
@@ -84,7 +84,7 @@ export function createPostgresPrivateChannelUserRepository(
         .prepare(
           `SELECT ${USER_SELECT}
              FROM private_channel_users pcu
-             JOIN users u ON u.id = pcu.user_id
+             INNER JOIN users u ON u.id = pcu.user_id
             WHERE pcu.id = ?
               AND pcu.organization_id = ?
               AND pcu.project_id = ?`
@@ -112,7 +112,7 @@ export function createPostgresPrivateChannelUserRepository(
         .prepare(
           `SELECT ${USER_SELECT}
              FROM private_channel_users pcu
-             JOIN users u ON u.id = pcu.user_id
+             INNER JOIN users u ON u.id = pcu.user_id
             WHERE pcu.organization_id = ?
               AND pcu.project_id = ?
               AND pcu.user_id = ?`
@@ -150,7 +150,7 @@ export function createPostgresPrivateChannelUserRepository(
         .prepare(
           `SELECT ${USER_SELECT}
              FROM private_channel_users pcu
-             JOIN users u ON u.id = pcu.user_id
+             INNER JOIN users u ON u.id = pcu.user_id
             WHERE pcu.id = ?`
         )
         .bind(row.id)
@@ -180,8 +180,8 @@ export function createPostgresPrivateChannelUserRepository(
                   c.name       AS channel_name,
                   c.is_default AS channel_is_default
              FROM private_channel_memberships m
-             JOIN private_channels c        ON c.id = m.channel_id
-             JOIN private_channel_users pcu ON pcu.id = m.private_channel_user_id
+             INNER JOIN private_channels c        ON c.id = m.channel_id
+             INNER JOIN private_channel_users pcu ON pcu.id = m.private_channel_user_id
             WHERE pcu.organization_id = ?
               AND pcu.project_id = ?`
         )
@@ -204,7 +204,7 @@ export function createPostgresPrivateChannelUserRepository(
                   c.name       AS channel_name,
                   c.is_default AS channel_is_default
              FROM private_channel_memberships m
-             JOIN private_channels c ON c.id = m.channel_id
+             INNER JOIN private_channels c ON c.id = m.channel_id
             WHERE m.private_channel_user_id = ?`
         )
         .bind(privateChannelUserId)

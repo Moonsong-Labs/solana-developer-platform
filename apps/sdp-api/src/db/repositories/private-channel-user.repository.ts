@@ -1,3 +1,8 @@
+// Owns two tables:
+//   - `private_channel_users`        (workspace-level invite + SPC credential)
+//   - `private_channel_memberships`  (channel × user junction)
+// Rows FK to `users(id)`; SDP-native user identity stays in the `users` table.
+
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelUserId(): string {

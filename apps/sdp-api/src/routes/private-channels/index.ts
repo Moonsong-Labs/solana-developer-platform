@@ -13,7 +13,7 @@ import {
   deletePrivateChannelUser,
   disconnectPrivateChannelInstance,
   getChannel,
-  getMyPrivateChannelUser,
+  getAuthenticatedPrivateChannelUser,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
@@ -90,7 +90,11 @@ privateChannels.delete(
 privateChannels.get("/users", requirePermissions("payments:read"), listPrivateChannelUsers);
 privateChannels.post("/users", requirePermissions("payments:write"), invitePrivateChannelUser);
 // /users/me must come before /users/:id so `me` isn't matched as a param.
-privateChannels.get("/users/me", requirePermissions("payments:read"), getMyPrivateChannelUser);
+privateChannels.get(
+  "/users/me",
+  requirePermissions("payments:read"),
+  getAuthenticatedPrivateChannelUser
+);
 privateChannels.get(
   "/users/:privateChannelUserId",
   requirePermissions("payments:read"),

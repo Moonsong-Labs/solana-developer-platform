@@ -132,5 +132,20 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
         .run();
       return rowsAffected > 0;
     },
+
+    async findInProject({ organizationId, projectId, channelId }) {
+      const row = await db
+        .prepare(
+          `SELECT c.*
+             FROM private_channels c
+             INNER JOIN private_channel_instances i ON i.id = c.instance_id
+            WHERE c.id = ?
+              AND i.organization_id = ?
+              AND i.project_id = ?`
+        )
+        .bind(channelId, organizationId, projectId)
+        .first<Record<string, unknown>>();
+      return row ? mapPrivateChannelRow(row) : null;
+    },
   };
 }

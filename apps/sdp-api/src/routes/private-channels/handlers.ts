@@ -9,7 +9,7 @@ export {
 export {
   addChannelMembership,
   deletePrivateChannelUser,
-  getMyPrivateChannelUser,
+  getAuthenticatedPrivateChannelUser,
   getPrivateChannelUser,
   invitePrivateChannelUser,
   listPrivateChannelUsers,

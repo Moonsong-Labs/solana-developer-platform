@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS private_channel_users (
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    -- invited_by → users(id) ON DELETE SET NULL: audit is best-effort. When the
+    -- inviting SDP admin is removed, the invitee stays but the "who invited
+    -- them" reference is dropped. TODO: revisit if we need a durable audit
+    -- record (e.g. snapshot inviter email/name into a separate audit table on
+    -- invite so the trail survives inviter deletion).
     FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE SET NULL,
 
     UNIQUE (project_id, user_id)

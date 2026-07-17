@@ -3,6 +3,7 @@ import {
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
   createPrivateChannelUserRepository,
+  createProjectUserRepository,
 } from "@/db/repositories";
 import type { Env } from "@/types/env";
 
@@ -19,4 +20,8 @@ export function getPrivateChannelRepository(c: AppContext) {
 
 export function getPrivateChannelUserRepository(c: AppContext) {
   return createPrivateChannelUserRepository(c.env);
+}
+
+export function getProjectUserRepository(c: AppContext) {
+  return createProjectUserRepository(c.env);
 }
