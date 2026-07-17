@@ -98,31 +98,78 @@ export interface CreatePrivateChannelRequest {
 
 // --- Private Channel Events ---------------------------------------------
 
-export type PrivateChannelEventFamily = "member" | "transfer" | "error" | "lifecycle";
-export type PrivateChannelEventStatus = "pending" | "confirmed" | "failed" | "stale" | "info";
+/** Known event family strings. Prefer these over raw string literals. */
+export const PRIVATE_CHANNEL_EVENT_FAMILIES = {
+  MEMBER: "member",
+  TRANSFER: "transfer",
+  ERROR: "error",
+  LIFECYCLE: "lifecycle",
+} as const;
 
-/** Known event type strings used by producers. */
+export type PrivateChannelEventFamily =
+  (typeof PRIVATE_CHANNEL_EVENT_FAMILIES)[keyof typeof PRIVATE_CHANNEL_EVENT_FAMILIES];
+
+/** Tuple of all families — for Zod enums and exhaustive lists. */
+export const PRIVATE_CHANNEL_EVENT_FAMILY_VALUES = [
+  PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER,
+  PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER,
+  PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR,
+  PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE,
+] as const satisfies readonly PrivateChannelEventFamily[];
+
+/** Known event status strings. Prefer these over raw string literals. */
+export const PRIVATE_CHANNEL_EVENT_STATUSES = {
+  PENDING: "pending",
+  CONFIRMED: "confirmed",
+  FAILED: "failed",
+  STALE: "stale",
+  INFO: "info",
+} as const;
+
+export type PrivateChannelEventStatus =
+  (typeof PRIVATE_CHANNEL_EVENT_STATUSES)[keyof typeof PRIVATE_CHANNEL_EVENT_STATUSES];
+
+/** Tuple of all statuses — for Zod enums and exhaustive lists. */
+export const PRIVATE_CHANNEL_EVENT_STATUS_VALUES = [
+  PRIVATE_CHANNEL_EVENT_STATUSES.PENDING,
+  PRIVATE_CHANNEL_EVENT_STATUSES.CONFIRMED,
+  PRIVATE_CHANNEL_EVENT_STATUSES.FAILED,
+  PRIVATE_CHANNEL_EVENT_STATUSES.STALE,
+  PRIVATE_CHANNEL_EVENT_STATUSES.INFO,
+] as const satisfies readonly PrivateChannelEventStatus[];
+
+/** Known event type strings used by producers. Prefer these over raw string literals. */
+export const PRIVATE_CHANNEL_EVENT_TYPES = {
+  LIFECYCLE_INSTANCE_CONNECTED: "lifecycle.instance.connected",
+  LIFECYCLE_INSTANCE_DISCONNECTED: "lifecycle.instance.disconnected",
+  LIFECYCLE_CHANNEL_CREATED: "lifecycle.channel.created",
+  LIFECYCLE_CHANNEL_ARCHIVED: "lifecycle.channel.archived",
+  MEMBER_ADDED: "member.added",
+  MEMBER_REVOKED: "member.revoked",
+  MEMBER_ROLE_CHANGED: "member.role_changed",
+  MEMBER_WALLET_CHALLENGE_REQUESTED: "member.wallet_challenge_requested",
+  MEMBER_WALLET_VERIFIED: "member.wallet_verified",
+  MEMBER_WALLET_VERIFICATION_REVOKED: "member.wallet_verification_revoked",
+  TRANSFER_DEPOSIT_SUBMITTED: "transfer.deposit.submitted",
+  TRANSFER_DEPOSIT_CREDITED: "transfer.deposit.credited",
+  TRANSFER_TRANSFER_SUBMITTED: "transfer.transfer.submitted",
+  TRANSFER_TRANSFER_CONFIRMED: "transfer.transfer.confirmed",
+  TRANSFER_WITHDRAWAL_SUBMITTED: "transfer.withdrawal.submitted",
+  TRANSFER_WITHDRAWAL_RELEASED: "transfer.withdrawal.released",
+  ERROR_SPC_UNREACHABLE: "error.spc_unreachable",
+  ERROR_INTENT_SUBMIT_REJECTED: "error.intent.submit_rejected",
+  ERROR_JWT_REFRESH_FAILED: "error.jwt_refresh_failed",
+  ERROR_RECONCILIATION_MISMATCH: "error.reconciliation_mismatch",
+} as const;
+
 export type PrivateChannelEventType =
-  | "lifecycle.instance.connected"
-  | "lifecycle.instance.disconnected"
-  | "lifecycle.channel.created"
-  | "lifecycle.channel.archived"
-  | "member.added"
-  | "member.revoked"
-  | "member.role_changed"
-  | "member.wallet_challenge_requested"
-  | "member.wallet_verified"
-  | "member.wallet_verification_revoked"
-  | "transfer.deposit.submitted"
-  | "transfer.deposit.credited"
-  | "transfer.transfer.submitted"
-  | "transfer.transfer.confirmed"
-  | "transfer.withdrawal.submitted"
-  | "transfer.withdrawal.released"
-  | "error.spc_unreachable"
-  | "error.intent.submit_rejected"
-  | "error.jwt_refresh_failed"
-  | "error.reconciliation_mismatch";
+  (typeof PRIVATE_CHANNEL_EVENT_TYPES)[keyof typeof PRIVATE_CHANNEL_EVENT_TYPES];
+
+/** Tuple of all known types — for Zod enums and exhaustive lists. */
+export const PRIVATE_CHANNEL_EVENT_TYPE_VALUES = Object.values(PRIVATE_CHANNEL_EVENT_TYPES) as [
+  PrivateChannelEventType,
+  ...PrivateChannelEventType[],
+];
 
 export interface PrivateChannelEventDto {
   id: string;
@@ -132,7 +179,7 @@ export interface PrivateChannelEventDto {
   channelId: string | null;
   sdpUserId: string | null;
   family: PrivateChannelEventFamily;
-  type: string;
+  type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload: Record<string, unknown>;
   occurredAt: string;

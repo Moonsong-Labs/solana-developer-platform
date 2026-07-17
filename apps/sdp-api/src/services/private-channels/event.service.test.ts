@@ -1,3 +1,8 @@
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  PRIVATE_CHANNEL_EVENT_TYPES,
+} from "@sdp/types";
 import { describe, expect, it, vi } from "vitest";
 import type { PrivateChannelEventRecord, PrivateChannelEventSink } from "./event.service";
 import { PrivateChannelEventService } from "./event.service";
@@ -7,9 +12,9 @@ function baseInput(overrides: Record<string, unknown> = {}) {
     organizationId: "org_1",
     projectId: "prj_1",
     instanceId: "pci_1",
-    family: "lifecycle" as const,
-    type: "lifecycle.channel.created" as const,
-    status: "info" as const,
+    family: PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE,
+    type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED,
+    status: PRIVATE_CHANNEL_EVENT_STATUSES.INFO,
     payload: { name: "Treasury" },
     ...overrides,
   };
@@ -80,15 +85,15 @@ describe("PrivateChannelEventService", () => {
       organizationId: "org_1",
       projectId: "prj_1",
       instanceId: "pci_1",
-      type: "error.spc_unreachable",
+      type: PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE,
       error: new Error("gateway timeout"),
       payload: { attempt: 1 },
     });
 
     expect(captured.event).not.toBeNull();
-    expect(captured.event?.family).toBe("error");
-    expect(captured.event?.status).toBe("failed");
-    expect(captured.event?.type).toBe("error.spc_unreachable");
+    expect(captured.event?.family).toBe(PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR);
+    expect(captured.event?.status).toBe(PRIVATE_CHANNEL_EVENT_STATUSES.FAILED);
+    expect(captured.event?.type).toBe(PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE);
     expect(captured.event?.payload).toMatchObject({
       attempt: 1,
       message: "gateway timeout",

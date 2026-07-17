@@ -1,6 +1,6 @@
 import type { PrivateChannelRow } from "@sdp/private-channels/channels";
 import { validatePrivateChannelName } from "@sdp/private-channels/channels";
-import type { PrivateChannelDto } from "@sdp/types";
+import { PRIVATE_CHANNEL_EVENT_TYPES, type PrivateChannelDto } from "@sdp/types";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { created, noContent, success } from "@/lib/response";
 import { type AppContext, getPrivateChannelRepository } from "../context";
@@ -60,7 +60,7 @@ export async function createChannel(c: AppContext) {
     throw conflict("A channel with this name already exists in the instance");
   }
 
-  await emitLifecycle(c, instance, "lifecycle.channel.created", {
+  await emitLifecycle(c, instance, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
     channelId: channel.id,
     payload: { name: channel.name },
   });
@@ -103,7 +103,7 @@ export async function deleteChannel(c: AppContext) {
   }
 
   await repo.archiveChannel({ channelId, instanceId: instance.id });
-  await emitLifecycle(c, instance, "lifecycle.channel.archived", {
+  await emitLifecycle(c, instance, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_ARCHIVED, {
     channelId: channel.id,
     payload: { name: channel.name },
   });

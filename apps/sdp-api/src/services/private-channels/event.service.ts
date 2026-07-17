@@ -1,7 +1,9 @@
-import type {
-  PrivateChannelEventFamily,
-  PrivateChannelEventStatus,
-  PrivateChannelEventType,
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  type PrivateChannelEventFamily,
+  type PrivateChannelEventStatus,
+  type PrivateChannelEventType,
 } from "@sdp/types";
 import {
   createPrivateChannelEventRepository,
@@ -97,8 +99,8 @@ export class PrivateChannelEventService {
     const { error, payload, ...rest } = input;
     await this.emit({
       ...rest,
-      family: "error",
-      status: "failed",
+      family: PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR,
+      status: PRIVATE_CHANNEL_EVENT_STATUSES.FAILED,
       payload: { ...(payload ?? {}), ...normalizeError(error) },
     });
   }

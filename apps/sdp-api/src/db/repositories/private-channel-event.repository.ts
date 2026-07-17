@@ -1,4 +1,8 @@
-import type { PrivateChannelEventFamily, PrivateChannelEventStatus } from "@sdp/types";
+import type {
+  PrivateChannelEventFamily,
+  PrivateChannelEventStatus,
+  PrivateChannelEventType,
+} from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelEventId(): string {
@@ -13,7 +17,7 @@ export interface PrivateChannelEventRow {
   channel_id: string | null;
   sdp_user_id: string | null;
   family: PrivateChannelEventFamily;
-  type: string;
+  type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload: Record<string, unknown>;
   occurred_at: string;
@@ -28,7 +32,7 @@ export interface PrivateChannelEventWriteInput {
   channelId: string | null;
   sdpUserId: string | null;
   family: PrivateChannelEventFamily;
-  type: string;
+  type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload: Record<string, unknown>;
   occurredAt: string;

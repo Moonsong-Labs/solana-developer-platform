@@ -1,4 +1,8 @@
-import type { PrivateChannelEventFamily, PrivateChannelEventStatus } from "@sdp/types";
+import type {
+  PrivateChannelEventFamily,
+  PrivateChannelEventStatus,
+  PrivateChannelEventType,
+} from "@sdp/types";
 import type { AppDb } from "@/db";
 import { asPostgresJsonObject } from "@/db/postgres-utils";
 import { internalError } from "@/lib/errors";
@@ -19,7 +23,7 @@ function mapPrivateChannelEventRow(row: Record<string, unknown>): PrivateChannel
     channel_id: (row.channel_id as string | null) ?? null,
     sdp_user_id: (row.sdp_user_id as string | null) ?? null,
     family: row.family as PrivateChannelEventFamily,
-    type: row.type as string,
+    type: row.type as PrivateChannelEventType,
     status: row.status as PrivateChannelEventStatus,
     payload: asPostgresJsonObject(row.payload),
     occurred_at: row.occurred_at as string,

@@ -1,4 +1,8 @@
-import type { PrivateChannelEventType } from "@sdp/types";
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  type PrivateChannelEventType,
+} from "@sdp/types";
 import type { PrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { AppError } from "@/lib/errors";
@@ -38,9 +42,9 @@ export function emitLifecycle(
     instanceId: instance.id,
     channelId: extra?.channelId ?? null,
     sdpUserId: getAuth(c).userId ?? null,
-    family: "lifecycle",
+    family: PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE,
     type,
-    status: "info",
+    status: PRIVATE_CHANNEL_EVENT_STATUSES.INFO,
     payload: extra?.payload ?? {},
   });
 }

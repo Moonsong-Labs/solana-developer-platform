@@ -1,4 +1,4 @@
-import type { PrivateChannelEventDto } from "@sdp/types";
+import type { PrivateChannelEventDto, PrivateChannelEventFamily } from "@sdp/types";
 import type { PrivateChannelEventRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { badRequest, notFound } from "@/lib/errors";
@@ -47,7 +47,7 @@ export function mapPrivateChannelEventRow(row: PrivateChannelEventRow): PrivateC
 }
 
 interface ParsedEventsQuery {
-  family?: "member" | "transfer" | "error" | "lifecycle";
+  family?: PrivateChannelEventFamily;
   type?: string;
   limit: number;
   cursor: { occurredAt: string; id: string } | null;

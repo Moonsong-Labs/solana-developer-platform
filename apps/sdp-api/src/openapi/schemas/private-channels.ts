@@ -1,3 +1,9 @@
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILY_VALUES,
+  PRIVATE_CHANNEL_EVENT_STATUS_VALUES,
+  PRIVATE_CHANNEL_EVENT_TYPES,
+  PRIVATE_CHANNEL_EVENT_TYPE_VALUES,
+} from "@sdp/types";
 import { solanaAddressSchema, z } from "./base";
 
 export const privateChannelInstanceSchema = z
@@ -170,15 +176,13 @@ export const privateChannelIdParamSchema = z.object({
     }),
 });
 
-export const privateChannelEventFamilySchema = z.enum(["member", "transfer", "error", "lifecycle"]);
+export const privateChannelEventFamilySchema = z.enum(PRIVATE_CHANNEL_EVENT_FAMILY_VALUES);
 
-export const privateChannelEventStatusSchema = z.enum([
-  "pending",
-  "confirmed",
-  "failed",
-  "stale",
-  "info",
-]);
+export const privateChannelEventStatusSchema = z.enum(PRIVATE_CHANNEL_EVENT_STATUS_VALUES);
+
+export const privateChannelEventTypeSchema = z
+  .enum(PRIVATE_CHANNEL_EVENT_TYPE_VALUES)
+  .openapi({ example: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED });
 
 export const privateChannelEventSchema = z
   .object({
@@ -189,7 +193,7 @@ export const privateChannelEventSchema = z
     channelId: z.string().nullable(),
     sdpUserId: z.string().nullable(),
     family: privateChannelEventFamilySchema,
-    type: z.string().openapi({ example: "lifecycle.channel.created" }),
+    type: privateChannelEventTypeSchema,
     status: privateChannelEventStatusSchema,
     payload: z.record(z.string(), z.unknown()),
     occurredAt: z.string(),
@@ -217,7 +221,7 @@ export const privateChannelEventsQuerySchema = z.object({
     .optional()
     .openapi({
       param: { name: "type", in: "query" },
-      description: "Exact event type match (e.g. lifecycle.channel.created).",
+      description: `Exact event type match (e.g. ${PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED}).`,
     }),
   limit: z.coerce
     .number()

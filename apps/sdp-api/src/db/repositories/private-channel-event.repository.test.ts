@@ -1,3 +1,8 @@
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  PRIVATE_CHANNEL_EVENT_TYPES,
+} from "@sdp/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
 import { TEST_ORG, TEST_USER } from "@/test/fixtures/organizations";
@@ -24,9 +29,9 @@ function baseEvent(
     instanceId: TEST_INSTANCE_ID,
     channelId: TEST_CHANNEL_ID,
     sdpUserId: TEST_USER.id,
-    family: "lifecycle",
-    type: "lifecycle.channel.created",
-    status: "info",
+    family: PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE,
+    type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED,
+    status: PRIVATE_CHANNEL_EVENT_STATUSES.INFO,
     payload: { name: "Treasury" },
     occurredAt: now,
     createdAt: now,
@@ -90,12 +95,15 @@ describe("PrivateChannelEventRepository (postgres)", () => {
 
   it("inserts and lists by occurred_at DESC", async () => {
     const older = await repo.insert(
-      baseEvent({ occurredAt: "2026-01-01T00:00:00.000Z", type: "lifecycle.channel.created" })
+      baseEvent({
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED,
+      })
     );
     const newer = await repo.insert(
       baseEvent({
         occurredAt: "2026-02-01T00:00:00.000Z",
-        type: "lifecycle.channel.archived",
+        type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_ARCHIVED,
         payload: { name: "Default" },
       })
     );
@@ -114,7 +122,7 @@ describe("PrivateChannelEventRepository (postgres)", () => {
     await repo.insert(
       baseEvent({
         channelId: null,
-        type: "lifecycle.instance.connected",
+        type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED,
         payload: { gatewayUrl: "http://gw" },
       })
     );
@@ -124,17 +132,22 @@ describe("PrivateChannelEventRepository (postgres)", () => {
       limit: 10,
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.type).toBe("lifecycle.instance.connected");
+    expect(rows[0]?.type).toBe(PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED);
     expect(rows[0]?.channel_id).toBeNull();
   });
 
   it("filters by family and type", async () => {
-    await repo.insert(baseEvent({ family: "lifecycle", type: "lifecycle.channel.created" }));
     await repo.insert(
       baseEvent({
-        family: "error",
-        type: "error.spc_unreachable",
-        status: "failed",
+        family: PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE,
+        type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED,
+      })
+    );
+    await repo.insert(
+      baseEvent({
+        family: PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR,
+        type: PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE,
+        status: PRIVATE_CHANNEL_EVENT_STATUSES.FAILED,
         payload: { message: "down" },
       })
     );
@@ -142,16 +155,16 @@ describe("PrivateChannelEventRepository (postgres)", () => {
     const byFamily = await repo.listByChannel({
       channelId: TEST_CHANNEL_ID,
       instanceId: TEST_INSTANCE_ID,
-      family: "error",
+      family: PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR,
       limit: 10,
     });
     expect(byFamily.rows).toHaveLength(1);
-    expect(byFamily.rows[0]?.type).toBe("error.spc_unreachable");
+    expect(byFamily.rows[0]?.type).toBe(PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE);
 
     const byType = await repo.listByChannel({
       channelId: TEST_CHANNEL_ID,
       instanceId: TEST_INSTANCE_ID,
-      type: "lifecycle.channel.created",
+      type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED,
       limit: 10,
     });
     expect(byType.rows).toHaveLength(1);
@@ -221,7 +234,11 @@ describe("PrivateChannelEventRepository (postgres)", () => {
 
   it("retains events after the instance is deleted and lists them by project", async () => {
     await repo.insert(
-      baseEvent({ id: "pce_p1", type: "lifecycle.instance.connected", channelId: null })
+      baseEvent({
+        id: "pce_p1",
+        type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED,
+        channelId: null,
+      })
     );
     await repo.insert(baseEvent({ id: "pce_p2" }));
 

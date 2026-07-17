@@ -1,4 +1,8 @@
-import type { PrivateChannelInstanceEnvelope, PrivateChannelInstanceResponse } from "@sdp/types";
+import {
+  PRIVATE_CHANNEL_EVENT_TYPES,
+  type PrivateChannelInstanceEnvelope,
+  type PrivateChannelInstanceResponse,
+} from "@sdp/types";
 import { z } from "zod";
 import { mapPrivateChannelInstanceRow, type PrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
@@ -120,7 +124,7 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
     });
   }
 
-  await emitLifecycle(c, row, "lifecycle.instance.connected", {
+  await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED, {
     payload: { gatewayUrl: row.gateway_url },
   });
 
@@ -143,7 +147,7 @@ export const disconnectPrivateChannelInstance = async (c: AppContext) => {
     throw notFound("Active private channel instance");
   }
 
-  await emitLifecycle(c, row, "lifecycle.instance.disconnected", {
+  await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_DISCONNECTED, {
     payload: { gatewayUrl: row.gateway_url },
   });
 

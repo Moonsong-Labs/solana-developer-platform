@@ -1,3 +1,4 @@
+import { PRIVATE_CHANNEL_EVENT_TYPES } from "@sdp/types";
 import { mapPrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { notFound } from "@/lib/errors";
@@ -28,9 +29,15 @@ export async function getPrivateChannelOverview(c: AppContext) {
 
   const health = overview.gateway.health;
   if (health.status === "unreachable") {
-    await recordInstanceError(c, row, "error.spc_unreachable", new Error(health.error), {
-      payload: { gatewayUrl: instance.gatewayUrl, latencyMs: health.latencyMs },
-    });
+    await recordInstanceError(
+      c,
+      row,
+      PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE,
+      new Error(health.error),
+      {
+        payload: { gatewayUrl: instance.gatewayUrl, latencyMs: health.latencyMs },
+      }
+    );
   }
 
   return success(c, { instance, overview });

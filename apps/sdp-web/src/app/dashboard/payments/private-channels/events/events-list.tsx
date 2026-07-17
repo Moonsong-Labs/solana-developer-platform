@@ -1,6 +1,11 @@
 "use client";
 
-import type { PrivateChannelEventDto, PrivateChannelEventFamily } from "@sdp/types";
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  type PrivateChannelEventDto,
+  type PrivateChannelEventFamily,
+} from "@sdp/types";
 import { Loader2Icon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -15,10 +20,10 @@ interface Props {
 }
 
 const FAMILY_BADGE: Record<PrivateChannelEventFamily, BadgeVariant> = {
-  lifecycle: "info",
-  error: "danger",
-  member: "default",
-  transfer: "success",
+  [PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE]: "info",
+  [PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR]: "danger",
+  [PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER]: "default",
+  [PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER]: "success",
 };
 
 function formatWhen(iso: string): string {
@@ -79,7 +84,11 @@ export function EventsList({ initialEvents, initialHasMore, initialNextCursor }:
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={FAMILY_BADGE[event.family] ?? "default"}>{event.family}</Badge>
                 <span className="font-medium text-text-extra-high">{event.type}</span>
-                <Badge variant={event.status === "failed" ? "danger" : "default"}>
+                <Badge
+                  variant={
+                    event.status === PRIVATE_CHANNEL_EVENT_STATUSES.FAILED ? "danger" : "default"
+                  }
+                >
                   {event.status}
                 </Badge>
               </div>

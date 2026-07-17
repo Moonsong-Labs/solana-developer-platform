@@ -1,6 +1,13 @@
 import * as privateChannelsPkg from "@sdp/private-channels";
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
-import type { CachedApiKey, PrivateChannelDto, PrivateChannelEventListEnvelope } from "@sdp/types";
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  PRIVATE_CHANNEL_EVENT_TYPES,
+  type CachedApiKey,
+  type PrivateChannelDto,
+  type PrivateChannelEventListEnvelope,
+} from "@sdp/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
 import app from "@/index";
@@ -167,7 +174,9 @@ describe("Private Channels — event routes", () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
-    expect(body.data.events.some((e) => e.type === "lifecycle.instance.connected")).toBe(true);
+    expect(
+      body.data.events.some((e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED)
+    ).toBe(true);
   });
 
   it("create channel emits lifecycle.channel.created", async () => {
@@ -180,14 +189,14 @@ describe("Private Channels — event routes", () => {
     const created = (await create.json()) as { data: PrivateChannelDto };
 
     const res = await app.request(
-      `/v1/private-channels/channels/${created.data.id}/events?family=lifecycle&type=lifecycle.channel.created`,
+      `/v1/private-channels/channels/${created.data.id}/events?family=${PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE}&type=${PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED}`,
       { headers: authHeaders() },
       env
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
     expect(body.data.events).toHaveLength(1);
-    expect(body.data.events[0]?.type).toBe("lifecycle.channel.created");
+    expect(body.data.events[0]?.type).toBe(PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED);
     expect(body.data.events[0]?.channelId).toBe(created.data.id);
     expect(body.data.events[0]?.payload).toEqual({ name: "Treasury" });
   });
@@ -211,25 +220,44 @@ describe("Private Channels — event routes", () => {
       .first<{ id: string; organization_id: string; project_id: string }>();
     expect(instance).toBeTruthy();
 
+    const archived = PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_ARCHIVED;
+    const lifecycle = PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE;
+    const info = PRIVATE_CHANNEL_EVENT_STATUSES.INFO;
     await db
       .prepare(
         `INSERT INTO private_channel_events
            (id, organization_id, project_id, instance_id, channel_id, family, type, status, payload, occurred_at)
-         VALUES ('pce_old', ?, ?, ?, ?, 'lifecycle', 'lifecycle.channel.archived', 'info', '{}'::jsonb, '2026-01-01T00:00:00.000Z')`
+         VALUES ('pce_old', ?, ?, ?, ?, ?, ?, ?, '{}'::jsonb, '2026-01-01T00:00:00.000Z')`
       )
-      .bind(instance?.organization_id, instance?.project_id, instance?.id, channelId)
+      .bind(
+        instance?.organization_id,
+        instance?.project_id,
+        instance?.id,
+        channelId,
+        lifecycle,
+        archived,
+        info
+      )
       .run();
     await db
       .prepare(
         `INSERT INTO private_channel_events
            (id, organization_id, project_id, instance_id, channel_id, family, type, status, payload, occurred_at)
-         VALUES ('pce_new', ?, ?, ?, ?, 'lifecycle', 'lifecycle.channel.archived', 'info', '{}'::jsonb, '2026-06-01T00:00:00.000Z')`
+         VALUES ('pce_new', ?, ?, ?, ?, ?, ?, ?, '{}'::jsonb, '2026-06-01T00:00:00.000Z')`
       )
-      .bind(instance?.organization_id, instance?.project_id, instance?.id, channelId)
+      .bind(
+        instance?.organization_id,
+        instance?.project_id,
+        instance?.id,
+        channelId,
+        lifecycle,
+        archived,
+        info
+      )
       .run();
 
     const page1 = await app.request(
-      `/v1/private-channels/channels/${channelId}/events?type=lifecycle.channel.archived&limit=1`,
+      `/v1/private-channels/channels/${channelId}/events?type=${archived}&limit=1`,
       { headers: authHeaders() },
       env
     );
@@ -239,7 +267,7 @@ describe("Private Channels — event routes", () => {
     expect(body1.data.nextCursor).toBeTruthy();
 
     const page2 = await app.request(
-      `/v1/private-channels/channels/${channelId}/events?type=lifecycle.channel.archived&limit=1&before=${encodeURIComponent(body1.data.nextCursor ?? "")}`,
+      `/v1/private-channels/channels/${channelId}/events?type=${archived}&limit=1&before=${encodeURIComponent(body1.data.nextCursor ?? "")}`,
       { headers: authHeaders() },
       env
     );
@@ -281,15 +309,17 @@ describe("Private Channels — event routes", () => {
     expect(ov.status).toBe(200);
 
     const res = await app.request(
-      `/v1/private-channels/channels/${channelId}/events?family=error`,
+      `/v1/private-channels/channels/${channelId}/events?family=${PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR}`,
       { headers: authHeaders() },
       env
     );
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
-    const err = body.data.events.find((e) => e.type === "error.spc_unreachable");
+    const err = body.data.events.find(
+      (e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE
+    );
     expect(err).toBeDefined();
-    expect(err?.family).toBe("error");
-    expect(err?.status).toBe("failed");
+    expect(err?.family).toBe(PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR);
+    expect(err?.status).toBe(PRIVATE_CHANNEL_EVENT_STATUSES.FAILED);
     expect(err?.channelId).toBeNull();
     expect(err?.payload).toMatchObject({
       message: "boom",
@@ -310,8 +340,8 @@ describe("Private Channels — event routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
     const types = body.data.events.map((e) => e.type);
-    expect(types).toContain("lifecycle.instance.connected");
-    expect(types).toContain("lifecycle.channel.created");
+    expect(types).toContain(PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED);
+    expect(types).toContain(PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED);
   });
 
   it("project feed survives instance deletion (durable history)", async () => {
@@ -326,6 +356,8 @@ describe("Private Channels — event routes", () => {
     const res = await app.request("/v1/private-channels/events", { headers: authHeaders() }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
-    expect(body.data.events.some((e) => e.type === "lifecycle.instance.connected")).toBe(true);
+    expect(
+      body.data.events.some((e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED)
+    ).toBe(true);
   });
 });
