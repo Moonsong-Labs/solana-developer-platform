@@ -52,6 +52,14 @@ export function createPostgresPrivateChannelInstanceRepository(
       return selectActive(db, scope);
     },
 
+    async getById(id: string) {
+      const row = await db
+        .prepare("SELECT * FROM private_channel_instances WHERE id = ?")
+        .bind(id)
+        .first<Record<string, unknown>>();
+      return row ? mapRow(row) : null;
+    },
+
     async findByProjectAndGateway(input: FindByGatewayInput) {
       const row = await db
         .prepare(

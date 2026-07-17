@@ -168,6 +168,7 @@ export { createPostgresPrivateChannelRepository } from "./private-channel.reposi
 export type {
   CreateDepositInput,
   DepositProjectScope,
+  DepositRecipientScope,
   ListDepositsByStatusInput,
   PrivateChannelDepositRepository,
   PrivateChannelDepositRepositoryContext,

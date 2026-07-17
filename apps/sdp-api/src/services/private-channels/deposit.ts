@@ -51,6 +51,7 @@ import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
 import { getChannelBalance } from "./balance";
+import { confirmAndPersistDeposit } from "./deposit-confirm";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 
 /** The instance fields the deposit needs. */
@@ -177,8 +178,12 @@ export async function createChannelDeposit(
   }
 
   let latest: PrivateChannelDepositRow = created;
+
+  // Broadcast. A failure here means the transaction never reached the chain (no
+  // signature), so the deposit is a terminal failure — no funds moved.
+  let signature: Signature;
   try {
-    const signature = await broadcastDeposit(env, {
+    signature = await broadcastDeposit(env, {
       instance,
       organizationId,
       projectId,
@@ -187,27 +192,24 @@ export async function createChannelDeposit(
       recipient: address(recipient),
       amountBaseUnits,
     });
-    latest =
-      (await repo.updateDeposit({ id: created.id, status: "submitted", signature })) ?? latest;
-
-    const chainRpc = solanaRpc.createRpc(env, { rpcUrl: instance.chainRpcUrl });
-    const confirmation = await solanaRpc.confirmTransaction(chainRpc, signature, {
-      commitment: "confirmed",
-    });
-    if (confirmation.err) {
-      latest =
-        (await repo.updateDeposit({
-          id: created.id,
-          status: "failed",
-          failureReason: "Deposit transaction failed on-chain.",
-        })) ?? latest;
-    } else {
-      latest = (await repo.updateDeposit({ id: created.id, status: "confirmed" })) ?? latest;
-    }
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : "Deposit submission failed.";
-    latest =
-      (await repo.updateDeposit({ id: created.id, status: "failed", failureReason })) ?? latest;
+    const failed = await repo.updateDeposit({ id: created.id, status: "failed", failureReason });
+    return mapPrivateChannelDepositRow(failed ?? created);
+  }
+
+  latest = (await repo.updateDeposit({ id: created.id, status: "submitted", signature })) ?? latest;
+
+  // Confirm on the instance chain and persist the outcome. A transport/timeout
+  // error here leaves the deposit `submitted` (the reconciler finalizes it); only
+  // a real on-chain error marks it `failed`. See `confirmAndPersistDeposit`.
+  const settled = await confirmAndPersistDeposit(env, repo, {
+    depositId: created.id,
+    chainRpcUrl: instance.chainRpcUrl,
+    signature,
+  });
+  if (settled) {
+    latest = settled;
   }
 
   return mapPrivateChannelDepositRow(latest);

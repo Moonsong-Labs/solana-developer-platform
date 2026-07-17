@@ -2,6 +2,7 @@ import type { AppDb } from "@/db";
 import {
   type CreateDepositInput,
   type DepositProjectScope,
+  type DepositRecipientScope,
   generatePrivateChannelDepositId,
   type ListDepositsByStatusInput,
   type PrivateChannelDepositRepository,
@@ -112,6 +113,18 @@ export function createPostgresPrivateChannelDepositRepository(
              LIMIT ?`
         )
         .bind(...input.statuses, input.limit)
+        .all<Record<string, unknown>>();
+      return result.results.map(mapRow);
+    },
+
+    async listDepositsForRecipient(scope: DepositRecipientScope) {
+      const result = await db
+        .prepare(
+          `SELECT * FROM private_channel_deposits
+             WHERE instance_id = ? AND recipient = ? AND mint = ?
+             ORDER BY created_at ASC`
+        )
+        .bind(scope.instanceId, scope.recipient, scope.mint)
         .all<Record<string, unknown>>();
       return result.results.map(mapRow);
     },

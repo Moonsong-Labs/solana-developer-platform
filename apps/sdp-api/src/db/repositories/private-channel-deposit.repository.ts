@@ -53,6 +53,12 @@ export interface ListDepositsByStatusInput {
   limit: number;
 }
 
+export interface DepositRecipientScope {
+  instanceId: string;
+  recipient: string;
+  mint: string;
+}
+
 export interface PrivateChannelDepositRepositoryContext {
   db: RepositoryDbClient;
 }
@@ -66,6 +72,12 @@ export interface PrivateChannelDepositRepository {
   listDepositsByProject(scope: DepositProjectScope): Promise<PrivateChannelDepositRow[]>;
   /** Reconciler scan across projects — non-terminal deposits only. */
   listDepositsByStatus(input: ListDepositsByStatusInput): Promise<PrivateChannelDepositRow[]>;
+  /**
+   * All deposits for one (instance, recipient, mint), any status, oldest first.
+   * The reconciler needs the full group — including already-credited deposits — to
+   * attribute a single channel-balance increase to exactly one deposit.
+   */
+  listDepositsForRecipient(scope: DepositRecipientScope): Promise<PrivateChannelDepositRow[]>;
 }
 
 export function mapPrivateChannelDepositRow(row: PrivateChannelDepositRow): PrivateChannelDeposit {
