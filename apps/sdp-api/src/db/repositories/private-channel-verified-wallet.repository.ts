@@ -44,6 +44,9 @@ export interface PrivateChannelVerifiedWalletRepository {
    * (org, project, pubkey) refreshes the row.
    */
   upsert(input: UpsertVerifiedWalletInput): Promise<PrivateChannelVerifiedWalletRow>;
+  // TODO (once #7 is merged): Modify this list API for dashboard pages to
+  // retrieve the list of verified/unverified wallets of a user, to enable user
+  // flows/UX.
   /** List verified wallets for a project scope, newest first. */
   listByProject(scope: VerifiedWalletScope): Promise<PrivateChannelVerifiedWalletRow[]>;
 }

@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS private_channel_verified_wallets (
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (instance_id) REFERENCES private_channel_instances(id) ON DELETE CASCADE
+    -- TODO (once #7 is merged): Add a user_id column + FK pointing to the user
+    -- from the private_channel_users table, linking a verified wallet to its PC user.
 );
 
 -- One verification per wallet per project scope (mirrors SPC's UNIQUE(user_id, pubkey)
