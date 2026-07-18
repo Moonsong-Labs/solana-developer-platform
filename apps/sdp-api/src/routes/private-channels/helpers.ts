@@ -49,17 +49,28 @@ export function emitLifecycle(
   });
 }
 
-/** Member-family emit helper. */
+/** Tenancy scope for an event, e.g. taken from a channel row the event is about. */
+export interface PrivateChannelEventScope {
+  organizationId: string;
+  projectId: string;
+  instanceId: string;
+}
+
+/**
+ * Member-family emit helper. Takes an explicit scope (not the active instance)
+ * so the event is attributed to the instance that actually owns the channel,
+ * and so membership mutations don't require an active instance just to log.
+ */
 export function emitMember(
   c: AppContext,
-  instance: PrivateChannelInstanceRow,
+  scope: PrivateChannelEventScope,
   type: PrivateChannelEventType,
   extra?: { channelId?: string | null; payload?: Record<string, unknown> }
 ): Promise<void> {
   return getPrivateChannelEventService(c).emit({
-    organizationId: instance.organization_id,
-    projectId: instance.project_id,
-    instanceId: instance.id,
+    organizationId: scope.organizationId,
+    projectId: scope.projectId,
+    instanceId: scope.instanceId,
     channelId: extra?.channelId ?? null,
     sdpUserId: getAuth(c).userId ?? null,
     family: PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER,

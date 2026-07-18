@@ -107,9 +107,14 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
     throw badRequest("Failed to persist the private channel instance.");
   }
 
+  await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED, {
+    payload: { gatewayUrl: row.gateway_url },
+  });
+
   // Ensure the instance's default channel exists once connected. Idempotent +
   // best-effort: a hiccup here must not fail the connect (the channels list
-  // endpoint ensures the default too).
+  // endpoint ensures the default too). Emitted after connect so the feed reads
+  // in chronological order.
   try {
     const { channel, created } = await getPrivateChannelRepository(c).getOrCreateDefault({
       instanceId: row.id,
@@ -129,10 +134,6 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
-  await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED, {
-    payload: { gatewayUrl: row.gateway_url },
-  });
 
   const response: PrivateChannelInstanceResponse = {
     instance: mapPrivateChannelInstanceRow(row),
