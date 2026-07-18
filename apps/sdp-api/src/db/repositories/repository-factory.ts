@@ -22,6 +22,10 @@ import type { PrivateChannelRepository } from "./private-channel.repository";
 import { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
 import type { PrivateChannelInstanceRepository } from "./private-channel-instance.repository";
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
+import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
+import { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
+import type { ProjectUserRepository } from "./project-user.repository";
+import { createPostgresProjectUserRepository } from "./project-user.repository.postgres";
 import type { TokenRepository } from "./token.repository";
 import { createPostgresTokenRepository } from "./token.repository.postgres";
 
@@ -73,4 +77,12 @@ export function createPrivateChannelInstanceRepository(env: Env): PrivateChannel
 
 export function createPrivateChannelRepository(env: Env): PrivateChannelRepository {
   return createPostgresPrivateChannelRepository(getDb(env));
+}
+
+export function createPrivateChannelUserRepository(env: Env): PrivateChannelUserRepository {
+  return createPostgresPrivateChannelUserRepository(getDb(env));
+}
+
+export function createProjectUserRepository(env: Env): ProjectUserRepository {
+  return createPostgresProjectUserRepository(getDb(env));
 }

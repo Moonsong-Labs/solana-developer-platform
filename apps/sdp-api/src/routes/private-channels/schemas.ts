@@ -28,3 +28,13 @@ export const createChannelBodySchema = z.object({
   name: z.string(),
   description: z.string().optional(),
 });
+
+/** Invite an existing SDP project user to the SPC workspace. */
+export const inviteMemberBodySchema = z.object({
+  userId: z.string().min(1),
+});
+
+/** Body for `POST /channels/:channelId/memberships`. */
+export const addMembershipBodySchema = z.object({
+  privateChannelUserId: z.string().min(1),
+});

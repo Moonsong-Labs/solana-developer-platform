@@ -3,6 +3,7 @@ import { AppError, type ErrorCode } from "@/lib/errors";
 
 const PRIVATE_CHANNEL_TO_APP_ERROR: Record<PrivateChannelErrorCode, ErrorCode> = {
   BAD_REQUEST: "BAD_REQUEST",
+  CONFLICT: "CONFLICT",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 };
 

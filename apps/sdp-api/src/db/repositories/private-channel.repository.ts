@@ -24,6 +24,14 @@ export interface PrivateChannelRef {
   channelId: string;
 }
 
+/** Scope for looking a channel up by project (used by handlers that don't
+ *  yet know which instance owns it — the join enforces the tenancy check). */
+export interface ProjectChannelRef {
+  organizationId: string;
+  projectId: string;
+  channelId: string;
+}
+
 export interface PrivateChannelRepositoryContext {
   db: RepositoryDbClient;
 }
@@ -47,4 +55,7 @@ export interface PrivateChannelRepository {
    * archived. Callers must guard the default channel.
    */
   archiveChannel(params: PrivateChannelRef): Promise<boolean>;
+  /** Fetch a channel via its project — verifies the channel belongs to an
+   *  instance owned by the given project. Null when not found or out of scope. */
+  findInProject(params: ProjectChannelRef): Promise<PrivateChannelRow | null>;
 }
