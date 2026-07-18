@@ -96,6 +96,34 @@ export interface CreatePrivateChannelRequest {
   description?: string;
 }
 
+/** An SDP user invited to the SPC workspace, joined with `users` for display. */
+export interface PrivateChannelUserDto {
+  id: string;
+  userId: string;
+  email: string;
+  name: string | null;
+  walletVerified: boolean;
+  invitedAt: string;
+  /** Channels this user is a member of. */
+  channels: PrivateChannelMembershipChannelDto[];
+}
+
+export interface PrivateChannelMembershipChannelDto {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+/** Invite an existing SDP project user to the SPC workspace. */
+export interface InvitePrivateChannelUserRequest {
+  userId: string;
+}
+
+/** Request body for adding a user to a channel. */
+export interface AddPrivateChannelMembershipRequest {
+  privateChannelUserId: string;
+}
+
 // --- Private Channel Events ---------------------------------------------
 
 /** Known event family strings. Prefer these over raw string literals. */

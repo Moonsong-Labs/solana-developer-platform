@@ -159,9 +159,12 @@ export type {
 export { createPostgresPolicyRepository } from "./policy.repository.postgres";
 export type {
   CreatePrivateChannelInput,
+  PrivateChannelRef,
   PrivateChannelRepository,
   PrivateChannelRepositoryContext,
   PrivateChannelRow,
+  PrivateChannelScope,
+  ProjectChannelRef,
 } from "./private-channel.repository";
 export { generatePrivateChannelId } from "./private-channel.repository";
 export { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
@@ -188,6 +191,27 @@ export {
   mapPrivateChannelInstanceRow,
 } from "./private-channel-instance.repository";
 export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
+export type {
+  AddMembershipInput,
+  CreatePrivateChannelUserInput,
+  PrivateChannelMembershipRow,
+  PrivateChannelMembershipWithChannelRow,
+  PrivateChannelUserRepository,
+  PrivateChannelUserRepositoryContext,
+  PrivateChannelUserRow,
+  PrivateChannelUserWithIdentityRow,
+} from "./private-channel-user.repository";
+export {
+  generatePrivateChannelMembershipId,
+  generatePrivateChannelUserId,
+} from "./private-channel-user.repository";
+export { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
+export type {
+  ProjectUserRepository,
+  ProjectUserRepositoryContext,
+  ProjectUserRow,
+} from "./project-user.repository";
+export { createPostgresProjectUserRepository } from "./project-user.repository.postgres";
 export {
   createAssetProfilesRepository,
   createCounterpartiesRepository,
@@ -200,6 +224,8 @@ export {
   createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelUserRepository,
+  createProjectUserRepository,
   createTokenRepository,
 } from "./repository-factory";
 export type {

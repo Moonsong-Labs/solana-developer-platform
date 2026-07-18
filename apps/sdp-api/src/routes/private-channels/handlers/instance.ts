@@ -111,11 +111,17 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
   // best-effort: a hiccup here must not fail the connect (the channels list
   // endpoint ensures the default too).
   try {
-    await getPrivateChannelRepository(c).getOrCreateDefault({
+    const { channel, created } = await getPrivateChannelRepository(c).getOrCreateDefault({
       instanceId: row.id,
       organizationId: row.organization_id,
       projectId: row.project_id,
     });
+    if (created) {
+      await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
+        channelId: channel.id,
+        payload: { name: channel.name, isDefault: true },
+      });
+    }
   } catch (error) {
     console.warn("connectPrivateChannelInstance: failed to ensure default channel", {
       organizationId: auth.organizationId,
@@ -162,10 +168,17 @@ export const deletePrivateChannelInstance = async (c: AppContext) => {
   const projectId = requireProjectId(c);
 
   const repo = getPrivateChannelInstanceRepository(c);
-  const deleted = await repo.deleteActive({
-    organizationId: auth.organizationId,
-    projectId,
+  const scope = { organizationId: auth.organizationId, projectId };
+  const active = await repo.getActiveByProject(scope);
+  if (!active) {
+    throw notFound("Active private channel instance");
+  }
+
+  await emitLifecycle(c, active, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_DISCONNECTED, {
+    payload: { gatewayUrl: active.gateway_url, reason: "deleted" },
   });
+
+  const deleted = await repo.deleteActive(scope);
   if (!deleted) {
     throw notFound("Active private channel instance");
   }

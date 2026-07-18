@@ -1,5 +1,10 @@
-import type { PrivateChannelInstance, PrivateChannelInstanceOverview } from "@sdp/types";
+import type {
+  PrivateChannelInstance,
+  PrivateChannelInstanceOverview,
+  PrivateChannelUserDto,
+} from "@sdp/types";
 import { cn } from "@/lib/utils";
+import { VerifyWalletBanner } from "./verify-wallet-banner";
 
 type Tone = "ok" | "warn" | "bad";
 
@@ -53,14 +58,20 @@ function formatSol(lamports: number): string {
 interface Props {
   instance: PrivateChannelInstance;
   overview: PrivateChannelInstanceOverview;
+  /** Caller's own workspace-membership row for this project, or null. */
+  viewer: PrivateChannelUserDto | null;
 }
 
-export function InstanceOverviewCard({ instance, overview }: Props) {
+export function InstanceOverviewCard({ instance, overview, viewer }: Props) {
   const { gateway, chainRpc, escrowInstance, escrowProgram, auth } = overview;
   const gw = gatewayStatus(gateway.health);
+  const showVerifyBanner = viewer !== null && !viewer.walletVerified;
 
   return (
-    <dl className="divide-y divide-border-extra-light">
+    <div className="space-y-6">
+      {showVerifyBanner ? <VerifyWalletBanner /> : null}
+
+      <dl className="divide-y divide-border-extra-light">
       <Row label="Gateway" primary={<StatusInline tone={gw.tone} label={gw.label} />} />
 
       <Row
@@ -125,6 +136,7 @@ export function InstanceOverviewCard({ instance, overview }: Props) {
           }
         />
       ) : null}
-    </dl>
+      </dl>
+    </div>
   );
 }

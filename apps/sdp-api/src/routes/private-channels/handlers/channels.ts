@@ -28,7 +28,13 @@ export async function listChannels(c: AppContext) {
     projectId: instance.project_id,
   };
   const repo = getPrivateChannelRepository(c);
-  await repo.getOrCreateDefault(scope);
+  const { channel: defaultChannel, created } = await repo.getOrCreateDefault(scope);
+  if (created) {
+    await emitLifecycle(c, instance, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
+      channelId: defaultChannel.id,
+      payload: { name: defaultChannel.name, isDefault: true },
+    });
+  }
   const channels = await repo.listChannels({ instanceId: instance.id });
   return success(c, { channels: channels.map(toPrivateChannelDto) });
 }

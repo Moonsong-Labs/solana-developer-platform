@@ -49,6 +49,26 @@ export function emitLifecycle(
   });
 }
 
+/** Member-family emit helper. */
+export function emitMember(
+  c: AppContext,
+  instance: PrivateChannelInstanceRow,
+  type: PrivateChannelEventType,
+  extra?: { channelId?: string | null; payload?: Record<string, unknown> }
+): Promise<void> {
+  return getPrivateChannelEventService(c).emit({
+    organizationId: instance.organization_id,
+    projectId: instance.project_id,
+    instanceId: instance.id,
+    channelId: extra?.channelId ?? null,
+    sdpUserId: getAuth(c).userId ?? null,
+    family: PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER,
+    type,
+    status: PRIVATE_CHANNEL_EVENT_STATUSES.INFO,
+    payload: extra?.payload ?? {},
+  });
+}
+
 /** Error emit helper (family=error, status=failed). */
 export function recordInstanceError(
   c: AppContext,
