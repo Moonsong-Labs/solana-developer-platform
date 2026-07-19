@@ -1,6 +1,7 @@
-import type {
-  PrivateChannelMembershipChannelDto,
-  PrivateChannelUserDto,
+import {
+  PRIVATE_CHANNEL_EVENT_TYPES,
+  type PrivateChannelMembershipChannelDto,
+  type PrivateChannelUserDto,
 } from "@sdp/types";
 import type {
   PrivateChannelMembershipWithChannelRow,
@@ -18,6 +19,7 @@ import {
   getPrivateChannelUserRepository,
   getProjectUserRepository,
 } from "../context";
+import { emitMember } from "../helpers";
 import { addMembershipBodySchema, inviteMemberBodySchema } from "../schemas";
 
 function toDto(
@@ -39,7 +41,6 @@ function toDto(
     channels,
   };
 }
-
 
 export const listPrivateChannelUsers = async (c: AppContext) => {
   const auth = getAuth(c);
@@ -158,8 +159,35 @@ export const deletePrivateChannelUser = async (c: AppContext) => {
   if (!id) throw badRequest("privateChannelUserId is required");
 
   const repo = getPrivateChannelUserRepository(c);
-  const deleted = await repo.deleteById({ organizationId: auth.organizationId, projectId }, id);
+  const scope = { organizationId: auth.organizationId, projectId };
+  const user = await repo.getById(scope, id);
+  if (!user) throw notFound("Private channel user");
+
+  const memberships = await repo.listMembershipsForUser(user.id);
+  const instance = await getPrivateChannelInstanceRepository(c).getActiveByProject(scope);
+
+  const deleted = await repo.deleteById(scope, id);
   if (!deleted) throw notFound("Private channel user");
+
+  // Emit per-channel revokes using memberships captured before delete.
+  // Best-effort when no active instance remains (we can't attribute an instance).
+  if (instance) {
+    const eventScope = {
+      organizationId: instance.organization_id,
+      projectId: instance.project_id,
+      instanceId: instance.id,
+    };
+    for (const membership of memberships) {
+      await emitMember(c, eventScope, PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_REVOKED, {
+        channelId: membership.channel_id,
+        payload: {
+          privateChannelUserId: user.id,
+          targetUserId: user.user_id,
+          reason: "user_deleted",
+        },
+      });
+    }
+  }
 
   // SPC has no delete-user endpoint; the SPC credential is intentionally
   // orphaned. Log so operators can spot excess accumulation if needed.
@@ -194,11 +222,37 @@ export const addChannelMembership = async (c: AppContext) => {
   });
   if (!channel) throw notFound("Channel");
 
+  const alreadyMember = (await repo.listMembershipsForUser(user.id)).some(
+    (m) => m.channel_id === channelId
+  );
+
   const membership = await repo.addMembership({
     channelId,
     privateChannelUserId: user.id,
     addedBy: auth.userId ?? null,
   });
+
+  // Only emit on a genuine add (membership insert is idempotent).
+  if (!alreadyMember) {
+    await emitMember(
+      c,
+      {
+        organizationId: channel.organization_id,
+        projectId: channel.project_id,
+        instanceId: channel.instance_id,
+      },
+      PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ADDED,
+      {
+        channelId,
+        payload: {
+          privateChannelUserId: user.id,
+          targetUserId: user.user_id,
+          membershipId: membership.id,
+        },
+      }
+    );
+  }
+
   return success(c, { membership });
 };
 
@@ -214,12 +268,35 @@ export const removeChannelMembership = async (c: AppContext) => {
   const scope = { organizationId: auth.organizationId, projectId };
   const repo = getPrivateChannelUserRepository(c);
 
-  // Scope check: user belongs to this project.
+  // Scope checks: both the user and the channel must belong to this project.
   const user = await repo.getById(scope, userId);
   if (!user) throw notFound("Private channel user");
 
+  const channel = await getPrivateChannelRepository(c).findInProject({
+    ...scope,
+    channelId,
+  });
+  if (!channel) throw notFound("Channel");
+
   const removed = await repo.removeMembership(channelId, userId);
   if (!removed) throw notFound("Membership");
+
+  await emitMember(
+    c,
+    {
+      organizationId: channel.organization_id,
+      projectId: channel.project_id,
+      instanceId: channel.instance_id,
+    },
+    PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_REVOKED,
+    {
+      channelId,
+      payload: {
+        privateChannelUserId: user.id,
+        targetUserId: user.user_id,
+      },
+    }
+  );
 
   return success(c, { removed: true });
 };

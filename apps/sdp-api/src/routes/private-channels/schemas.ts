@@ -1,4 +1,5 @@
 import { privateChannelInstanceInputSchema } from "@sdp/private-channels";
+import { PRIVATE_CHANNEL_EVENT_FAMILY_VALUES } from "@sdp/types";
 import { z } from "zod";
 
 // `confirmReactivate` is a client acknowledgement that we're about to overwrite
@@ -27,6 +28,14 @@ export const healthQuerySchema = z.object({
 export const createChannelBodySchema = z.object({
   name: z.string(),
   description: z.string().optional(),
+});
+
+/** Query params for `GET /channels/:id/events` and `GET /events`. */
+export const privateChannelEventsQuerySchema = z.object({
+  family: z.enum(PRIVATE_CHANNEL_EVENT_FAMILY_VALUES).optional(),
+  type: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  before: z.string().min(1).optional(),
 });
 
 /** Invite an existing SDP project user to the SPC workspace. */

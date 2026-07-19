@@ -169,6 +169,15 @@ export type {
 export { generatePrivateChannelId } from "./private-channel.repository";
 export { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
 export type {
+  ListPrivateChannelEventsParams,
+  PrivateChannelEventRepository,
+  PrivateChannelEventRepositoryContext,
+  PrivateChannelEventRow,
+  PrivateChannelEventWriteInput,
+} from "./private-channel-event.repository";
+export { generatePrivateChannelEventId } from "./private-channel-event.repository";
+export { createPostgresPrivateChannelEventRepository } from "./private-channel-event.repository.postgres";
+export type {
   CreateActiveInstanceInput,
   FindByGatewayInput,
   PrivateChannelInstanceRepository,
@@ -212,6 +221,7 @@ export {
   createPaymentsRepository,
   createPaymentTransferBatchesRepository,
   createPolicyRepository,
+  createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
   createPrivateChannelUserRepository,

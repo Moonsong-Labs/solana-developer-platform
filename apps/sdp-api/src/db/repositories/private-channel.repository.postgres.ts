@@ -67,13 +67,13 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
     async getOrCreateDefault(scope) {
       const existing = await getDefaultInternal(db, scope.instanceId);
       if (existing) {
-        return existing;
+        return { channel: existing, created: false };
       }
 
       await insertDefault(db, scope, DEFAULT_PRIVATE_CHANNEL_NAME);
       const created = await getDefaultInternal(db, scope.instanceId);
       if (created) {
-        return created;
+        return { channel: created, created: true };
       }
 
       // Canonical name is held by a non-default channel and no default exists —
@@ -87,7 +87,7 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
       if (!fallback) {
         throw new Error("Failed to ensure the default private channel.");
       }
-      return fallback;
+      return { channel: fallback, created: true };
     },
 
     async createChannel({ instanceId, organizationId, projectId, name, description }) {

@@ -19,8 +19,10 @@ import {
   getPrivateChannelOverview,
   getPrivateChannelUser,
   invitePrivateChannelUser,
+  listChannelEvents,
   listChannels,
   listPrivateChannelUsers,
+  listProjectEvents,
   probePrivateChannelConnection,
   removeChannelMembership,
 } from "./handlers";
@@ -65,11 +67,15 @@ instance.post(
 instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
 privateChannels.route("/instance", instance);
 
+// --- /events --------------------------------------------------------------
+privateChannels.get("/events", requirePermissions("payments:read"), listProjectEvents);
+
 // --- /channels ------------------------------------------------------------
 // Logical channels: instance-scoped metadata, enforced entirely by SDP.
 privateChannels.get("/channels", requirePermissions("payments:read"), listChannels);
 privateChannels.post("/channels", requirePermissions("payments:write"), createChannel);
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
+privateChannels.get("/channels/:id/events", requirePermissions("payments:read"), listChannelEvents);
 privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
 
 // --- /channels/:channelId/memberships -------------------------------------

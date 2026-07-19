@@ -42,8 +42,11 @@ export interface PrivateChannelRepository {
    * Race-safe (the one-default-per-instance partial unique index collapses
    * concurrent creates); falls back to a suffixed name if a non-default channel
    * already holds the canonical "Default" name.
+   * `created` is true when this call inserted the default row.
    */
-  getOrCreateDefault(params: PrivateChannelScope): Promise<PrivateChannelRow>;
+  getOrCreateDefault(
+    params: PrivateChannelScope
+  ): Promise<{ channel: PrivateChannelRow; created: boolean }>;
   /** Create a named (non-default) channel. Returns null on duplicate name. */
   createChannel(input: CreatePrivateChannelInput): Promise<PrivateChannelRow | null>;
   /** List the instance's active channels, newest first. */

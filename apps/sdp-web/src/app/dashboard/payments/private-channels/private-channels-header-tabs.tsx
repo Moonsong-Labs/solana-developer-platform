@@ -28,6 +28,13 @@ const TABS = [
     requiresActive: true,
   },
   {
+    id: "events",
+    label: "Events",
+    href: "/dashboard/payments/private-channels/events",
+    // Always visible: project feed survives instance disconnect/delete.
+    requiresActive: false,
+  },
+  {
     id: "instance",
     label: "Instance",
     href: "/dashboard/payments/private-channels/instance",
