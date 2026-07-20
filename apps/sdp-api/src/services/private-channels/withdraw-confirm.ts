@@ -1,0 +1,60 @@
+/**
+ * Confirm-and-persist step for a broadcast withdrawal burn.
+ *
+ * Isolated so its failure semantics are unit-testable. The burn is broadcast to
+ * the GATEWAY (the channel chain), so confirmation reads the gateway too. Failure
+ * semantics mirror deposits but with the withdrawal-specific invariant:
+ *  - a confirmation TRANSPORT error (network/timeout — OR the gateway rejecting
+ *    the read without a JWT) must NOT change state: leave the withdrawal
+ *    `submitted` and let the reconciler finalize it. Returns `null`.
+ *  - a real on-chain burn error (`confirmation.err`) is a terminal `failed` — this
+ *    is a PRE-burn-confirmation failure, so `failed` is legitimate here (no balance
+ *    moved). After `burn_confirmed` the reconciler NEVER auto-fails (the balance is
+ *    already gone → manual_review instead).
+ *  - confirmed → `burn_confirmed` (authoritative: the user's channel balance is gone).
+ */
+
+import { createChannelGatewayRpc } from "@sdp/private-channels";
+import * as solanaRpc from "@sdp/rpc/solana";
+import type { Signature } from "@solana/kit";
+import type {
+  PrivateChannelWithdrawalRepository,
+  PrivateChannelWithdrawalRow,
+} from "@/db/repositories";
+import type { Env } from "@/types/env";
+
+/**
+ * Confirm a broadcast burn on the gateway (channel chain) and persist the outcome:
+ *  - on-chain burn error → `failed`
+ *  - confirmed           → `burn_confirmed`
+ *  - transport/auth/timeout error → no change (stays `submitted`); returns `null`.
+ */
+export async function confirmAndPersistWithdrawal(
+  env: Env,
+  repo: PrivateChannelWithdrawalRepository,
+  input: { withdrawalId: string; gatewayUrl: string; signature: Signature }
+): Promise<PrivateChannelWithdrawalRow | null> {
+  try {
+    const gatewayRpc = createChannelGatewayRpc(env, input.gatewayUrl);
+    const confirmation = await solanaRpc.confirmTransaction(gatewayRpc, input.signature, {
+      commitment: "confirmed",
+    });
+    if (confirmation.err) {
+      return repo.updateWithdrawal({
+        id: input.withdrawalId,
+        status: "failed",
+        failureReason: "Withdrawal burn failed on-chain.",
+        expectedStatus: "submitted",
+      });
+    }
+    return repo.updateWithdrawal({
+      id: input.withdrawalId,
+      status: "burn_confirmed",
+      expectedStatus: "submitted",
+    });
+  } catch {
+    // Transport/timeout — or the gateway declining the read without a JWT. Leave
+    // `submitted`; the reconciler finalizes it from the on-chain signature status.
+    return null;
+  }
+}

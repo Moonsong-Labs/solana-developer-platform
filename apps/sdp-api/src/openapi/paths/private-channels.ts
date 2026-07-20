@@ -3,6 +3,7 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import {
   createPrivateChannelBodySchema,
   createPrivateChannelDepositBodySchema,
+  createPrivateChannelWithdrawalBodySchema,
   errorResponseSchema,
   privateChannelBalanceQuerySchema,
   privateChannelBalanceSchema,
@@ -25,6 +26,9 @@ import {
   privateChannelVerifiedWalletListSchema,
   privateChannelVerifiedWalletSchema,
   privateChannelVerifyWalletParamSchema,
+  privateChannelWithdrawalIdParamSchema,
+  privateChannelWithdrawalListSchema,
+  privateChannelWithdrawalSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -252,6 +256,64 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
       200: {
         description: "The deposit.",
         content: jsonContent(successResponseSchema(privateChannelDepositSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/withdrawals",
+    tags: [TAG],
+    summary: "Create a withdrawal from the channel balance",
+    operationId: "createPrivateChannelWithdrawal",
+    description:
+      "Server-signs a burn of the custody wallet's channel-chain balance and broadcasts it to the gateway; the operator later releases the matching real USDC on devnet to `destination` (defaults to the owner). Returns the withdrawal with its current status (submitted/burn_confirmed, or failed). The release (`released`) is detected asynchronously from the devnet release on the instance ATA.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      body: { content: jsonContent(createPrivateChannelWithdrawalBodySchema) },
+    },
+    responses: {
+      200: {
+        description: "The created withdrawal.",
+        content: jsonContent(successResponseSchema(privateChannelWithdrawalSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/withdrawals",
+    tags: [TAG],
+    summary: "List withdrawals for the project",
+    operationId: "listPrivateChannelWithdrawals",
+    description: "Lists the project's withdrawals, newest first.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders },
+    responses: {
+      200: {
+        description: "Withdrawals",
+        content: jsonContent(successResponseSchema(privateChannelWithdrawalListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/withdrawals/{id}",
+    tags: [TAG],
+    summary: "Get a withdrawal",
+    operationId: "getPrivateChannelWithdrawal",
+    description: "Reads one withdrawal for the project (poll this for status transitions).",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelWithdrawalIdParamSchema },
+    responses: {
+      200: {
+        description: "The withdrawal.",
+        content: jsonContent(successResponseSchema(privateChannelWithdrawalSchema)),
       },
       ...errorResponses(errorResponseSchema, [401, 403, 404, 500, 503]),
     },
