@@ -208,7 +208,6 @@ export {
 export { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
 export type {
   PrivateChannelVerifiedWalletRepository,
-  PrivateChannelVerifiedWalletRepositoryContext,
   PrivateChannelVerifiedWalletRow,
   UpsertVerifiedWalletInput,
   VerifiedWalletScope,

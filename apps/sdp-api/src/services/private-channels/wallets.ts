@@ -30,7 +30,6 @@ import {
 } from "@/db/repositories";
 import type { ApiKeyContext } from "@/lib/auth";
 import { AppError, badRequest, forbidden, providerNotConfigured } from "@/lib/errors";
-import { assertApiKeyWalletAccess } from "@/services/api-key-scope.service";
 import { createOrgSigner } from "@/services/solana";
 import type { Env } from "@/types/env";
 import { getSpcSession, type SpcSession } from "./auth/spc-session";
@@ -136,9 +135,8 @@ export async function verifyPrivateChannelWallet(
     projectId
   );
 
-  // Authorize the caller and resolve the wallet to a signer BEFORE the SPC
-  // challenge, so an invalid/unsignable wallet fails without minting a nonce.
-  assertApiKeyWalletAccess(auth, walletId, []);
+  // Resolve the wallet to a signer BEFORE the SPC challenge, so an
+  // invalid/unsignable wallet fails without minting a nonce.
   const signer = await createOrgSigner(env, auth.organizationId, projectId, walletId);
   if (!isMessagePartialSigner(signer)) {
     throw new AppError("SIGNING_FAILED", "This wallet cannot sign verification messages.");
@@ -206,16 +204,15 @@ export async function deletePrivateChannelWallet(
     projectId
   );
 
-  // SPC returns 400 ("wallet not associated") when the pubkey is already unlinked
-  // there. Treat that as already-revoked and still drop the SDP mirror row so the
-  // two systems converge; rethrow real failures (auth, unavailable, …).
+  // SPC's delete returns 400 ("wallet not associated with this user") when the
+  // pubkey is already unlinked or never existed — the only non-401/500 status that
+  // endpoint emits, so it's unambiguous (SPC never 404s here). Treat that 400 as
+  // already-revoked and still drop the SDP mirror row so the two systems converge;
+  // rethrow real failures (auth, unavailable, …).
   try {
     await client.deleteWallet(session.token, pubkey);
   } catch (error) {
-    if (
-      !(error instanceof PrivateChannelError) ||
-      (error.code !== "BAD_REQUEST" && error.code !== "NOT_FOUND")
-    ) {
+    if (!(error instanceof PrivateChannelError) || error.code !== "BAD_REQUEST") {
       throw error;
     }
   }

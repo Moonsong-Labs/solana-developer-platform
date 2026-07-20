@@ -1,5 +1,3 @@
-import type { RepositoryDbClient } from "./base";
-
 export function generatePrivateChannelVerifiedWalletId(): string {
   return `pcvw_${crypto.randomUUID()}`;
 }
@@ -30,10 +28,6 @@ export interface UpsertVerifiedWalletInput extends VerifiedWalletScope {
   instanceId: string;
   walletId: string;
   pubkey: string;
-}
-
-export interface PrivateChannelVerifiedWalletRepositoryContext {
-  db: RepositoryDbClient;
 }
 
 export interface PrivateChannelVerifiedWalletRepository {
