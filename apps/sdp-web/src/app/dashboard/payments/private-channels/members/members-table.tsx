@@ -1,6 +1,10 @@
 "use client";
 
-import type { ListProjectMembersResponse, PrivateChannelDto, PrivateChannelUserDto } from "@sdp/types";
+import type {
+  ListProjectMembersResponse,
+  PrivateChannelDto,
+  PrivateChannelUserDto,
+} from "@sdp/types";
 import { Loader2Icon, PlusIcon, XIcon } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -67,7 +71,7 @@ export function MembersTable({ members, channels, eligibleProjectMembers }: Prop
             <TableRow>
               <TableHead>Email</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Verified</TableHead>
+              <TableHead>Verified wallets</TableHead>
               <TableHead>Channels</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -91,10 +95,7 @@ export function MembersTable({ members, channels, eligibleProjectMembers }: Prop
         candidates={eligibleForInvite}
       />
 
-      <DeleteMemberDialog
-        target={deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-      />
+      <DeleteMemberDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
     </div>
   );
 }
@@ -129,9 +130,11 @@ function MemberRow({
   return (
     <TableRow>
       <TableCell className="font-mono text-sm break-all">{member.email}</TableCell>
-      <TableCell className="text-sm">{member.name ?? <span className="text-text-medium">—</span>}</TableCell>
+      <TableCell className="text-sm">
+        {member.name ?? <span className="text-text-medium">—</span>}
+      </TableCell>
       <TableCell>
-        <VerifiedBadge verified={member.walletVerified} />
+        <WalletCountBadge count={member.verifiedWalletCount} />
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -143,22 +146,12 @@ function MemberRow({
             />
           ))}
           {notInChannels.length > 0 ? (
-            <AddToChannelMenu
-              channels={notInChannels}
-              disabled={pending}
-              onPick={addToChannel}
-            />
+            <AddToChannelMenu channels={notInChannels} disabled={pending} onPick={addToChannel} />
           ) : null}
         </div>
       </TableCell>
       <TableCell className="text-right">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onDelete}
-          disabled={pending}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={onDelete} disabled={pending}>
           Delete
         </Button>
       </TableCell>
@@ -166,22 +159,23 @@ function MemberRow({
   );
 }
 
-function VerifiedBadge({ verified }: { verified: boolean }) {
+function WalletCountBadge({ count }: { count: number }) {
+  const hasWallets = count > 0;
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 text-sm",
-        verified ? "text-status-success-text" : "text-text-medium"
+        hasWallets ? "text-status-success-text" : "text-text-medium"
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
           "inline-block size-2 rounded-full",
-          verified ? "bg-status-success-text" : "bg-border-light"
+          hasWallets ? "bg-status-success-text" : "bg-border-light"
         )}
       />
-      {verified ? "verified" : "unverified"}
+      {count} verified
     </span>
   );
 }

@@ -3,16 +3,16 @@
 > Full public documentation for Solana Developer Platform — all page content for AI and agent ingestion.
 
 ## Canonical URLs
-- Docs: https://sdp-docs-solana-foundation.vercel.app/docs
+- Docs: https://platform.solana.com/docs
 - API: https://api.solana.com
 - Interactive API docs: https://api.solana.com/docs
 - OpenAPI: https://api.solana.com/openapi.json
-- AI guide: https://sdp-docs-solana-foundation.vercel.app/docs/reference/ai-consumption
+- AI guide: https://platform.solana.com/docs/reference/ai-consumption
 
 ## Docs
 
 ### Solana Developer Platform Docs
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/home
+Source: https://platform.solana.com/docs/home
 
 > A dashboard and REST API for real-world asset issuance, payments, and markets on Solana — with built-in compliance controls.
 
@@ -21,7 +21,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/home
 ---
 
 ### Introduction
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/introduction
+Source: https://platform.solana.com/docs/introduction
 
 > What SDP is, what it provides, and how it works.
 
@@ -67,7 +67,7 @@ Both environments expose identical APIs. Develop and test against sandbox, then 
 ## Getting Started
 
 ### Set Up Your Organization
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/guides/setup-organization
+Source: https://platform.solana.com/docs/guides/setup-organization
 
 > Create and configure your SDP organization through the dashboard.
 
@@ -103,7 +103,7 @@ If you already have an organization, the **Organization Switcher** in the top-le
 ---
 
 ### Set Up Wallets
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/guides/setup-wallets
+Source: https://platform.solana.com/docs/guides/setup-wallets
 
 > Initialize a custody provider and create wallets for signing transactions.
 
@@ -329,7 +329,7 @@ HttpRequest request = HttpRequest.newBuilder()
 ---
 
 ### Manage API Keys
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/guides/manage-api-keys
+Source: https://platform.solana.com/docs/guides/manage-api-keys
 
 > Create, rotate, and revoke API keys with role-based access and environment scoping.
 
@@ -557,7 +557,7 @@ The `confirmation` field must match the key's **name**. The key stops working im
 ## Tokens
 
 ### Tokenize an Asset
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/tokenize-an-asset
+Source: https://platform.solana.com/docs/tokens/tokenize-an-asset
 
 > Map a real-world asset to the right SDP token model, authorities, and implementation flow.
 
@@ -620,7 +620,7 @@ If you are driving SDP through an agent workflow, start from [AI Consumption](/d
 ---
 
 ### Create a Token
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/create-a-token
+Source: https://platform.solana.com/docs/tokens/create-a-token
 
 > Define a new token using a template or custom configuration.
 
@@ -834,7 +834,7 @@ The token is not yet onchain. Pass `data.token.id` to [Deploy a Token](/docs/tok
 ---
 
 ### Deploy a Token
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/deploy-a-token
+Source: https://platform.solana.com/docs/tokens/deploy-a-token
 
 > Deploy a created token to the Solana blockchain.
 
@@ -982,7 +982,7 @@ curl https://api.solana.com/v1/issuance/tokens/tok_abc123 \
 ---
 
 ### Mint and Burn
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/mint-and-burn
+Source: https://platform.solana.com/docs/tokens/mint-and-burn
 
 > Increase or decrease token supply by minting to an address or burning from an account you control.
 
@@ -1212,7 +1212,7 @@ Safe to include in automated post-mint workflows.
 ---
 
 ### Allowlists
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/allowlists
+Source: https://platform.solana.com/docs/tokens/allowlists
 
 > Control which addresses can receive your token by maintaining an approved list.
 
@@ -1394,7 +1394,7 @@ Use the `entry.id` returned when the address was added.
 ---
 
 ### Freeze and Compliance
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/freeze-and-compliance
+Source: https://platform.solana.com/docs/tokens/freeze-and-compliance
 
 > Screen addresses, freeze accounts, pause transfers, and seize tokens for compliance workflows.
 
@@ -1614,7 +1614,7 @@ Seize also supports `/prepare` for client-side signing.
 ---
 
 ### Manage Token Settings
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/manage-token-settings
+Source: https://platform.solana.com/docs/tokens/manage-token-settings
 
 > Update token authorities and operational settings after deployment.
 
@@ -1763,7 +1763,7 @@ After revoking the mint authority, no new tokens can ever be minted. Revocation 
 ---
 
 ### Prepare vs Execute
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tokens/prepare-vs-execute
+Source: https://platform.solana.com/docs/tokens/prepare-vs-execute
 
 > Understand SDP's two signing modes for onchain transactions.
 
@@ -1878,7 +1878,7 @@ Both modes support the `Idempotency-Key` header. For execute mode, the key preve
 ## Payments
 
 ### Payments
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments
+Source: https://platform.solana.com/docs/payments
 
 > Build payments on Solana with SDP — concepts, send, accept, ramps, and wallet operations.
 
@@ -1916,7 +1916,7 @@ Every page in this section links to specific endpoints in the auto-generated [Pa
 ---
 
 ### How payments work on SDP
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/concepts
+Source: https://platform.solana.com/docs/payments/concepts
 
 > Wallets, tokens, server-side signing, fees, and the data model that backs SDP payments.
 
@@ -1979,7 +1979,7 @@ SDP exposes everything you need to **send**, **track**, and **reconcile** paymen
 ## Payments — Send Payments
 
 ### Basic payment
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/send-basic-payment
+Source: https://platform.solana.com/docs/payments/send-basic-payment
 
 > Send a single token transfer with SDP.
 
@@ -2034,7 +2034,7 @@ Build the request body:
 
 ```typescript
 const body = {
-  source: "privy_wallet_123",              // `walletId` from GET /v1/wallets
+  source: "wal_example",              // SDP custody wallet ID
   destination: "7xKXz...9fGh",         // recipient wallet (owner) address
   token: "9aBCd...4eEf",               // onchain mint address
   amount: "100.00",                    // human-readable units
@@ -2072,7 +2072,7 @@ curl -X POST https://api.solana.com/v1/payments/transfers \
   -H "Authorization: Bearer sk_test_..." \
   -H "Content-Type: application/json" \
   -d '{
-    "source": "privy_wallet_123",
+    "source": "wal_example",
     "destination": "7xKXz...9fGh",
     "token": "9aBCd...4eEf",
     "amount": "100.00",
@@ -2091,7 +2091,7 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      source: "privy_wallet_123",
+      source: "wal_example",
       destination: "7xKXz...9fGh",
       token: "9aBCd...4eEf",
       amount: "100.00",
@@ -2111,7 +2111,7 @@ HttpRequest request = HttpRequest.newBuilder()
     .header("Content-Type", "application/json")
     .POST(HttpRequest.BodyPublishers.ofString("""
         {
-          "source": "privy_wallet_123",
+          "source": "wal_example",
           "destination": "7xKXz...9fGh",
           "token": "9aBCd...4eEf",
           "amount": "100.00",
@@ -2185,7 +2185,7 @@ See [Payouts and disbursements](/docs/payments/send-payouts#dedup-and-retries) f
 ---
 
 ### Payment with memo
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/send-payment-with-memo
+Source: https://platform.solana.com/docs/payments/send-payment-with-memo
 
 > Attach an order ID, invoice number, or customer reference to an SDP transfer.
 
@@ -2210,7 +2210,7 @@ curl -X POST https://api.solana.com/v1/payments/transfers \
   -H "Authorization: Bearer sk_test_..." \
   -H "Content-Type: application/json" \
   -d '{
-    "source": "privy_wallet_123",
+    "source": "wal_example",
     "destination": "7xKXz...9fGh",
     "token": "9aBCd...4eEf",
     "amount": "100.00",
@@ -2229,7 +2229,7 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      source: "privy_wallet_123",
+      source: "wal_example",
       destination: "7xKXz...9fGh",
       token: "9aBCd...4eEf",
       amount: "100.00",
@@ -2248,7 +2248,7 @@ HttpRequest request = HttpRequest.newBuilder()
     .header("Content-Type", "application/json")
     .POST(HttpRequest.BodyPublishers.ofString("""
         {
-          "source": "privy_wallet_123",
+          "source": "wal_example",
           "destination": "7xKXz...9fGh",
           "token": "9aBCd...4eEf",
           "amount": "100.00",
@@ -2294,7 +2294,7 @@ Memos are returned by `GET /v1/payments/transfers` and `GET /v1/payments/transfe
 ---
 
 ### Payouts and disbursements
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/send-payouts
+Source: https://platform.solana.com/docs/payments/send-payouts
 
 > Run batched outbound transfers, deduplicate retries, and reconcile a payout batch with SDP.
 
@@ -2330,7 +2330,7 @@ curl -X POST https://api.solana.com/v1/payments/transfers \
   -H "Authorization: Bearer sk_test_..." \
   -H "Content-Type: application/json" \
   -d '{
-    "source": "privy_wallet_123",
+    "source": "wal_example",
     "destination": "7xKXz...9fGh",
     "token": "9aBCd...4eEf",
     "amount": "150.00",
@@ -2446,7 +2446,7 @@ Per-transfer outcomes you should expect to handle:
 ## Payments — Accept Payments
 
 ### Accept payments
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/accept-overview
+Source: https://platform.solana.com/docs/payments/accept-overview
 
 > Receiving-address convention, integration options, and how to track inbound payments with SDP.
 
@@ -2503,7 +2503,7 @@ This is intentionally low-level — there is no SDP-provided session object. Tre
 ---
 
 ### Verifying a payment
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/accept-verification
+Source: https://platform.solana.com/docs/payments/accept-verification
 
 > Transfer-status semantics, finality on Solana, and recommended polling cadence for SDP transfers.
 
@@ -2578,7 +2578,7 @@ When `status` settles to `failed`:
 ---
 
 ### Indexing and reconciliation
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/accept-indexing
+Source: https://platform.solana.com/docs/payments/accept-indexing
 
 > List inbound transfers, paginate, dedupe, and reconcile against your product ledger.
 
@@ -2721,7 +2721,7 @@ Notes:
 ## Payments — Ramps
 
 ### Ramps
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/ramps
+Source: https://platform.solana.com/docs/payments/ramps
 
 > Fiat on-ramps and off-ramps — let users buy crypto with fiat or cash out from a wallet through SDP.
 
@@ -2889,7 +2889,7 @@ SDP currently accepts `USD` only on the `fiatCurrency` field. Multi-currency sup
 ---
 
 ### Ramp providers
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/ramps-providers
+Source: https://platform.solana.com/docs/payments/ramps-providers
 
 > MoonPay, Lightspark, and BVNK — capability matrix, configuration, and per-provider notes.
 
@@ -2991,7 +2991,7 @@ For self-hosted deployments where only a subset of providers will ever be config
 ## Payments — Wallet Operations
 
 ### Wallet policies
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/wallet-policies
+Source: https://platform.solana.com/docs/payments/wallet-policies
 
 > Wallet controls, default-allow rollout, and policy audit visibility.
 
@@ -3186,7 +3186,7 @@ See the [Compliance API reference](/docs/reference/api/compliance) for address-s
 ---
 
 ### Wallet balances
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/payments/wallet-balances
+Source: https://platform.solana.com/docs/payments/wallet-balances
 
 > Per-wallet token balances with optional USD valuation via SDP.
 
@@ -3306,7 +3306,7 @@ Reasons to skip SDP and go to RPC directly:
 ## Tutorials
 
 ### Issue a Regulated Stablecoin
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tutorials/issue-a-regulated-stablecoin
+Source: https://platform.solana.com/docs/tutorials/issue-a-regulated-stablecoin
 
 > Build a GENIUS-compliant digital dollar on Solana with institutional custody, integrated compliance, and operational reversibility from day one.
 
@@ -4091,7 +4091,7 @@ For deeper API surface beyond what this tutorial covers:
 ---
 
 ### End-to-end Payment Flow
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/tutorials/end-to-end-payment-flow
+Source: https://platform.solana.com/docs/tutorials/end-to-end-payment-flow
 
 > A high-level payment flow from quote to settlement.
 
@@ -4113,7 +4113,7 @@ Use the [Payments API reference](/docs/reference/api/payments), [Wallets API ref
 ## Self-Hosting
 
 ### Self-Hosting
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting
+Source: https://platform.solana.com/docs/self-hosting
 
 > Run the Solana Developer Platform on your own infrastructure with Docker Compose.
 
@@ -4171,7 +4171,7 @@ keeping it running.
 ---
 
 ### Quickstart
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/quickstart
+Source: https://platform.solana.com/docs/self-hosting/quickstart
 
 > Install the self-hosted stack, generate a .env, and bring it up with Docker Compose.
 
@@ -4257,7 +4257,7 @@ If a service fails to start or a required variable is missing, see
 ---
 
 ### First Devnet Deployment
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/first-devnet-deployment
+Source: https://platform.solana.com/docs/self-hosting/first-devnet-deployment
 
 > Run self-hosted SDP on devnet, log into the dashboard, initialize a local wallet, and verify API access.
 
@@ -4432,7 +4432,7 @@ key bound to the wallet it is allowed to use.
 ---
 
 ### Configurator
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/configurator
+Source: https://platform.solana.com/docs/self-hosting/configurator
 
 > Generate a complete .env for a self-hosted Solana Developer Platform, entirely in your browser.
 
@@ -4448,7 +4448,7 @@ For the full operator walkthrough after download, continue with
 ---
 
 ### Environment Reference
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/env-reference
+Source: https://platform.solana.com/docs/self-hosting/env-reference
 
 > The configuration variables a self-hosted Solana Developer Platform reads from .env.
 
@@ -4551,7 +4551,7 @@ need changing when you put the services behind your own domains or ingress.
 ---
 
 ### Upgrade & Backup
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/upgrade-and-backup
+Source: https://platform.solana.com/docs/self-hosting/upgrade-and-backup
 
 > Move a self-hosted Solana Developer Platform to a new release and protect its data.
 
@@ -4656,7 +4656,7 @@ Restore the matching `.env` alongside it so secrets such as
 ---
 
 ### Troubleshooting
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/troubleshooting
+Source: https://platform.solana.com/docs/self-hosting/troubleshooting
 
 > Diagnose common startup and configuration failures on a self-hosted stack.
 
@@ -4737,7 +4737,7 @@ then open an issue on the
 ---
 
 ### External Co-Signers
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/self-hosting/external-co-signers
+Source: https://platform.solana.com/docs/self-hosting/external-co-signers
 
 > Host provider-specific signing automation outside the default self-hosted SDP stack.
 
@@ -4792,7 +4792,7 @@ and pass the resulting service URL and token into a custom SDP Utila integration
 ## Reference
 
 ### Reference
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference
+Source: https://platform.solana.com/docs/reference
 
 > API reference, token types, provider onboarding, and integration resources.
 
@@ -4801,7 +4801,7 @@ Resources for integrating with SDP: API endpoints, supported token templates, pr
 ---
 
 ### Issuance Token Types
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/issuance-token-types
+Source: https://platform.solana.com/docs/reference/issuance-token-types
 
 > Supported issuance templates and default controls.
 
@@ -4822,7 +4822,7 @@ Mint, burn, seize, and force-burn request bodies accept `amount` as a **decimal 
 ---
 
 ### Infrastructure Provider Onboarding
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/provider-onboarding
+Source: https://platform.solana.com/docs/reference/provider-onboarding
 
 > Add an infrastructure provider integration to SDP through the self-service contribution process.
 
@@ -4893,7 +4893,7 @@ Open the pull request after intake is complete, or after the SDP team has create
 ---
 
 ### AI Consumption
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/ai-consumption
+Source: https://platform.solana.com/docs/reference/ai-consumption
 
 > Public machine-readable entry points and guidance for agents and AI systems consuming SDP docs and APIs.
 
@@ -4933,7 +4933,7 @@ Use this page when you need the public AI-facing entry points for Solana Develop
 ---
 
 ### Postman Collection
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/postman-collection
+Source: https://platform.solana.com/docs/reference/postman-collection
 
 > Download the public SDP API Postman collection generated from the OpenAPI contract.
 
@@ -4965,7 +4965,7 @@ When you import the collection into Postman, set:
 ## API
 
 ### API Reference
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api
+Source: https://platform.solana.com/docs/reference/api
 
 > Endpoint index from the repository OpenAPI spec.
 
@@ -4987,7 +4987,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api
 ---
 
 ### Health
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/health
+Source: https://platform.solana.com/docs/reference/api/health
 
 > Service health and readiness endpoints.
 
@@ -4999,7 +4999,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/health
 ---
 
 ### API Keys
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/api-keys
+Source: https://platform.solana.com/docs/reference/api/api-keys
 
 > API key management endpoints.
 
@@ -5015,7 +5015,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/api-key
 ---
 
 ### Wallets
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/wallets
+Source: https://platform.solana.com/docs/reference/api/wallets
 
 > Wallet signing provider configuration and wallet management.
 
@@ -5039,7 +5039,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/wallets
 ---
 
 ### Projects
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/projects
+Source: https://platform.solana.com/docs/reference/api/projects
 
 > Project and project member management.
 
@@ -5060,7 +5060,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/project
 ---
 
 ### Issuance
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/issuance
+Source: https://platform.solana.com/docs/reference/api/issuance
 
 > Token issuance, allowlists, and lifecycle operations.
 
@@ -5102,7 +5102,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/issuanc
 ---
 
 ### Payments
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/payments
+Source: https://platform.solana.com/docs/reference/api/payments
 
 > Wallet balances, transfer execution, policies, and ramps.
 
@@ -5149,7 +5149,7 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/payment
 ---
 
 ### Compliance
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/compliance
+Source: https://platform.solana.com/docs/reference/api/compliance
 
 > Risk and compliance screening endpoints.
 
@@ -5160,19 +5160,18 @@ Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/complia
 ---
 
 ### Asset Profiles
-Source: https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/asset-profiles
+Source: https://platform.solana.com/docs/reference/api/asset-profiles
 
 > Issued-asset identity and metadata profiles, plus the public token metadata URI.
 
 | Method | Endpoint | Summary |
 | --- | --- | --- |
-| `GET` | `/v1/issuance/asset-profiles` | List asset profiles |
-| `POST` | `/v1/issuance/asset-profiles` | Create token with asset profile |
-| `DELETE` | `/v1/issuance/asset-profiles/{profileId}` | Archive asset profile |
-| `GET` | `/v1/issuance/asset-profiles/{profileId}` | Get asset profile |
-| `PATCH` | `/v1/issuance/asset-profiles/{profileId}` | Update asset profile |
-| `GET` | `/v1/issuance/asset-profiles/by-token/{tokenId}` | Get asset profile by token |
-| `GET` | `/v1/issuance/asset-profiles/field-options` | Get asset profile field options |
+| `GET` | `/v1/asset-profiles` | List asset profiles |
+| `POST` | `/v1/asset-profiles` | Create asset profile |
+| `DELETE` | `/v1/asset-profiles/{profileId}` | Archive asset profile |
+| `GET` | `/v1/asset-profiles/{profileId}` | Get asset profile |
+| `PATCH` | `/v1/asset-profiles/{profileId}` | Update asset profile |
+| `GET` | `/v1/asset-profiles/metadata` | Get asset profile field options |
 
 ## Notes
 - Generated from docs source. Hidden or internal-only APIs are intentionally excluded.

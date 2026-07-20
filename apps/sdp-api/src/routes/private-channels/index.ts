@@ -11,9 +11,10 @@ import {
   deleteChannel,
   deletePrivateChannelInstance,
   deletePrivateChannelUser,
+  deleteVerifiedWallet,
   disconnectPrivateChannelInstance,
-  getChannel,
   getAuthenticatedPrivateChannelUser,
+  getChannel,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
@@ -26,6 +27,7 @@ import {
   listVerifiedWallets,
   probePrivateChannelConnection,
   removeChannelMembership,
+  verifyWallet,
 } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
@@ -80,9 +82,20 @@ privateChannels.get("/channels/:id/events", requirePermissions("payments:read"),
 privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
 
 // --- /wallets -------------------------------------------------------------
-// Read model for wallets verified against the connected instance. The verify
-// write path (SPC challenge → sign → verify) lands with the SPC auth subsystem.
+// Wallet verification: the gate for money-movement. Verifying signs an SPC auth
+// challenge with the custody wallet (any SDP provider) server-side and records
+// it; deleting revokes it with SPC and removes the row.
 privateChannels.get("/wallets", requirePermissions("payments:read"), listVerifiedWallets);
+privateChannels.post(
+  "/wallets/:walletId/verify",
+  requirePermissions("payments:write"),
+  verifyWallet
+);
+privateChannels.delete(
+  "/wallets/:pubkey",
+  requirePermissions("payments:write"),
+  deleteVerifiedWallet
+);
 
 // --- /channels/:channelId/memberships -------------------------------------
 // Junction between a channel and an invited workspace user.

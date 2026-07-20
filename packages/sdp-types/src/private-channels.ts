@@ -115,7 +115,8 @@ export interface PrivateChannelUserDto {
   userId: string;
   email: string;
   name: string | null;
-  walletVerified: boolean;
+  /** How many wallets this member has verified with the connected instance. */
+  verifiedWalletCount: number;
   invitedAt: string;
   /** Channels this user is a member of. */
   channels: PrivateChannelMembershipChannelDto[];

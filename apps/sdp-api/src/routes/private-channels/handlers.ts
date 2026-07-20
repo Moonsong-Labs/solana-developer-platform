@@ -18,4 +18,4 @@ export {
 } from "./handlers/members";
 export { getPrivateChannelOverview } from "./handlers/overview";
 export { probePrivateChannelConnection } from "./handlers/probe";
-export { listVerifiedWallets } from "./handlers/wallets";
+export { deleteVerifiedWallet, listVerifiedWallets, verifyWallet } from "./handlers/wallets";

@@ -34,8 +34,8 @@ export default async function PrivateChannelsChannelsPage() {
         <CardHeader>
           <CardTitle>Channels</CardTitle>
           <CardDescription>
-            Logical channels group activity within your connected instance. The default channel
-            is created automatically and cannot be deleted.
+            Logical channels group activity within your connected instance. The default channel is
+            created automatically and cannot be deleted.
           </CardDescription>
         </CardHeader>
         <CardContent>

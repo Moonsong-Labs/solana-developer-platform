@@ -3,6 +3,7 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import {
   createPrivateChannelBodySchema,
   errorResponseSchema,
+  privateChannelDeleteWalletParamSchema,
   privateChannelEventListSchema,
   privateChannelEventsQuerySchema,
   privateChannelHealthQuerySchema,
@@ -16,6 +17,8 @@ import {
   privateChannelProbeResultSchema,
   privateChannelSchema,
   privateChannelVerifiedWalletListSchema,
+  privateChannelVerifiedWalletSchema,
+  privateChannelVerifyWalletParamSchema,
   successResponseSchema,
   z,
 } from "../schemas";
@@ -293,9 +296,10 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     method: "get",
     path: "/v1/private-channels/wallets",
     tags: [TAG],
-    summary: "List verified wallets for the connected instance",
+    summary: "List the caller's verified wallets",
     operationId: "listPrivateChannelVerifiedWallets",
-    description: "Lists the project's custody wallets that have completed SPC verification.",
+    description:
+      "Lists the caller's own custody wallets that have completed SPC verification for this project.",
     security: [{ apiKeyAuth: [] }],
     request: { headers: projectScopeHeaders },
     responses: {
@@ -304,6 +308,46 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelVerifiedWalletListSchema)),
       },
       ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/wallets/{walletId}/verify",
+    tags: [TAG],
+    summary: "Verify a custody wallet with the SPC auth service",
+    operationId: "verifyPrivateChannelWallet",
+    description:
+      "Runs the SPC challenge → sign → verify handshake for a custody wallet (any SDP provider), then records the verification. Idempotent per (project, member, wallet). Requires the connected instance to have auth enabled and the caller to be an invited member.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelVerifyWalletParamSchema },
+    responses: {
+      200: {
+        description: "The verified wallet.",
+        content: jsonContent(
+          successResponseSchema(z.object({ wallet: privateChannelVerifiedWalletSchema }))
+        ),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/v1/private-channels/wallets/{pubkey}",
+    tags: [TAG],
+    summary: "Revoke a verified wallet",
+    operationId: "deletePrivateChannelVerifiedWallet",
+    description:
+      "Revokes a wallet verification with the SPC auth service and removes the SDP mirror row. Requires the connected instance to have auth enabled and the caller to be an invited member.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelDeleteWalletParamSchema },
+    responses: {
+      200: {
+        description: "The wallet verification was revoked.",
+        content: jsonContent(successResponseSchema(z.object({ deleted: z.boolean() }))),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
     },
   });
 }

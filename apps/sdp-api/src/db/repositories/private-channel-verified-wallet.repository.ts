@@ -4,11 +4,13 @@ export function generatePrivateChannelVerifiedWalletId(): string {
   return `pcvw_${crypto.randomUUID()}`;
 }
 
-/** A verified-wallet row: pubkey ↔ project scope, recorded after SPC verify-wallet. */
+/** A verified-wallet row: pubkey ↔ (project, SPC user), recorded after SPC verify-wallet. */
 export interface PrivateChannelVerifiedWalletRow {
   id: string;
   organization_id: string;
   project_id: string;
+  /** The private_channel_users row (SPC user) this wallet was verified under. */
+  user_id: string;
   instance_id: string;
   wallet_id: string;
   pubkey: string;
@@ -24,6 +26,7 @@ export interface VerifiedWalletScope {
 }
 
 export interface UpsertVerifiedWalletInput extends VerifiedWalletScope {
+  userId: string;
   instanceId: string;
   walletId: string;
   pubkey: string;
@@ -34,26 +37,28 @@ export interface PrivateChannelVerifiedWalletRepositoryContext {
 }
 
 export interface PrivateChannelVerifiedWalletRepository {
-  /** Fetch the verification row for a pubkey within a project scope, if any. */
-  getByScopeAndPubkey(
-    scope: VerifiedWalletScope,
-    pubkey: string
-  ): Promise<PrivateChannelVerifiedWalletRow | null>;
   /**
    * Idempotently record a verified wallet. A re-verify of the same
-   * (org, project, pubkey) refreshes the row.
+   * (org, project, user_id, pubkey) refreshes the row. Call this ONLY from the
+   * wallets domain module's verify logic (services/private-channels/wallets.ts) —
+   * that flow is the single writer of private_channel_verified_wallets, after a
+   * successful SPC verify.
    */
-  // TODO: Call this ONLY from the wallets domain module's verify-wallet logic
-  // (services/private-channels/wallets.ts) — that flow is the single writer of
-  // private_channel_verified_wallets, after a successful SPC verify. The delete
-  // flow needs a sibling method here (e.g. deleteByScopeAndPubkey) to remove a
-  // row after a successful SPC delete.
   upsert(input: UpsertVerifiedWalletInput): Promise<PrivateChannelVerifiedWalletRow>;
-  // TODO (once #7 is merged): Modify this list API for dashboard pages to
-  // retrieve the list of verified/unverified wallets of a user, to enable user
-  // flows/UX.
-  /** List verified wallets for a project scope, newest first. */
-  listByProject(scope: VerifiedWalletScope): Promise<PrivateChannelVerifiedWalletRow[]>;
+  /**
+   * Remove a verified wallet after a successful SPC delete. Returns true if a
+   * row was deleted. Single-writer contract as for upsert.
+   */
+  deleteByScopeAndPubkey(
+    scope: VerifiedWalletScope,
+    userId: string,
+    pubkey: string
+  ): Promise<boolean>;
+  /** List a single user's verified wallets within a project scope, newest first. */
+  listByProjectAndUser(
+    scope: VerifiedWalletScope,
+    userId: string
+  ): Promise<PrivateChannelVerifiedWalletRow[]>;
 }
 
 export function mapPrivateChannelVerifiedWalletRow(
@@ -63,6 +68,7 @@ export function mapPrivateChannelVerifiedWalletRow(
     id: row.id as string,
     organization_id: row.organization_id as string,
     project_id: row.project_id as string,
+    user_id: row.user_id as string,
     instance_id: row.instance_id as string,
     wallet_id: row.wallet_id as string,
     pubkey: row.pubkey as string,

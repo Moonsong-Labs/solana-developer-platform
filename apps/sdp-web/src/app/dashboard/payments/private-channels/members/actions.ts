@@ -8,23 +8,11 @@ import {
   invitePrivateChannelUser as inviteCall,
   removeChannelMembership as removeChannelMembershipCall,
 } from "@/lib/private-channels";
-import { createSdpApiClient } from "@/lib/sdp-api";
+import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
 
 const MEMBERS_PATH = "/dashboard/payments/private-channels/members";
 
 export type ActionResult<T = void> = { ok: true; value: T } | { ok: false; message: string };
-
-function errorMessage(error: unknown): string {
-  if (!(error instanceof Error)) return "Unknown error.";
-  const match = /^SDP API request failed \(\d+\):\s*([\s\S]*)$/.exec(error.message);
-  if (!match) return error.message;
-  try {
-    const parsed = JSON.parse(match[1] ?? "") as { error?: { message?: string } };
-    return parsed.error?.message ?? error.message;
-  } catch {
-    return match[1] ?? error.message;
-  }
-}
 
 export async function inviteMemberAction(
   userId: string
@@ -35,7 +23,7 @@ export async function inviteMemberAction(
     revalidatePath(MEMBERS_PATH);
     return { ok: true, value };
   } catch (error) {
-    return { ok: false, message: errorMessage(error) };
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }
 
@@ -46,7 +34,7 @@ export async function deleteMemberAction(id: string): Promise<ActionResult> {
     revalidatePath(MEMBERS_PATH);
     return { ok: true, value: undefined };
   } catch (error) {
-    return { ok: false, message: errorMessage(error) };
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }
 
@@ -60,7 +48,7 @@ export async function addToChannelAction(
     revalidatePath(MEMBERS_PATH);
     return { ok: true, value: undefined };
   } catch (error) {
-    return { ok: false, message: errorMessage(error) };
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }
 
@@ -74,6 +62,6 @@ export async function removeFromChannelAction(
     revalidatePath(MEMBERS_PATH);
     return { ok: true, value: undefined };
   } catch (error) {
-    return { ok: false, message: errorMessage(error) };
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }

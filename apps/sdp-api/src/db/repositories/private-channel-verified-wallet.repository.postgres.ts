@@ -11,27 +11,14 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
   db: AppDb
 ): PrivateChannelVerifiedWalletRepository {
   return {
-    async getByScopeAndPubkey(scope: VerifiedWalletScope, pubkey: string) {
-      const row = await db
-        .prepare(
-          `SELECT * FROM private_channel_verified_wallets
-             WHERE organization_id = ?
-               AND project_id = ?
-               AND pubkey = ?`
-        )
-        .bind(scope.organizationId, scope.projectId, pubkey)
-        .first<Record<string, unknown>>();
-      return row ? mapPrivateChannelVerifiedWalletRow(row) : null;
-    },
-
     async upsert(input: UpsertVerifiedWalletInput) {
       const row = await db
         .prepare(
           `INSERT INTO private_channel_verified_wallets (
-               id, organization_id, project_id, instance_id,
+               id, organization_id, project_id, user_id, instance_id,
                wallet_id, pubkey
-             ) VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT (organization_id, project_id, pubkey) DO UPDATE
+             ) VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (organization_id, project_id, user_id, pubkey) DO UPDATE
                SET instance_id = excluded.instance_id,
                    wallet_id = excluded.wallet_id,
                    verified_at = sdp_iso_now(),
@@ -42,6 +29,7 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
           generatePrivateChannelVerifiedWalletId(),
           input.organizationId,
           input.projectId,
+          input.userId,
           input.instanceId,
           input.walletId,
           input.pubkey
@@ -53,15 +41,31 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
       return mapPrivateChannelVerifiedWalletRow(row);
     },
 
-    async listByProject(scope: VerifiedWalletScope) {
+    async deleteByScopeAndPubkey(scope: VerifiedWalletScope, userId: string, pubkey: string) {
+      const row = await db
+        .prepare(
+          `DELETE FROM private_channel_verified_wallets
+             WHERE organization_id = ?
+               AND project_id = ?
+               AND user_id = ?
+               AND pubkey = ?
+          RETURNING id`
+        )
+        .bind(scope.organizationId, scope.projectId, userId, pubkey)
+        .first<Record<string, unknown>>();
+      return row !== null;
+    },
+
+    async listByProjectAndUser(scope: VerifiedWalletScope, userId: string) {
       const result = await db
         .prepare(
           `SELECT * FROM private_channel_verified_wallets
              WHERE organization_id = ?
                AND project_id = ?
+               AND user_id = ?
              ORDER BY verified_at DESC`
         )
-        .bind(scope.organizationId, scope.projectId)
+        .bind(scope.organizationId, scope.projectId, userId)
         .all<Record<string, unknown>>();
       return (result.results ?? []).map(mapPrivateChannelVerifiedWalletRow);
     },

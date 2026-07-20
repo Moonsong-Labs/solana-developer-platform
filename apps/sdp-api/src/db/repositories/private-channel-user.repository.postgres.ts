@@ -20,7 +20,6 @@ function mapUserRow(row: Record<string, unknown>): PrivateChannelUserRow {
     spc_user_id: (row.spc_user_id ?? null) as string | null,
     spc_username: (row.spc_username ?? null) as string | null,
     spc_credential_ciphertext: (row.spc_credential_ciphertext ?? null) as string | null,
-    wallet_verified: Boolean(row.wallet_verified),
     invited_by: (row.invited_by ?? null) as string | null,
     invite_token: (row.invite_token ?? null) as string | null,
     invited_at: row.invited_at as string,
@@ -30,13 +29,12 @@ function mapUserRow(row: Record<string, unknown>): PrivateChannelUserRow {
   };
 }
 
-function mapUserWithIdentityRow(
-  row: Record<string, unknown>
-): PrivateChannelUserWithIdentityRow {
+function mapUserWithIdentityRow(row: Record<string, unknown>): PrivateChannelUserWithIdentityRow {
   return {
     ...mapUserRow(row),
     user_email: row.user_email as string,
     user_name: (row.user_name ?? null) as string | null,
+    verified_wallet_count: Number(row.verified_wallet_count ?? 0),
   };
 }
 
@@ -57,7 +55,10 @@ function mapMembershipWithChannelRow(
 const USER_SELECT = `
   pcu.*,
   u.email AS user_email,
-  u.name  AS user_name
+  u.name  AS user_name,
+  (
+    SELECT COUNT(*) FROM private_channel_verified_wallets vw WHERE vw.user_id = pcu.id
+  ) AS verified_wallet_count
 `;
 
 export function createPostgresPrivateChannelUserRepository(

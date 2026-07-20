@@ -1,0 +1,152 @@
+import { PrivateChannelError } from "@sdp/private-channels";
+import * as authPkg from "@sdp/private-channels/auth";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as repositories from "@/db/repositories";
+import type { ApiKeyContext } from "@/lib/auth";
+import { SigningError } from "@/services/ports";
+import * as solana from "@/services/solana";
+import type { Env } from "@/types/env";
+import * as spcSession from "./auth/spc-session";
+import { deletePrivateChannelWallet, verifyPrivateChannelWallet } from "./wallets";
+
+// Uses vi.spyOn (+ restoreAllMocks) rather than vi.mock: the sdp-api test pools
+// share module state across files (isolate: false / workers pool), so a
+// module-level vi.mock of widely-used modules like @/db/repositories would leak
+// into unrelated test files. Spies are transient and restored per test.
+
+const PUBKEY = "So11111111111111111111111111111111111111112";
+const WALLET_ID = "wal_1";
+
+const auth = {
+  organizationId: "org_1",
+  userId: "usr_1",
+  authType: "session",
+} as unknown as ApiKeyContext;
+
+const instance = {
+  id: "pci_1",
+  organization_id: "org_1",
+  project_id: "prj_1",
+  use_auth: true,
+  auth_url: "http://auth.local:8903",
+} as unknown as repositories.PrivateChannelInstanceRow;
+
+const pcUser = { id: "pcu_1" } as unknown as repositories.PrivateChannelUserRow;
+
+const env = {} as Env;
+
+let client: {
+  challengeWallet: ReturnType<typeof vi.fn>;
+  verifyWallet: ReturnType<typeof vi.fn>;
+  deleteWallet: ReturnType<typeof vi.fn>;
+  login: ReturnType<typeof vi.fn>;
+};
+let verifiedRepo: {
+  upsert: ReturnType<typeof vi.fn>;
+  deleteByScopeAndPubkey: ReturnType<typeof vi.fn>;
+  listByProjectAndUser: ReturnType<typeof vi.fn>;
+};
+
+beforeEach(() => {
+  verifiedRepo = {
+    upsert: vi.fn().mockResolvedValue({
+      id: "pcvw_1",
+      wallet_id: WALLET_ID,
+      pubkey: PUBKEY,
+      verified_at: "2026-07-20T00:00:00Z",
+    }),
+    deleteByScopeAndPubkey: vi.fn().mockResolvedValue(true),
+    listByProjectAndUser: vi.fn(),
+  };
+  client = {
+    challengeWallet: vi
+      .fn()
+      .mockResolvedValue({ message: "sign me", nonce: "n1", expires_at: "l" }),
+    verifyWallet: vi.fn().mockResolvedValue({ pubkey: PUBKEY, created_at: "x" }),
+    deleteWallet: vi.fn().mockResolvedValue(undefined),
+    login: vi.fn(),
+  };
+
+  vi.spyOn(repositories, "createPrivateChannelInstanceRepository").mockReturnValue({
+    getActiveByProject: vi.fn().mockResolvedValue(instance),
+  } as never);
+  vi.spyOn(repositories, "createPrivateChannelUserRepository").mockReturnValue({
+    findByProjectAndUser: vi.fn().mockResolvedValue(pcUser),
+  } as never);
+  vi.spyOn(repositories, "createPrivateChannelVerifiedWalletRepository").mockReturnValue(
+    verifiedRepo as never
+  );
+  vi.spyOn(authPkg, "createAuthClient").mockReturnValue(client as never);
+  vi.spyOn(spcSession, "getSpcSession").mockResolvedValue({ token: "jwt", username: "u" });
+  vi.spyOn(solana, "createOrgSigner").mockResolvedValue({
+    address: PUBKEY,
+    signMessages: vi.fn().mockResolvedValue([{ [PUBKEY]: new Uint8Array(64) }]),
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("verifyPrivateChannelWallet", () => {
+  it("treats an SPC 409 (already verified) as success and still upserts the mirror", async () => {
+    client.verifyWallet.mockRejectedValue(
+      new PrivateChannelError("CONFLICT", "wallet already verified")
+    );
+
+    const { row } = await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
+
+    expect(verifiedRepo.upsert).toHaveBeenCalledTimes(1);
+    expect(row.pubkey).toBe(PUBKEY);
+  });
+
+  it("rethrows a non-CONFLICT SPC error and does not upsert", async () => {
+    client.verifyWallet.mockRejectedValue(new PrivateChannelError("UNAUTHORIZED", "bad token"));
+
+    await expect(verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID)).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    expect(verifiedRepo.upsert).not.toHaveBeenCalled();
+  });
+
+  it("resolves the signer before requesting the SPC challenge", async () => {
+    await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
+    const signerOrder = vi.mocked(solana.createOrgSigner).mock.invocationCallOrder[0];
+    const challengeOrder = client.challengeWallet.mock.invocationCallOrder[0];
+    expect(signerOrder).toBeLessThan(challengeOrder);
+  });
+
+  it("propagates a SigningError unwrapped (so onError maps it, e.g. 404) and skips the challenge", async () => {
+    vi.spyOn(solana, "createOrgSigner").mockRejectedValue(
+      new SigningError("Custody wallet not found", "WALLET_NOT_FOUND")
+    );
+
+    await expect(
+      verifyPrivateChannelWallet(env, auth, "prj_1", "wal_missing")
+    ).rejects.toBeInstanceOf(SigningError);
+    expect(client.challengeWallet).not.toHaveBeenCalled();
+  });
+});
+
+describe("deletePrivateChannelWallet", () => {
+  it("swallows an SPC 'not associated' 400 and still removes the mirror row", async () => {
+    client.deleteWallet.mockRejectedValue(
+      new PrivateChannelError("BAD_REQUEST", "wallet not associated with this user")
+    );
+
+    const { deleted } = await deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY);
+
+    expect(client.deleteWallet).toHaveBeenCalledTimes(1);
+    expect(verifiedRepo.deleteByScopeAndPubkey).toHaveBeenCalledTimes(1);
+    expect(deleted).toBe(true);
+  });
+
+  it("rethrows a real SPC failure and does not remove the mirror row", async () => {
+    client.deleteWallet.mockRejectedValue(new PrivateChannelError("AUTH_UNAVAILABLE", "down"));
+
+    await expect(deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY)).rejects.toMatchObject({
+      code: "AUTH_UNAVAILABLE",
+    });
+    expect(verifiedRepo.deleteByScopeAndPubkey).not.toHaveBeenCalled();
+  });
+});

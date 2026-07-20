@@ -3,7 +3,7 @@
 import type { PrivateChannelDto } from "@sdp/types";
 import { revalidatePath } from "next/cache";
 import { createPrivateChannel, deletePrivateChannel } from "@/lib/private-channels";
-import { createSdpApiClient } from "@/lib/sdp-api";
+import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
 
 const CHANNELS_PATH = "/dashboard/payments/private-channels/channels";
 
@@ -29,7 +29,7 @@ export async function createChannelAction(input: {
     revalidatePath(CHANNELS_PATH);
     return { ok: true, channel };
   } catch (error) {
-    return { ok: false, message: extractApiMessage(error) };
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }
 
@@ -42,19 +42,6 @@ export async function deleteChannelAction(id: string): Promise<DeleteChannelResu
     revalidatePath(CHANNELS_PATH);
     return { ok: true };
   } catch (error) {
-    return { ok: false, message: extractApiMessage(error) };
-  }
-}
-
-/** Pull the human-readable message out of the `SDP API request failed (409): {json}` shape. */
-function extractApiMessage(error: unknown): string {
-  if (!(error instanceof Error)) return "Unknown error.";
-  const match = /^SDP API request failed \(\d+\):\s*([\s\S]*)$/.exec(error.message);
-  if (!match) return error.message;
-  try {
-    const payload = JSON.parse(match[1] ?? "") as { error?: { message?: string } };
-    return payload.error?.message ?? error.message;
-  } catch {
-    return error.message;
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }

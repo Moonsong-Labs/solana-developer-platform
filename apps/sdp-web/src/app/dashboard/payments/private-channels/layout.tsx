@@ -6,9 +6,7 @@ import { PrivateChannelsHeaderTabs } from "./private-channels-header-tabs";
 async function isInstanceConnected(): Promise<boolean> {
   try {
     const client = await createSdpApiClient();
-    const res = await client.fetch<PrivateChannelInstanceEnvelope>(
-      "/v1/private-channels/instance"
-    );
+    const res = await client.fetch<PrivateChannelInstanceEnvelope>("/v1/private-channels/instance");
     return res.instance?.isActive === true;
   } catch {
     return false;
