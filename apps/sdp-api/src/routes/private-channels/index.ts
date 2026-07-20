@@ -71,24 +71,37 @@ instance.post(
 instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
 privateChannels.route("/instance", instance);
 
+// INTERIM GATE: balance + deposits touch financial data and act on custody wallets,
+// but the member/verified-wallet visibility model (from the merged user-mgmt work) is
+// not yet wired into these routes — a project member could otherwise read arbitrary
+// SPC balances or deposit to arbitrary addresses. Until wallet verification lands and
+// we can gate to "own verified wallet / channels you belong to", restrict to project
+// ADMINS (`projects:admin`, required IN ADDITION to payments:*). See handler TODOs.
+
 // --- /balance -------------------------------------------------------------
 // Read an owner's channel token balance (per wallet+mint) through the gateway.
-// Balances are shared across the wallet's channels; see the handler's TODO on the
-// visibility gate that later member-modeling slices must add.
-privateChannels.get("/balance", requirePermissions("payments:read"), getPrivateChannelBalance);
+privateChannels.get(
+  "/balance",
+  requirePermissions("payments:read", "projects:admin"),
+  getPrivateChannelBalance
+);
 
 // --- /deposits ------------------------------------------------------------
 // Escrow deposits from a custody wallet into the instance (devnet), tracked
 // prepared -> submitted -> confirmed -> credited.
 privateChannels.post(
   "/deposits",
-  requirePermissions("payments:write"),
+  requirePermissions("payments:write", "projects:admin"),
   createPrivateChannelDeposit
 );
-privateChannels.get("/deposits", requirePermissions("payments:read"), listPrivateChannelDeposits);
+privateChannels.get(
+  "/deposits",
+  requirePermissions("payments:read", "projects:admin"),
+  listPrivateChannelDeposits
+);
 privateChannels.get(
   "/deposits/:id",
-  requirePermissions("payments:read"),
+  requirePermissions("payments:read", "projects:admin"),
   getPrivateChannelDepositById
 );
 
