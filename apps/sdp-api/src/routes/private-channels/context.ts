@@ -1,8 +1,12 @@
 import type { Context } from "hono";
 import {
+  createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelUserRepository,
+  createProjectUserRepository,
 } from "@/db/repositories";
+import { createPrivateChannelEventService } from "@/services/private-channels/event.service";
 import type { Env } from "@/types/env";
 
 /** Hono request context bound to the app `Env`. */
@@ -14,4 +18,20 @@ export function getPrivateChannelInstanceRepository(c: AppContext) {
 
 export function getPrivateChannelRepository(c: AppContext) {
   return createPrivateChannelRepository(c.env);
+}
+
+export function getPrivateChannelEventRepository(c: AppContext) {
+  return createPrivateChannelEventRepository(c.env);
+}
+
+export function getPrivateChannelEventService(c: AppContext) {
+  return createPrivateChannelEventService(c.env);
+}
+
+export function getPrivateChannelUserRepository(c: AppContext) {
+  return createPrivateChannelUserRepository(c.env);
+}
+
+export function getProjectUserRepository(c: AppContext) {
+  return createProjectUserRepository(c.env);
 }

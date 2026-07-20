@@ -8,15 +8,17 @@
  */
 
 /** Machine-readable error classifications, each mapped to an HTTP status below. */
-export type PrivateChannelErrorCode = "BAD_REQUEST" | "INTERNAL_ERROR";
+export type PrivateChannelErrorCode = "BAD_REQUEST" | "CONFLICT" | "INTERNAL_ERROR";
 
 const ERROR_STATUS_CODES: Record<PrivateChannelErrorCode, number> = {
   BAD_REQUEST: 400,
+  CONFLICT: 409,
   INTERNAL_ERROR: 500,
 };
 
 const DEFAULT_ERROR_MESSAGES: Record<PrivateChannelErrorCode, string> = {
   BAD_REQUEST: "Invalid request",
+  CONFLICT: "Resource already exists",
   INTERNAL_ERROR: "An internal error occurred",
 };
 

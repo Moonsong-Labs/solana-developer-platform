@@ -3,6 +3,8 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import {
   createPrivateChannelBodySchema,
   errorResponseSchema,
+  privateChannelEventListSchema,
+  privateChannelEventsQuerySchema,
   privateChannelHealthQuerySchema,
   privateChannelHealthSchema,
   privateChannelIdParamSchema,
@@ -224,6 +226,51 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelSchema)),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/channels/{id}/events",
+    tags: [TAG],
+    summary: "List activity events for a channel",
+    operationId: "listPrivateChannelEvents",
+    description:
+      "Paginated activity feed for a channel (newest first). Includes instance-level lifecycle events (channel_id null) for the active instance. Paginate with the opaque `before` cursor from `nextCursor`.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      params: privateChannelIdParamSchema,
+      query: privateChannelEventsQuerySchema,
+    },
+    responses: {
+      200: {
+        description: "Events page",
+        content: jsonContent(successResponseSchema(privateChannelEventListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/events",
+    tags: [TAG],
+    summary: "List activity events for the project",
+    operationId: "listProjectPrivateChannelEvents",
+    description:
+      "Project-scoped activity feed across all instances and channels (newest first). Instance-independent, so retained history stays readable after an instance is deleted. Paginate with the opaque `before` cursor from `nextCursor`.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      query: privateChannelEventsQuerySchema,
+    },
+    responses: {
+      200: {
+        description: "Events page",
+        content: jsonContent(successResponseSchema(privateChannelEventListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 500]),
     },
   });
 

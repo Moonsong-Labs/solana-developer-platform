@@ -159,12 +159,24 @@ export type {
 export { createPostgresPolicyRepository } from "./policy.repository.postgres";
 export type {
   CreatePrivateChannelInput,
+  PrivateChannelRef,
   PrivateChannelRepository,
   PrivateChannelRepositoryContext,
   PrivateChannelRow,
+  PrivateChannelScope,
+  ProjectChannelRef,
 } from "./private-channel.repository";
 export { generatePrivateChannelId } from "./private-channel.repository";
 export { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
+export type {
+  ListPrivateChannelEventsParams,
+  PrivateChannelEventRepository,
+  PrivateChannelEventRepositoryContext,
+  PrivateChannelEventRow,
+  PrivateChannelEventWriteInput,
+} from "./private-channel-event.repository";
+export { generatePrivateChannelEventId } from "./private-channel-event.repository";
+export { createPostgresPrivateChannelEventRepository } from "./private-channel-event.repository.postgres";
 export type {
   CreateActiveInstanceInput,
   FindByGatewayInput,
@@ -180,6 +192,21 @@ export {
 } from "./private-channel-instance.repository";
 export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 export type {
+  AddMembershipInput,
+  CreatePrivateChannelUserInput,
+  PrivateChannelMembershipRow,
+  PrivateChannelMembershipWithChannelRow,
+  PrivateChannelUserRepository,
+  PrivateChannelUserRepositoryContext,
+  PrivateChannelUserRow,
+  PrivateChannelUserWithIdentityRow,
+} from "./private-channel-user.repository";
+export {
+  generatePrivateChannelMembershipId,
+  generatePrivateChannelUserId,
+} from "./private-channel-user.repository";
+export { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
+export type {
   PrivateChannelVerifiedWalletRepository,
   PrivateChannelVerifiedWalletRepositoryContext,
   PrivateChannelVerifiedWalletRow,
@@ -191,6 +218,12 @@ export {
   mapPrivateChannelVerifiedWalletRow,
 } from "./private-channel-verified-wallet.repository";
 export { createPostgresPrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository.postgres";
+export type {
+  ProjectUserRepository,
+  ProjectUserRepositoryContext,
+  ProjectUserRow,
+} from "./project-user.repository";
+export { createPostgresProjectUserRepository } from "./project-user.repository.postgres";
 export {
   createAssetProfilesRepository,
   createCounterpartiesRepository,
@@ -200,9 +233,12 @@ export {
   createPaymentsRepository,
   createPaymentTransferBatchesRepository,
   createPolicyRepository,
+  createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelUserRepository,
   createPrivateChannelVerifiedWalletRepository,
+  createProjectUserRepository,
   createTokenRepository,
 } from "./repository-factory";
 export type {

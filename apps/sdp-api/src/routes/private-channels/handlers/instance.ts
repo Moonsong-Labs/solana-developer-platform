@@ -1,4 +1,8 @@
-import type { PrivateChannelInstanceEnvelope, PrivateChannelInstanceResponse } from "@sdp/types";
+import {
+  PRIVATE_CHANNEL_EVENT_TYPES,
+  type PrivateChannelInstanceEnvelope,
+  type PrivateChannelInstanceResponse,
+} from "@sdp/types";
 import { z } from "zod";
 import { mapPrivateChannelInstanceRow, type PrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
@@ -7,6 +11,7 @@ import { success } from "@/lib/response";
 import { verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository, getPrivateChannelRepository } from "../context";
+import { emitLifecycle } from "../helpers";
 import { connectPrivateChannelInstanceSchema } from "../schemas";
 
 export const getPrivateChannelInstance = async (c: AppContext) => {
@@ -102,15 +107,26 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
     throw badRequest("Failed to persist the private channel instance.");
   }
 
+  await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED, {
+    payload: { gatewayUrl: row.gateway_url },
+  });
+
   // Ensure the instance's default channel exists once connected. Idempotent +
   // best-effort: a hiccup here must not fail the connect (the channels list
-  // endpoint ensures the default too).
+  // endpoint ensures the default too). Emitted after connect so the feed reads
+  // in chronological order.
   try {
-    await getPrivateChannelRepository(c).getOrCreateDefault({
+    const { channel, created } = await getPrivateChannelRepository(c).getOrCreateDefault({
       instanceId: row.id,
       organizationId: row.organization_id,
       projectId: row.project_id,
     });
+    if (created) {
+      await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
+        channelId: channel.id,
+        payload: { name: channel.name, isDefault: true },
+      });
+    }
   } catch (error) {
     console.warn("connectPrivateChannelInstance: failed to ensure default channel", {
       organizationId: auth.organizationId,
@@ -138,6 +154,10 @@ export const disconnectPrivateChannelInstance = async (c: AppContext) => {
     throw notFound("Active private channel instance");
   }
 
+  await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_DISCONNECTED, {
+    payload: { gatewayUrl: row.gateway_url },
+  });
+
   const response: PrivateChannelInstanceResponse = {
     instance: mapPrivateChannelInstanceRow(row),
   };
@@ -149,10 +169,17 @@ export const deletePrivateChannelInstance = async (c: AppContext) => {
   const projectId = requireProjectId(c);
 
   const repo = getPrivateChannelInstanceRepository(c);
-  const deleted = await repo.deleteActive({
-    organizationId: auth.organizationId,
-    projectId,
+  const scope = { organizationId: auth.organizationId, projectId };
+  const active = await repo.getActiveByProject(scope);
+  if (!active) {
+    throw notFound("Active private channel instance");
+  }
+
+  await emitLifecycle(c, active, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_DISCONNECTED, {
+    payload: { gatewayUrl: active.gateway_url, reason: "deleted" },
   });
+
+  const deleted = await repo.deleteActive(scope);
   if (!deleted) {
     throw notFound("Active private channel instance");
   }

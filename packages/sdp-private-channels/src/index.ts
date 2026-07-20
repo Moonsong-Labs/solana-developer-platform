@@ -1,3 +1,11 @@
+export {
+  spcLogin,
+  spcRegister,
+  type SpcLoginInput,
+  type SpcLoginResult,
+  type SpcRegisteredUser,
+  type SpcRegisterInput,
+} from "./auth";
 export * from "./channels";
 export { SANDBOX_DEFAULTS } from "./constants";
 export {

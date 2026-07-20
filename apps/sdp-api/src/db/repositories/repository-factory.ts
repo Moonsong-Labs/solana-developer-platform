@@ -20,10 +20,16 @@ import type { PolicyRepository } from "./policy.repository";
 import { createPostgresPolicyRepository } from "./policy.repository.postgres";
 import type { PrivateChannelRepository } from "./private-channel.repository";
 import { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
+import type { PrivateChannelEventRepository } from "./private-channel-event.repository";
+import { createPostgresPrivateChannelEventRepository } from "./private-channel-event.repository.postgres";
 import type { PrivateChannelInstanceRepository } from "./private-channel-instance.repository";
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
+import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
+import { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
 import type { PrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository";
 import { createPostgresPrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository.postgres";
+import type { ProjectUserRepository } from "./project-user.repository";
+import { createPostgresProjectUserRepository } from "./project-user.repository.postgres";
 import type { TokenRepository } from "./token.repository";
 import { createPostgresTokenRepository } from "./token.repository.postgres";
 
@@ -81,4 +87,16 @@ export function createPrivateChannelVerifiedWalletRepository(
   env: Env
 ): PrivateChannelVerifiedWalletRepository {
   return createPostgresPrivateChannelVerifiedWalletRepository(getDb(env));
+}
+
+export function createPrivateChannelEventRepository(env: Env): PrivateChannelEventRepository {
+  return createPostgresPrivateChannelEventRepository(getDb(env));
+}
+
+export function createPrivateChannelUserRepository(env: Env): PrivateChannelUserRepository {
+  return createPostgresPrivateChannelUserRepository(getDb(env));
+}
+
+export function createProjectUserRepository(env: Env): ProjectUserRepository {
+  return createPostgresProjectUserRepository(getDb(env));
 }
