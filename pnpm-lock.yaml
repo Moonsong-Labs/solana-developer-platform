@@ -680,6 +680,28 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/sdp-spc-withdraw:
+    dependencies:
+      '@solana-program/token':
+        specifier: 'catalog:'
+        version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
+    devDependencies:
+      '@codama/renderers-js':
+        specifier: ^2.2.0
+        version: 2.3.0(typescript@6.0.3)
+      codama:
+        specifier: ^1.6.0
+        version: 1.8.0
+      tsx:
+        specifier: 4.22.4
+        version: 4.22.4
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/sdp-types:
     dependencies:
       '@solana/addresses':
