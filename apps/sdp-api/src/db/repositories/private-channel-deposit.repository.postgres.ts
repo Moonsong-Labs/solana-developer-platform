@@ -22,6 +22,10 @@ function mapRow(row: Record<string, unknown>): PrivateChannelDepositRow {
     mint: row.mint as string,
     amount: row.amount as string,
     baseline_credited: row.baseline_credited as string,
+    gateway_url: (row.gateway_url ?? "") as string,
+    chain_rpc_url: (row.chain_rpc_url ?? "") as string,
+    escrow_program_id: (row.escrow_program_id ?? "") as string,
+    escrow_instance_addr: (row.escrow_instance_addr ?? "") as string,
     status: row.status as PrivateChannelDepositRow["status"],
     signature: (row.signature ?? null) as string | null,
     failure_reason: (row.failure_reason ?? null) as string | null,
@@ -39,8 +43,9 @@ export function createPostgresPrivateChannelDepositRepository(
         .prepare(
           `INSERT INTO private_channel_deposits (
                id, organization_id, project_id, instance_id, wallet_id,
-               depositor, recipient, mint, amount, baseline_credited
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               depositor, recipient, mint, amount, baseline_credited,
+               gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING *`
         )
         .bind(
@@ -53,7 +58,11 @@ export function createPostgresPrivateChannelDepositRepository(
           input.recipient,
           input.mint,
           input.amount,
-          input.baselineCredited
+          input.baselineCredited,
+          input.gatewayUrl,
+          input.chainRpcUrl,
+          input.escrowProgramId,
+          input.escrowInstanceAddr
         )
         .first<Record<string, unknown>>();
       return row ? mapRow(row) : null;
@@ -62,6 +71,8 @@ export function createPostgresPrivateChannelDepositRepository(
     async updateDeposit(input: UpdateDepositInput) {
       // COALESCE keeps the existing signature/failure_reason when the transition
       // doesn't supply them (e.g. confirmed->credited leaves the signature intact).
+      // The optional `expectedStatus` adds a compare-and-swap guard so a concurrent
+      // worker can't regress/overwrite state (returns null when the row moved on).
       const row = await db
         .prepare(
           `UPDATE private_channel_deposits
@@ -70,9 +81,17 @@ export function createPostgresPrivateChannelDepositRepository(
                   failure_reason = COALESCE(?, failure_reason),
                   updated_at = sdp_iso_now()
             WHERE id = ?
+              AND (?::text IS NULL OR status = ?)
           RETURNING *`
         )
-        .bind(input.status, input.signature ?? null, input.failureReason ?? null, input.id)
+        .bind(
+          input.status,
+          input.signature ?? null,
+          input.failureReason ?? null,
+          input.id,
+          input.expectedStatus ?? null,
+          input.expectedStatus ?? null
+        )
         .first<Record<string, unknown>>();
       return row ? mapRow(row) : null;
     },
@@ -127,6 +146,17 @@ export function createPostgresPrivateChannelDepositRepository(
         .bind(scope.instanceId, scope.recipient, scope.mint)
         .all<Record<string, unknown>>();
       return result.results.map(mapRow);
+    },
+
+    async countNonTerminalByInstance(instanceId: string) {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*)::int AS count FROM private_channel_deposits
+             WHERE instance_id = ? AND status IN ('prepared', 'submitted', 'confirmed')`
+        )
+        .bind(instanceId)
+        .first<{ count: number }>();
+      return row?.count ?? 0;
     },
   };
 }

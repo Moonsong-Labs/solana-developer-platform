@@ -56,7 +56,9 @@ describe("confirmAndPersistDeposit", () => {
       signature: SIGNATURE,
     });
 
-    expect(repo.updateDeposit).toHaveBeenCalledWith({ id: "dep_1", status: "confirmed" });
+    expect(repo.updateDeposit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "dep_1", status: "confirmed", expectedStatus: "submitted" })
+    );
   });
 
   it("marks the deposit failed only on a real on-chain error", async () => {

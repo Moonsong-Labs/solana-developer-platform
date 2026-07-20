@@ -3,35 +3,33 @@
  *
  * Reconciles non-terminal deposits each cron tick:
  *  1. `prepared` with no signature, stuck > 5 min → failed (never broadcast).
- *  2. `submitted` with a signature → getSignatureStatuses on the instance chain →
+ *  2. `submitted` with a signature → getSignatureStatuses on the deposit's chain →
  *     `confirmed` / `failed`; signature not found + stale → failed.
- *  3. `confirmed` → credited, using CUMULATIVE accounting per (instance, recipient,
- *     mint): the gateway only exposes an aggregate balance, so a single balance
- *     increase must be attributed to exactly one deposit. See `planDepositCredits`.
+ *  3. `confirmed` → credited, grouped per (instance, recipient, mint) with cumulative
+ *     accounting (see `planDepositCredits`).
  *
- * Each deposit is reconciled against the EXACT instance that received it
- * (`instance_id`, incl. inactive), not the project's currently-active instance —
- * so a disconnect/reconnect can't point the reconciler at the wrong chain/gateway.
+ * Each deposit is reconciled against its OWN snapshotted config (`chain_rpc_url` /
+ * `gateway_url` captured at intent time), NOT the instance's current row — so a
+ * reconnect that changes the instance config can't move the chain/gateway a pending
+ * deposit is reconciled against. All status transitions are compare-and-swap
+ * (`expectedStatus`) so a concurrent worker can't regress state, and each terminal
+ * credit emits a `transfer.deposit.credited` activity event.
  */
 
 import * as solanaRpc from "@sdp/rpc/solana";
-import type { PrivateChannelInstance } from "@sdp/types";
 import type { Signature } from "@solana/kit";
 import {
   createPrivateChannelDepositRepository,
-  createPrivateChannelInstanceRepository,
-  mapPrivateChannelInstanceRow,
   type PrivateChannelDepositRepository,
   type PrivateChannelDepositRow,
 } from "@/db/repositories";
 import { getChannelBalance } from "@/services/private-channels";
+import { emitDepositEvent } from "@/services/private-channels/deposit-events";
 import type { Env } from "@/types/env";
 import { planDepositCredits } from "./deposit-credit";
 
 const STUCK_AFTER_MS = 5 * 60 * 1000;
 const MAX_PER_RUN = 100;
-
-type LoadInstance = (instanceId: string) => Promise<PrivateChannelInstance | null>;
 
 export async function trackPendingDeposits(env: Env): Promise<void> {
   const repo = createPrivateChannelDepositRepository(env);
@@ -43,37 +41,18 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
     return;
   }
 
-  const instanceRepo = createPrivateChannelInstanceRepository(env);
-  const instanceCache = new Map<string, PrivateChannelInstance | null>();
-  const loadInstance: LoadInstance = async (instanceId) => {
-    const cached = instanceCache.get(instanceId);
-    if (cached !== undefined) {
-      return cached;
-    }
-    // Load the deposit's OWN instance (any is_active state), not the active one.
-    const row = await instanceRepo.getById(instanceId);
-    const instance = row ? mapPrivateChannelInstanceRow(row) : null;
-    instanceCache.set(instanceId, instance);
-    return instance;
-  };
-
   const now = Date.now();
 
-  // Phase 1 — prepared/submitted, per deposit.
+  // Phase 1 — prepared/submitted, per deposit (against its own snapshot config).
   for (const deposit of pending) {
     if (deposit.status === "confirmed") {
       continue; // handled by the grouped credit pass below.
     }
     try {
-      const instance = await loadInstance(deposit.instance_id);
-      // Instance deleted (not just deactivated): can't reconcile; leave as-is.
-      if (!instance) {
-        continue;
-      }
       if (deposit.status === "prepared") {
         await failIfStale(repo, deposit, now, "Deposit was never broadcast.");
       } else if (deposit.status === "submitted") {
-        await reconcileSubmitted(env, repo, deposit, instance, now);
+        await reconcileSubmitted(env, repo, deposit, now);
       }
     } catch (err) {
       logReconcileError(deposit.id, deposit.status, err);
@@ -98,7 +77,7 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
   }
   for (const group of groups.values()) {
     try {
-      await reconcileCreditGroup(env, repo, loadInstance, group);
+      await reconcileCreditGroup(env, repo, group);
     } catch (err) {
       console.error("trackPendingDeposits: failed to reconcile credit group", {
         instanceId: group.instanceId,
@@ -139,16 +118,20 @@ async function failIfStale(
     return;
   }
   if (now - Date.parse(deposit.updated_at) > STUCK_AFTER_MS) {
-    await repo.updateDeposit({ id: deposit.id, status: "failed", failureReason: reason });
+    await repo.updateDeposit({
+      id: deposit.id,
+      status: "failed",
+      failureReason: reason,
+      expectedStatus: deposit.status,
+    });
   }
 }
 
-/** submitted → confirmed/failed via on-chain signature status. */
+/** submitted → confirmed/failed via on-chain signature status (deposit's own chain). */
 async function reconcileSubmitted(
   env: Env,
   repo: PrivateChannelDepositRepository,
   deposit: PrivateChannelDepositRow,
-  instance: PrivateChannelInstance,
   now: number
 ): Promise<void> {
   if (!deposit.signature) {
@@ -156,7 +139,8 @@ async function reconcileSubmitted(
     return;
   }
 
-  const rpc = solanaRpc.createRpc(env, { rpcUrl: instance.chainRpcUrl });
+  // Query the snapshotted chain RPC — not the instance's (possibly-changed) current one.
+  const rpc = solanaRpc.createRpc(env, { rpcUrl: deposit.chain_rpc_url });
   const [status] = await solanaRpc.getSignatureStatuses(rpc, [deposit.signature as Signature]);
 
   if (!status) {
@@ -166,6 +150,7 @@ async function reconcileSubmitted(
         id: deposit.id,
         status: "failed",
         failureReason: "Deposit transaction not found on chain.",
+        expectedStatus: "submitted",
       });
     }
     return;
@@ -176,12 +161,13 @@ async function reconcileSubmitted(
       id: deposit.id,
       status: "failed",
       failureReason: JSON.stringify(status.err),
+      expectedStatus: "submitted",
     });
     return;
   }
 
   if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
-    await repo.updateDeposit({ id: deposit.id, status: "confirmed" });
+    await repo.updateDeposit({ id: deposit.id, status: "confirmed", expectedStatus: "submitted" });
   }
 }
 
@@ -189,23 +175,30 @@ async function reconcileSubmitted(
 async function reconcileCreditGroup(
   env: Env,
   repo: PrivateChannelDepositRepository,
-  loadInstance: LoadInstance,
   group: DepositCreditGroup
 ): Promise<void> {
-  const instance = await loadInstance(group.instanceId);
-  if (!instance) {
+  const deposits = await repo.listDepositsForRecipient(group);
+  if (deposits.length === 0) {
     return;
   }
 
-  const deposits = await repo.listDepositsForRecipient(group);
+  // Read the recipient's channel balance via the group's snapshotted gateway.
+  const snapshot = deposits[0];
   const balance = await getChannelBalance(env, {
-    instance,
+    instance: { gatewayUrl: snapshot.gateway_url, chainRpcUrl: snapshot.chain_rpc_url },
     owner: group.recipient,
     mint: group.mint,
   });
 
   const toCredit = planDepositCredits(deposits, BigInt(balance.amount), balance.decimals);
   for (const id of toCredit) {
-    await repo.updateDeposit({ id, status: "credited" });
+    const updated = await repo.updateDeposit({
+      id,
+      status: "credited",
+      expectedStatus: "confirmed",
+    });
+    if (updated) {
+      await emitDepositEvent(env, updated, "transfer.deposit.credited", "confirmed");
+    }
   }
 }

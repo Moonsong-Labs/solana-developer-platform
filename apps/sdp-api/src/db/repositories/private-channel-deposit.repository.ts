@@ -17,6 +17,11 @@ export interface PrivateChannelDepositRow {
   amount: string;
   /** Recipient channel balance (base units) captured at intent time; internal. */
   baseline_credited: string;
+  /** Instance config snapshotted at intent time — the reconciler's fixed context. */
+  gateway_url: string;
+  chain_rpc_url: string;
+  escrow_program_id: string;
+  escrow_instance_addr: string;
   status: PrivateChannelDepositStatus;
   signature: string | null;
   failure_reason: string | null;
@@ -37,6 +42,11 @@ export interface CreateDepositInput extends DepositProjectScope {
   mint: string;
   amount: string;
   baselineCredited: string;
+  /** Instance config snapshot (immutable reconciliation context). */
+  gatewayUrl: string;
+  chainRpcUrl: string;
+  escrowProgramId: string;
+  escrowInstanceAddr: string;
 }
 
 export interface UpdateDepositInput {
@@ -46,6 +56,11 @@ export interface UpdateDepositInput {
   signature?: string | null;
   /** Set on failure; ignored (kept) when omitted. */
   failureReason?: string | null;
+  /**
+   * Compare-and-swap guard: when set, the update only applies if the row is still
+   * in this status. Prevents concurrent workers from regressing/overwriting state.
+   */
+  expectedStatus?: PrivateChannelDepositStatus;
 }
 
 export interface ListDepositsByStatusInput {
@@ -78,6 +93,9 @@ export interface PrivateChannelDepositRepository {
    * attribute a single channel-balance increase to exactly one deposit.
    */
   listDepositsForRecipient(scope: DepositRecipientScope): Promise<PrivateChannelDepositRow[]>;
+  /** Count non-terminal (prepared/submitted/confirmed) deposits for an instance —
+   * the delete guard: an instance can't be deleted while deposits are in flight. */
+  countNonTerminalByInstance(instanceId: string): Promise<number>;
 }
 
 export function mapPrivateChannelDepositRow(row: PrivateChannelDepositRow): PrivateChannelDeposit {

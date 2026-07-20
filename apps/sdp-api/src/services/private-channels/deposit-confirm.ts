@@ -34,9 +34,14 @@ export async function confirmAndPersistDeposit(
         id: input.depositId,
         status: "failed",
         failureReason: "Deposit transaction failed on-chain.",
+        expectedStatus: "submitted",
       });
     }
-    return repo.updateDeposit({ id: input.depositId, status: "confirmed" });
+    return repo.updateDeposit({
+      id: input.depositId,
+      status: "confirmed",
+      expectedStatus: "submitted",
+    });
   } catch {
     // Transport/timeout confirming — leave `submitted`; the reconciler will pick
     // it up and confirm or fail it based on the on-chain signature status.

@@ -10,7 +10,11 @@ import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
-import { getPrivateChannelInstanceRepository, getPrivateChannelRepository } from "../context";
+import {
+  getPrivateChannelDepositRepository,
+  getPrivateChannelInstanceRepository,
+  getPrivateChannelRepository,
+} from "../context";
 import { emitLifecycle } from "../helpers";
 import { connectPrivateChannelInstanceSchema } from "../schemas";
 
@@ -173,6 +177,18 @@ export const deletePrivateChannelInstance = async (c: AppContext) => {
   const active = await repo.getActiveByProject(scope);
   if (!active) {
     throw notFound("Active private channel instance");
+  }
+
+  // Deposits are financial records that survive instance deletion, but deleting an
+  // instance with IN-FLIGHT deposits would strand their reconciliation. Reject it.
+  const inFlight = await getPrivateChannelDepositRepository(c).countNonTerminalByInstance(
+    active.id
+  );
+  if (inFlight > 0) {
+    throw new AppError(
+      "CONFLICT",
+      `Cannot delete this instance: ${inFlight} deposit(s) are still in flight. Wait for them to settle or fail first.`
+    );
   }
 
   await emitLifecycle(c, active, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_DISCONNECTED, {
