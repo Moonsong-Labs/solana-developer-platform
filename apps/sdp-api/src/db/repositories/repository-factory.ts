@@ -22,8 +22,14 @@ import type { PrivateChannelRepository } from "./private-channel.repository";
 import { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
 import type { PrivateChannelDepositRepository } from "./private-channel-deposit.repository";
 import { createPostgresPrivateChannelDepositRepository } from "./private-channel-deposit.repository.postgres";
+import type { PrivateChannelEventRepository } from "./private-channel-event.repository";
+import { createPostgresPrivateChannelEventRepository } from "./private-channel-event.repository.postgres";
 import type { PrivateChannelInstanceRepository } from "./private-channel-instance.repository";
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
+import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
+import { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
+import type { ProjectUserRepository } from "./project-user.repository";
+import { createPostgresProjectUserRepository } from "./project-user.repository.postgres";
 import type { TokenRepository } from "./token.repository";
 import { createPostgresTokenRepository } from "./token.repository.postgres";
 
@@ -79,4 +85,16 @@ export function createPrivateChannelRepository(env: Env): PrivateChannelReposito
 
 export function createPrivateChannelDepositRepository(env: Env): PrivateChannelDepositRepository {
   return createPostgresPrivateChannelDepositRepository(getDb(env));
+}
+
+export function createPrivateChannelEventRepository(env: Env): PrivateChannelEventRepository {
+  return createPostgresPrivateChannelEventRepository(getDb(env));
+}
+
+export function createPrivateChannelUserRepository(env: Env): PrivateChannelUserRepository {
+  return createPostgresPrivateChannelUserRepository(getDb(env));
+}
+
+export function createProjectUserRepository(env: Env): ProjectUserRepository {
+  return createPostgresProjectUserRepository(getDb(env));
 }

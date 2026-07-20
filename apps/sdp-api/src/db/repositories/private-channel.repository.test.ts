@@ -21,9 +21,10 @@ async function seedInstance(db: ReturnType<typeof getDb>, id: string): Promise<v
       `INSERT INTO private_channel_instances
          (id, organization_id, project_id, gateway_url, chain_rpc_url,
           escrow_program_id, withdraw_program_id, escrow_instance_addr, is_active)
-       VALUES (?, ?, ?, 'http://gw', 'http://rpc', 'prog1', 'prog2', 'escrow1', ?)`
+       VALUES (?, ?, ?, ?, 'http://rpc', 'prog1', 'prog2', 'escrow1', ?)`
     )
-    .bind(id, TEST_ORG_ID, TEST_PROJECT_ID, id === TEST_INSTANCE_ID ? 1 : 0)
+    // gateway_url is unique per (project, gateway); each instance needs its own.
+    .bind(id, TEST_ORG_ID, TEST_PROJECT_ID, `http://gw/${id}`, id === TEST_INSTANCE_ID ? 1 : 0)
     .run();
 }
 
@@ -66,7 +67,8 @@ describe("PrivateChannelRepository (postgres)", () => {
 
   describe("getOrCreateDefault", () => {
     it("creates the default channel on first call", async () => {
-      const channel = await repo.getOrCreateDefault(SCOPE);
+      const { channel, created } = await repo.getOrCreateDefault(SCOPE);
+      expect(created).toBe(true);
       expect(channel.id).toMatch(/^pch_/);
       expect(channel.organization_id).toBe(TEST_ORG_ID);
       expect(channel.project_id).toBe(TEST_PROJECT_ID);
@@ -79,7 +81,9 @@ describe("PrivateChannelRepository (postgres)", () => {
     it("is idempotent — a second call returns the same row, one default total", async () => {
       const first = await repo.getOrCreateDefault(SCOPE);
       const second = await repo.getOrCreateDefault(SCOPE);
-      expect(second.id).toBe(first.id);
+      expect(first.created).toBe(true);
+      expect(second.created).toBe(false);
+      expect(second.channel.id).toBe(first.channel.id);
 
       const rows = await repo.listChannels({ instanceId: TEST_INSTANCE_ID });
       expect(rows.filter((r) => r.is_default)).toHaveLength(1);
@@ -89,7 +93,8 @@ describe("PrivateChannelRepository (postgres)", () => {
       const named = await repo.createChannel({ ...SCOPE, name: "Default", description: null });
       expect(named?.is_default).toBe(false);
 
-      const def = await repo.getOrCreateDefault(SCOPE);
+      const { channel: def, created } = await repo.getOrCreateDefault(SCOPE);
+      expect(created).toBe(true);
       expect(def.is_default).toBe(true);
       expect(def.name).not.toBe("Default");
     });

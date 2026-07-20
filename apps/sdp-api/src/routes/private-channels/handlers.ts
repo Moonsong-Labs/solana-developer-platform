@@ -5,6 +5,7 @@ export {
   getPrivateChannelDepositById,
   listPrivateChannelDeposits,
 } from "./handlers/deposits";
+export { listChannelEvents, listProjectEvents } from "./handlers/events";
 export { getPrivateChannelHealth } from "./handlers/health";
 export {
   connectPrivateChannelInstance,
@@ -12,5 +13,14 @@ export {
   disconnectPrivateChannelInstance,
   getPrivateChannelInstance,
 } from "./handlers/instance";
+export {
+  addChannelMembership,
+  deletePrivateChannelUser,
+  getAuthenticatedPrivateChannelUser,
+  getPrivateChannelUser,
+  invitePrivateChannelUser,
+  listPrivateChannelUsers,
+  removeChannelMembership,
+} from "./handlers/members";
 export { getPrivateChannelOverview } from "./handlers/overview";
 export { probePrivateChannelConnection } from "./handlers/probe";

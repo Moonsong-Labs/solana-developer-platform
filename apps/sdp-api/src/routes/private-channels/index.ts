@@ -5,21 +5,30 @@ import { requirePermissions, unifiedAuthMiddleware } from "@/middleware/auth";
 import { projectContextMiddleware } from "@/middleware/project-context";
 import type { Env } from "@/types/env";
 import {
+  addChannelMembership,
   connectPrivateChannelInstance,
   createChannel,
   createPrivateChannelDeposit,
   deleteChannel,
   deletePrivateChannelInstance,
+  deletePrivateChannelUser,
   disconnectPrivateChannelInstance,
+  getAuthenticatedPrivateChannelUser,
   getChannel,
   getPrivateChannelBalance,
   getPrivateChannelDepositById,
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
+  getPrivateChannelUser,
+  invitePrivateChannelUser,
+  listChannelEvents,
   listChannels,
   listPrivateChannelDeposits,
+  listPrivateChannelUsers,
+  listProjectEvents,
   probePrivateChannelConnection,
+  removeChannelMembership,
 } from "./handlers";
 
 const privateChannels = new Hono<{ Bindings: Env }>();
@@ -83,11 +92,49 @@ privateChannels.get(
   getPrivateChannelDepositById
 );
 
+// --- /events --------------------------------------------------------------
+privateChannels.get("/events", requirePermissions("payments:read"), listProjectEvents);
+
 // --- /channels ------------------------------------------------------------
 // Logical channels: instance-scoped metadata, enforced entirely by SDP.
 privateChannels.get("/channels", requirePermissions("payments:read"), listChannels);
 privateChannels.post("/channels", requirePermissions("payments:write"), createChannel);
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
+privateChannels.get("/channels/:id/events", requirePermissions("payments:read"), listChannelEvents);
 privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
+
+// --- /channels/:channelId/memberships -------------------------------------
+// Junction between a channel and an invited workspace user.
+privateChannels.post(
+  "/channels/:channelId/memberships",
+  requirePermissions("payments:write"),
+  addChannelMembership
+);
+privateChannels.delete(
+  "/channels/:channelId/memberships/:privateChannelUserId",
+  requirePermissions("payments:write"),
+  removeChannelMembership
+);
+
+// --- /users ---------------------------------------------------------------
+// Workspace-level invites: one row per SDP user with SPC credentials.
+privateChannels.get("/users", requirePermissions("payments:read"), listPrivateChannelUsers);
+privateChannels.post("/users", requirePermissions("payments:write"), invitePrivateChannelUser);
+// /users/me must come before /users/:id so `me` isn't matched as a param.
+privateChannels.get(
+  "/users/me",
+  requirePermissions("payments:read"),
+  getAuthenticatedPrivateChannelUser
+);
+privateChannels.get(
+  "/users/:privateChannelUserId",
+  requirePermissions("payments:read"),
+  getPrivateChannelUser
+);
+privateChannels.delete(
+  "/users/:privateChannelUserId",
+  requirePermissions("payments:write"),
+  deletePrivateChannelUser
+);
 
 export default privateChannels;

@@ -67,13 +67,13 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
     async getOrCreateDefault(scope) {
       const existing = await getDefaultInternal(db, scope.instanceId);
       if (existing) {
-        return existing;
+        return { channel: existing, created: false };
       }
 
       await insertDefault(db, scope, DEFAULT_PRIVATE_CHANNEL_NAME);
       const created = await getDefaultInternal(db, scope.instanceId);
       if (created) {
-        return created;
+        return { channel: created, created: true };
       }
 
       // Canonical name is held by a non-default channel and no default exists —
@@ -87,7 +87,7 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
       if (!fallback) {
         throw new Error("Failed to ensure the default private channel.");
       }
-      return fallback;
+      return { channel: fallback, created: true };
     },
 
     async createChannel({ instanceId, organizationId, projectId, name, description }) {
@@ -131,6 +131,21 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
         .bind(channelId, instanceId)
         .run();
       return rowsAffected > 0;
+    },
+
+    async findInProject({ organizationId, projectId, channelId }) {
+      const row = await db
+        .prepare(
+          `SELECT c.*
+             FROM private_channels c
+             INNER JOIN private_channel_instances i ON i.id = c.instance_id
+            WHERE c.id = ?
+              AND i.organization_id = ?
+              AND i.project_id = ?`
+        )
+        .bind(channelId, organizationId, projectId)
+        .first<Record<string, unknown>>();
+      return row ? mapPrivateChannelRow(row) : null;
     },
   };
 }

@@ -9,6 +9,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./auth": {
+      "types": "./src/auth.ts",
+      "import": "./src/auth.ts",
+      "default": "./src/auth.ts"
+    },
     "./channels": {
       "types": "./src/channels.ts",
       "import": "./src/channels.ts",

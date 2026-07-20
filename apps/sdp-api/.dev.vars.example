@@ -24,6 +24,8 @@
 # SIGNING_PROVIDER=local
 # CUSTODY_PRIVATE_KEY=<base58-encoded keypair>
 # CUSTODY_ENCRYPTION_KEY=<base64-encoded 256-bit key>  # required for any custody provider — encrypts stored wallet secrets
+# SPC_CREDENTIAL_ENCRYPTION_KEY=<base64-encoded 256-bit key>  # required for Private Channels invites — encrypts stored SPC user passwords
+# Generate either with: openssl rand -base64 32
 #
 # Fee payment: native (Use it if you don't want to use Kora — that points at the Solana Foundation's
 # public endpoint and adds an external dependency. Defaults to "kora" when unset.)

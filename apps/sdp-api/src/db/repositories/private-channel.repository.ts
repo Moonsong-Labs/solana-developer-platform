@@ -24,6 +24,14 @@ export interface PrivateChannelRef {
   channelId: string;
 }
 
+/** Scope for looking a channel up by project (used by handlers that don't
+ *  yet know which instance owns it — the join enforces the tenancy check). */
+export interface ProjectChannelRef {
+  organizationId: string;
+  projectId: string;
+  channelId: string;
+}
+
 export interface PrivateChannelRepositoryContext {
   db: RepositoryDbClient;
 }
@@ -34,8 +42,11 @@ export interface PrivateChannelRepository {
    * Race-safe (the one-default-per-instance partial unique index collapses
    * concurrent creates); falls back to a suffixed name if a non-default channel
    * already holds the canonical "Default" name.
+   * `created` is true when this call inserted the default row.
    */
-  getOrCreateDefault(params: PrivateChannelScope): Promise<PrivateChannelRow>;
+  getOrCreateDefault(
+    params: PrivateChannelScope
+  ): Promise<{ channel: PrivateChannelRow; created: boolean }>;
   /** Create a named (non-default) channel. Returns null on duplicate name. */
   createChannel(input: CreatePrivateChannelInput): Promise<PrivateChannelRow | null>;
   /** List the instance's active channels, newest first. */
@@ -47,4 +58,7 @@ export interface PrivateChannelRepository {
    * archived. Callers must guard the default channel.
    */
   archiveChannel(params: PrivateChannelRef): Promise<boolean>;
+  /** Fetch a channel via its project — verifies the channel belongs to an
+   *  instance owned by the given project. Null when not found or out of scope. */
+  findInProject(params: ProjectChannelRef): Promise<PrivateChannelRow | null>;
 }
