@@ -95,6 +95,9 @@ importers:
       '@sdp/spc-escrow':
         specifier: workspace:*
         version: link:../../packages/sdp-spc-escrow
+      '@sdp/spc-withdraw':
+        specifier: workspace:*
+        version: link:../../packages/sdp-spc-withdraw
       '@sdp/types':
         specifier: workspace:*
         version: link:../../packages/sdp-types
@@ -420,6 +423,12 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.2)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/kit-augment:
+    dependencies:
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
+
   packages/sdp-api-integration:
     dependencies:
       '@sdp/private-channels':
@@ -660,6 +669,9 @@ importers:
 
   packages/sdp-spc-escrow:
     dependencies:
+      '@sdp/kit-augment':
+        specifier: workspace:*
+        version: link:../kit-augment
       '@solana-program/token':
         specifier: 'catalog:'
         version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
@@ -682,6 +694,9 @@ importers:
 
   packages/sdp-spc-withdraw:
     dependencies:
+      '@sdp/kit-augment':
+        specifier: workspace:*
+        version: link:../kit-augment
       '@solana-program/token':
         specifier: 'catalog:'
         version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))

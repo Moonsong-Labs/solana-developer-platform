@@ -1,4 +1,4 @@
-import { address, createNoopSigner } from "@solana/kit";
+import { type Address, address, createNoopSigner } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 import {
   DEPOSIT_DISCRIMINATOR,
@@ -14,7 +14,7 @@ const MINT = address("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 const PAYER = address("J231K9UEpS4y4KAPwGc4gsMNCjKFRMYcQBcjVW7vBhVi");
 const USER = address("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 
-async function buildDeposit(recipient: string | null = null) {
+async function buildDeposit(recipient: Address | null = null) {
   return getDepositInstructionAsync({
     payer: createNoopSigner(PAYER),
     user: createNoopSigner(USER),

@@ -49,6 +49,7 @@
     "@sdp/private-channels": "workspace:*",
     "@sdp/rpc": "workspace:*",
     "@sdp/spc-escrow": "workspace:*",
+    "@sdp/spc-withdraw": "workspace:*",
     "@sdp/solana": "workspace:*",
     "@sdp/types": "workspace:*",
     "@sentry/cloudflare": "^10.57.0",
