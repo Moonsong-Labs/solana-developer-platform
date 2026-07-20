@@ -11,6 +11,7 @@ import type {
   PrivateChannelInstanceOverview,
   PrivateChannelUserDto,
   PrivateChannelVerifiedWalletDto,
+  PrivateChannelWithdrawal,
 } from "@sdp/types";
 import type { SdpApiClient } from "@/lib/sdp-api";
 
@@ -118,6 +119,37 @@ export function createPrivateChannelDeposit(
   body: { walletId: string; amount: string; recipient?: string }
 ): Promise<PrivateChannelDeposit> {
   return client.fetch<PrivateChannelDeposit>("/v1/private-channels/deposits", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** List the project's withdrawals, newest first. */
+export async function fetchPrivateChannelWithdrawals(
+  client: SdpApiClient
+): Promise<PrivateChannelWithdrawal[]> {
+  const { withdrawals } = await client.fetch<{ withdrawals: PrivateChannelWithdrawal[] }>(
+    "/v1/private-channels/withdrawals"
+  );
+  return withdrawals;
+}
+
+/** Read one withdrawal (poll for status transitions). */
+export function fetchPrivateChannelWithdrawal(
+  client: SdpApiClient,
+  id: string
+): Promise<PrivateChannelWithdrawal> {
+  return client.fetch<PrivateChannelWithdrawal>(
+    `/v1/private-channels/withdrawals/${encodeURIComponent(id)}`
+  );
+}
+
+/** Create a withdrawal: burn a custody wallet's channel balance for later devnet release. */
+export function createPrivateChannelWithdrawal(
+  client: SdpApiClient,
+  body: { walletId: string; amount: string; destination?: string }
+): Promise<PrivateChannelWithdrawal> {
+  return client.fetch<PrivateChannelWithdrawal>("/v1/private-channels/withdrawals", {
     method: "POST",
     body: JSON.stringify(body),
   });
