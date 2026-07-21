@@ -24,6 +24,7 @@ import {
   type PrivateChannelDepositRow,
 } from "@/db/repositories";
 import { getChannelBalance } from "@/services/private-channels";
+import { resolveOwnerGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
 import { emitDepositEvent } from "@/services/private-channels/deposit-events";
 import type { Env } from "@/types/env";
 import { planDepositCredits } from "./deposit-credit";
@@ -69,6 +70,8 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
     const key = creditGroupKey(deposit);
     if (!groups.has(key)) {
       groups.set(key, {
+        organizationId: deposit.organization_id,
+        projectId: deposit.project_id,
         instanceId: deposit.instance_id,
         recipient: deposit.recipient,
         mint: deposit.mint,
@@ -90,6 +93,9 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
 }
 
 interface DepositCreditGroup {
+  /** Tenancy scope — needed to resolve the recipient's SPC identity for gateway auth. */
+  organizationId: string;
+  projectId: string;
   instanceId: string;
   recipient: string;
   mint: string;
@@ -182,21 +188,51 @@ async function reconcileCreditGroup(
     return;
   }
 
+  // The gateway JWT-gates balance reads. The cron has no request user, so derive
+  // the SPC identity from the data: the recipient's VERIFIED wallet maps the pubkey
+  // back to the member whose credential can mint a token. `unavailable` (e.g. an
+  // external/unverified recipient) skips this group rather than failing the tick —
+  // those deposits stay `confirmed` for manual resolution.
+  const gatewayAuth = await resolveOwnerGatewayAuth(env, {
+    organizationId: group.organizationId,
+    projectId: group.projectId,
+    instanceId: group.instanceId,
+    owner: group.recipient,
+  });
+  if (gatewayAuth.kind === "unavailable") {
+    console.warn("trackPendingDeposits: skipping credit group, gateway auth unavailable", {
+      instanceId: group.instanceId,
+      recipient: group.recipient,
+      mint: group.mint,
+      reason: gatewayAuth.reason,
+    });
+    return;
+  }
+
   // Read the recipient's channel balance via the group's snapshotted gateway.
+  // A deposit row written before the snapshot columns existed can carry EMPTY urls.
+  // Never build a gateway client from an empty URL — that throws "Invalid URL: " and
+  // takes down the whole group, including healthy deposits that DO have a snapshot.
+  // Pick a deposit that actually carries one; skip the group if none does.
   //
-  // TODO(gateway-auth): this read is UNAUTHENTICATED and will 401 on an
-  // auth-enabled instance, stalling credit detection at `confirmed`. The request
-  // paths mint the caller's SPC session (`resolveGatewayAuthToken`), but the cron
-  // has no user identity, so it has no member to log in as. Resolving it needs a
-  // deliberate choice of SPC identity — e.g. map the recipient pubkey back to its
-  // member via `private_channel_verified_wallets` (needs a by-pubkey lookup, which
-  // that repository doesn't expose yet) or introduce a service/operator SPC user.
-  // Track with the settlement-ledger rework; see DEPOSIT_REVIEW_FIXES.md.
-  const snapshot = deposits[0];
+  // NOTE: this still assumes every deposit in the group shares one config. When
+  // snapshots legitimately diverge, the group should be keyed by the snapshot
+  // itself — tracked as finding #3 in DEPOSIT_REVIEW_FIXES.md.
+  const snapshot = deposits.find((deposit) => deposit.gateway_url && deposit.chain_rpc_url);
+  if (!snapshot) {
+    console.warn("trackPendingDeposits: skipping credit group with no usable config snapshot", {
+      instanceId: group.instanceId,
+      recipient: group.recipient,
+      mint: group.mint,
+    });
+    return;
+  }
+
   const balance = await getChannelBalance(env, {
     instance: { gatewayUrl: snapshot.gateway_url, chainRpcUrl: snapshot.chain_rpc_url },
     owner: group.recipient,
     mint: group.mint,
+    authToken: gatewayAuth.kind === "token" ? gatewayAuth.token : undefined,
   });
 
   const toCredit = planDepositCredits(deposits, BigInt(balance.amount), balance.decimals);

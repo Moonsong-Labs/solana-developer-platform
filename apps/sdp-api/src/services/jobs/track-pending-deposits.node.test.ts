@@ -20,6 +20,15 @@ vi.mock("@/services/private-channels", () => ({ getChannelBalance }));
 const { emitDepositEvent } = vi.hoisted(() => ({ emitDepositEvent: vi.fn() }));
 vi.mock("@/services/private-channels/deposit-events", () => ({ emitDepositEvent }));
 
+// Gateway auth for the cron: resolved from the recipient's verified wallet. Default
+// to an auth-less instance ("open"); individual tests override to assert behaviour.
+const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
+  resolveOwnerGatewayAuth: vi.fn(
+    async () => ({ kind: "open" }) as { kind: string; token?: string; reason?: string }
+  ),
+}));
+vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveOwnerGatewayAuth }));
+
 const { createRpc, getSignatureStatuses } = vi.hoisted(() => ({
   createRpc: vi.fn(() => ({})),
   getSignatureStatuses: vi.fn(),
@@ -56,6 +65,7 @@ function depositRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resolveOwnerGatewayAuth.mockResolvedValue({ kind: "open" });
   depositRepo.listDepositsForRecipient.mockResolvedValue([]);
   depositRepo.updateDeposit.mockImplementation(async (input: Record<string, unknown>) => ({
     ...input,
@@ -121,5 +131,45 @@ describe("trackPendingDeposits", () => {
       expect.objectContaining({ id: "b", status: "credited" })
     );
     expect(emitDepositEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes the recipient's SPC token to the gateway read on an auth-enabled instance", async () => {
+    const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
+    depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
+    depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
+    resolveOwnerGatewayAuth.mockResolvedValue({ kind: "token", token: "jwt-abc" });
+    getChannelBalance.mockResolvedValueOnce({ amount: "10", decimals: 0 });
+
+    await trackPendingDeposits({} as Env);
+
+    // The identity is derived from the credit recipient, in its tenancy scope.
+    expect(resolveOwnerGatewayAuth).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ owner: "recipient-1", instanceId: "inst-X" })
+    );
+    expect(getChannelBalance).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ authToken: "jwt-abc" })
+    );
+    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "a", status: "credited" })
+    );
+  });
+
+  it("skips the group (no crediting, no throw) when no SPC identity can be derived", async () => {
+    const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
+    depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
+    depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
+    resolveOwnerGatewayAuth.mockResolvedValue({
+      kind: "unavailable",
+      reason: "no verified wallet",
+    });
+
+    await expect(trackPendingDeposits({} as Env)).resolves.toBeUndefined();
+
+    // Never read the gateway, never credited — the deposit stays `confirmed`.
+    expect(getChannelBalance).not.toHaveBeenCalled();
+    expect(depositRepo.updateDeposit).not.toHaveBeenCalled();
+    expect(emitDepositEvent).not.toHaveBeenCalled();
   });
 });
