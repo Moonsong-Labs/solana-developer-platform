@@ -2,7 +2,6 @@
 
 import type { PrivateChannelDto } from "@sdp/types";
 import { Loader2Icon, Trash2Icon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +20,6 @@ function formatDate(iso: string): string {
 }
 
 export function ChannelsManager({ initialChannels }: Props) {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isCreating, startCreate] = useTransition();
@@ -41,7 +39,6 @@ export function ChannelsManager({ initialChannels }: Props) {
         toast.success(`Channel “${result.channel.name}” created.`);
         setName("");
         setDescription("");
-        router.refresh();
       } else {
         toast.error(result.message);
       }
@@ -54,7 +51,6 @@ export function ChannelsManager({ initialChannels }: Props) {
       const result = await deleteChannelAction(channel.id);
       if (result.ok) {
         toast.success(`Channel “${channel.name}” deleted.`);
-        router.refresh();
       } else {
         toast.error(result.message);
       }

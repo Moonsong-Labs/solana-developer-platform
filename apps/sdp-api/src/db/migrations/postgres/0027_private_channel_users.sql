@@ -1,7 +1,7 @@
 -- Private Channel users: SDP users invited to an SPC workspace, scoped to a
--- project. Kept as its own table so PC-specific state (SPC credential,
--- wallet_verified, invite bookkeeping) doesn't pollute the shared `users`
--- table. FK to users(id) preserves the identity link.
+-- project. Kept as its own table so PC-specific state (SPC credential, invite
+-- bookkeeping) doesn't pollute the shared `users` table. FK to users(id)
+-- preserves the identity link.
 --
 -- Revoke = hard-delete the row. FK cascades clean the channel memberships.
 
@@ -18,10 +18,6 @@ CREATE TABLE IF NOT EXISTS private_channel_users (
     spc_user_id TEXT,
     spc_username TEXT,
     spc_credential_ciphertext TEXT,
-
-    -- Access gate. Flipped later by the wallet-verification flow (not wired
-    -- yet in this iteration).
-    wallet_verified BOOLEAN NOT NULL DEFAULT false,
 
     invited_by TEXT,
     invite_token TEXT,

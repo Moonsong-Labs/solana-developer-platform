@@ -36,7 +36,7 @@ function toDto(
     userId: row.user_id,
     email: row.user_email,
     name: row.user_name,
-    walletVerified: row.wallet_verified,
+    verifiedWalletCount: row.verified_wallet_count,
     invitedAt: row.invited_at,
     channels,
   };

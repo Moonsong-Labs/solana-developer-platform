@@ -1,5 +1,4 @@
 export { mapPrivateChannelError } from "./errors";
-export { inviteMember, type InviteMemberInput, type InviteMemberResult } from "./members";
 export {
   createPrivateChannelEventService,
   type PrivateChannelEventInput,
@@ -7,8 +6,14 @@ export {
   PrivateChannelEventService,
   type PrivateChannelEventSink,
 } from "./event.service";
+export { type InviteMemberInput, type InviteMemberResult, inviteMember } from "./members";
 export {
   getInstanceOverview,
   probeInstanceHealth,
   verifyInstanceConnection,
 } from "./service";
+export {
+  deletePrivateChannelWallet,
+  listPrivateChannelWallets,
+  verifyPrivateChannelWallet,
+} from "./wallets";

@@ -1,10 +1,5 @@
-import type {
-  PrivateChannelInstance,
-  PrivateChannelInstanceOverview,
-  PrivateChannelUserDto,
-} from "@sdp/types";
+import type { PrivateChannelInstance, PrivateChannelInstanceOverview } from "@sdp/types";
 import { cn } from "@/lib/utils";
-import { VerifyWalletBanner } from "./verify-wallet-banner";
 
 type Tone = "ok" | "warn" | "bad";
 
@@ -58,84 +53,80 @@ function formatSol(lamports: number): string {
 interface Props {
   instance: PrivateChannelInstance;
   overview: PrivateChannelInstanceOverview;
-  /** Caller's own workspace-membership row for this project, or null. */
-  viewer: PrivateChannelUserDto | null;
 }
 
-export function InstanceOverviewCard({ instance, overview, viewer }: Props) {
+export function InstanceOverviewCard({ instance, overview }: Props) {
   const { gateway, chainRpc, escrowInstance, escrowProgram, auth } = overview;
   const gw = gatewayStatus(gateway.health);
-  const showVerifyBanner = viewer !== null && !viewer.walletVerified;
 
   return (
     <div className="space-y-6">
-      {showVerifyBanner ? <VerifyWalletBanner /> : null}
-
       <dl className="divide-y divide-border-extra-light">
-      <Row label="Gateway" primary={<StatusInline tone={gw.tone} label={gw.label} />} />
+        <Row label="Gateway" primary={<StatusInline tone={gw.tone} label={gw.label} />} />
 
-      <Row
-        label="Solana version"
-        primary={
-          chainRpc.ok
-            ? chainRpc.solanaVersion
-              ? `v${chainRpc.solanaVersion}`
-              : "—"
-            : <StatusInline tone="bad" label={chainRpc.error} />
-        }
-      />
-
-      <Row
-        label="Slot"
-        primary={gateway.channelSlot !== null ? gateway.channelSlot.toLocaleString() : "—"}
-      />
-
-      <Row
-        label="Latest blockhash"
-        primary={gateway.latestBlockhash ?? "—"}
-      />
-
-      <Row
-        label="Escrow instance"
-        primary={instance.escrowInstanceAddr}
-        detail={
-          escrowInstance.present ? (
-            <span>
-              {formatSol(escrowInstance.lamports)}
-              {escrowInstance.ownerMatchesProgram ? null : " · owner mismatch"}
-            </span>
-          ) : (
-            <StatusInline tone="bad" label={escrowInstance.error} />
-          )
-        }
-      />
-
-      <Row
-        label="Escrow program"
-        primary={instance.escrowProgramId}
-        detail={
-          escrowProgram.present ? (
-            <StatusInline
-              tone={escrowProgram.executable ? "ok" : "warn"}
-              label={escrowProgram.executable ? "on-chain" : "not executable"}
-            />
-          ) : (
-            <StatusInline tone="bad" label={escrowProgram.error} />
-          )
-        }
-      />
-
-      {auth ? (
         <Row
-          label="Auth service"
+          label="Solana version"
           primary={
-            <StatusInline
-              tone={auth.reachable ? "ok" : "bad"}
-              label={auth.reachable ? "reachable" : (auth.error ?? "unreachable")}
-            />
+            chainRpc.ok ? (
+              chainRpc.solanaVersion ? (
+                `v${chainRpc.solanaVersion}`
+              ) : (
+                "—"
+              )
+            ) : (
+              <StatusInline tone="bad" label={chainRpc.error} />
+            )
           }
         />
-      ) : null}
+
+        <Row
+          label="Slot"
+          primary={gateway.channelSlot !== null ? gateway.channelSlot.toLocaleString() : "—"}
+        />
+
+        <Row label="Latest blockhash" primary={gateway.latestBlockhash ?? "—"} />
+
+        <Row
+          label="Escrow instance"
+          primary={instance.escrowInstanceAddr}
+          detail={
+            escrowInstance.present ? (
+              <span>
+                {formatSol(escrowInstance.lamports)}
+                {escrowInstance.ownerMatchesProgram ? null : " · owner mismatch"}
+              </span>
+            ) : (
+              <StatusInline tone="bad" label={escrowInstance.error} />
+            )
+          }
+        />
+
+        <Row
+          label="Escrow program"
+          primary={instance.escrowProgramId}
+          detail={
+            escrowProgram.present ? (
+              <StatusInline
+                tone={escrowProgram.executable ? "ok" : "warn"}
+                label={escrowProgram.executable ? "on-chain" : "not executable"}
+              />
+            ) : (
+              <StatusInline tone="bad" label={escrowProgram.error} />
+            )
+          }
+        />
+
+        {auth ? (
+          <Row
+            label="Auth service"
+            primary={
+              <StatusInline
+                tone={auth.reachable ? "ok" : "bad"}
+                label={auth.reachable ? "reachable" : (auth.error ?? "unreachable")}
+              />
+            }
+          />
+        ) : null}
       </dl>
     </div>
   );

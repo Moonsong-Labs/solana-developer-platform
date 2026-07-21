@@ -1,10 +1,16 @@
 export {
-  spcLogin,
-  spcRegister,
+  createAuthClient,
+  type SpcAuthClient,
+  type SpcAuthClientOptions,
   type SpcLoginInput,
   type SpcLoginResult,
   type SpcRegisteredUser,
   type SpcRegisterInput,
+  type SpcVerifiedWallet,
+  type SpcWalletChallenge,
+  spcLogin,
+  spcRegister,
+  type VerifyWalletInput,
 } from "./auth";
 export * from "./channels";
 export { SANDBOX_DEFAULTS } from "./constants";

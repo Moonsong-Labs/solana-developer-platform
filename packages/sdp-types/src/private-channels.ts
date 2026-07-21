@@ -96,13 +96,27 @@ export interface CreatePrivateChannelRequest {
   description?: string;
 }
 
+/**
+ * A custody wallet that has completed the SPC challenge → verify handshake for
+ * the project's connected instance. Returned by the verify + list endpoints.
+ */
+export interface PrivateChannelVerifiedWalletDto {
+  id: string;
+  /** SDP managed custody wallet id (the `walletId` from GET /v1/wallets). */
+  walletId: string;
+  /** The verified Solana pubkey (base58). */
+  pubkey: string;
+  verifiedAt: string;
+}
+
 /** An SDP user invited to the SPC workspace, joined with `users` for display. */
 export interface PrivateChannelUserDto {
   id: string;
   userId: string;
   email: string;
   name: string | null;
-  walletVerified: boolean;
+  /** How many wallets this member has verified with the connected instance. */
+  verifiedWalletCount: number;
   invitedAt: string;
   /** Channels this user is a member of. */
   channels: PrivateChannelMembershipChannelDto[];

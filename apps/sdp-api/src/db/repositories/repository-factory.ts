@@ -26,6 +26,8 @@ import type { PrivateChannelInstanceRepository } from "./private-channel-instanc
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
 import { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
+import type { PrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository";
+import { createPostgresPrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository.postgres";
 import type { ProjectUserRepository } from "./project-user.repository";
 import { createPostgresProjectUserRepository } from "./project-user.repository.postgres";
 import type { TokenRepository } from "./token.repository";
@@ -79,6 +81,12 @@ export function createPrivateChannelInstanceRepository(env: Env): PrivateChannel
 
 export function createPrivateChannelRepository(env: Env): PrivateChannelRepository {
   return createPostgresPrivateChannelRepository(getDb(env));
+}
+
+export function createPrivateChannelVerifiedWalletRepository(
+  env: Env
+): PrivateChannelVerifiedWalletRepository {
+  return createPostgresPrivateChannelVerifiedWalletRepository(getDb(env));
 }
 
 export function createPrivateChannelEventRepository(env: Env): PrivateChannelEventRepository {

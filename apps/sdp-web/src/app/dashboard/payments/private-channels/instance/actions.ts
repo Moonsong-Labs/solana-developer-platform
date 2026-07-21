@@ -209,7 +209,8 @@ interface ErrorDetails {
 function extractError(payload: unknown): { details: ErrorDetails | null; message: string | null } {
   const record = isRecord(payload) ? payload : null;
   const errorField = record && isRecord(record.error) ? record.error : null;
-  const details = errorField && isRecord(errorField.details) ? (errorField.details as ErrorDetails) : null;
+  const details =
+    errorField && isRecord(errorField.details) ? (errorField.details as ErrorDetails) : null;
   const message = errorField && typeof errorField.message === "string" ? errorField.message : null;
   return { details, message };
 }

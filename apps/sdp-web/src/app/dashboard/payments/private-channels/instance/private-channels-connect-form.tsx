@@ -291,7 +291,9 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
   );
 }
 
-function gatewayStatus(gatewayResult: ConnectionProbeResult["gateway"] | null): StatusIndicator | null {
+function gatewayStatus(
+  gatewayResult: ConnectionProbeResult["gateway"] | null
+): StatusIndicator | null {
   if (!gatewayResult) return null;
   return {
     label:
