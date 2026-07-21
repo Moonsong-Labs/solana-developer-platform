@@ -3,7 +3,7 @@ import type { CustodyWalletSummary } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchCustodyWallets, fetchPrivateChannelInstance } from "@/lib/private-channels";
+import { fetchPrivateChannelInstance, fetchSignableCustodyWallets } from "@/lib/private-channels";
 import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { DepositForm } from "./deposit-form";
@@ -14,7 +14,7 @@ async function loadWallets(): Promise<CustodyWalletSummary[]> {
   if (!instance?.isActive) {
     redirect("/dashboard/payments/private-channels/instance");
   }
-  return fetchCustodyWallets(client);
+  return fetchSignableCustodyWallets(client);
 }
 
 export default async function PrivateChannelsDepositPage() {
