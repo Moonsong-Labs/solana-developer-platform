@@ -57,7 +57,13 @@ const USER_SELECT = `
   u.email AS user_email,
   u.name  AS user_name,
   (
-    SELECT COUNT(*) FROM private_channel_verified_wallets vw WHERE vw.user_id = pcu.id
+    SELECT COUNT(*)
+      FROM private_channel_verified_wallets vw
+     WHERE vw.user_id = pcu.id
+       AND vw.instance_id = (
+             SELECT id FROM private_channel_instances
+              WHERE project_id = pcu.project_id AND is_active = TRUE
+           )
   ) AS verified_wallet_count
 `;
 
