@@ -21,7 +21,6 @@ export interface PrivateChannelUserRow {
   spc_user_id: string | null;
   spc_username: string | null;
   spc_credential_ciphertext: string | null;
-  wallet_verified: boolean;
   invited_by: string | null;
   invite_token: string | null;
   invited_at: string;
@@ -30,10 +29,12 @@ export interface PrivateChannelUserRow {
   updated_at: string;
 }
 
-/** Row + joined columns from `users` (denormalized display fields). */
+/** Row + joined columns from `users` (denormalized display fields) + verified-wallet count. */
 export interface PrivateChannelUserWithIdentityRow extends PrivateChannelUserRow {
   user_email: string;
   user_name: string | null;
+  /** Number of wallets this member has verified (from private_channel_verified_wallets). */
+  verified_wallet_count: number;
 }
 
 export interface PrivateChannelMembershipRow {
@@ -79,16 +80,10 @@ export interface PrivateChannelUserRepository {
   listByProject(scope: ProjectScope): Promise<PrivateChannelUserWithIdentityRow[]>;
 
   /** Single row, joined with `users`. Null when not found or not in scope. */
-  getById(
-    scope: ProjectScope,
-    id: string
-  ): Promise<PrivateChannelUserWithIdentityRow | null>;
+  getById(scope: ProjectScope, id: string): Promise<PrivateChannelUserWithIdentityRow | null>;
 
   /** Duplicate-invite check before hitting SPC /register. */
-  findByProjectAndUser(
-    scope: ProjectScope,
-    userId: string
-  ): Promise<PrivateChannelUserRow | null>;
+  findByProjectAndUser(scope: ProjectScope, userId: string): Promise<PrivateChannelUserRow | null>;
 
   /** Same as findByProjectAndUser but joined with `users` for display. */
   getByProjectAndUser(

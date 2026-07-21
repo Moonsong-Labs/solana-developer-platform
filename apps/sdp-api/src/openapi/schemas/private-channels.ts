@@ -265,6 +265,43 @@ export const privateChannelDepositIdParamSchema = z.object({
     }),
 });
 
+export const privateChannelVerifiedWalletSchema = z
+  .object({
+    id: z.string().openapi({ example: "pcvw_9f1c..." }),
+    walletId: z
+      .string()
+      .openapi({ description: "SDP managed custody wallet id.", example: "wallet_123" }),
+    pubkey: solanaAddressSchema,
+    verifiedAt: z.string(),
+  })
+  .openapi({ description: "A custody wallet verified with the connected SPC instance." });
+
+export const privateChannelVerifiedWalletListSchema = z.object({
+  wallets: z.array(privateChannelVerifiedWalletSchema),
+});
+
+export const privateChannelVerifyWalletParamSchema = z.object({
+  walletId: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "walletId", in: "path" },
+      description: "SDP managed custody wallet id to verify.",
+      example: "wallet_123",
+    }),
+});
+
+export const privateChannelDeleteWalletParamSchema = z.object({
+  pubkey: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "pubkey", in: "path" },
+      description: "Verified wallet pubkey (base58) to revoke.",
+      example: "7C1Pu8...",
+    }),
+});
+
 export const privateChannelEventFamilySchema = z.enum(PRIVATE_CHANNEL_EVENT_FAMILY_VALUES);
 
 export const privateChannelEventStatusSchema = z.enum(PRIVATE_CHANNEL_EVENT_STATUS_VALUES);

@@ -10,6 +10,7 @@ import type {
   PrivateChannelInstanceEnvelope,
   PrivateChannelInstanceOverview,
   PrivateChannelUserDto,
+  PrivateChannelVerifiedWalletDto,
 } from "@sdp/types";
 import type { SdpApiClient } from "@/lib/sdp-api";
 
@@ -136,16 +137,6 @@ export async function fetchPrivateChannelUsers(
   return users;
 }
 
-/** Caller's own workspace membership for the active project, or null. */
-export async function fetchMyPrivateChannelUser(
-  client: SdpApiClient
-): Promise<PrivateChannelUserDto | null> {
-  const { user } = await client.fetch<{ user: PrivateChannelUserDto | null }>(
-    "/v1/private-channels/users/me"
-  );
-  return user;
-}
-
 /**
  * Invite an SDP project user to the SPC workspace. Returns the created user
  * DTO plus the invite URL (email is scaffolded — the admin can copy it).
@@ -192,4 +183,48 @@ export function removeChannelMembership(
     `/v1/private-channels/channels/${encodeURIComponent(channelId)}/memberships/${encodeURIComponent(privateChannelUserId)}`,
     { method: "DELETE" }
   );
+}
+
+/** The caller's custody wallets that have completed SPC verification, newest first. */
+export async function fetchVerifiedWallets(
+  client: SdpApiClient
+): Promise<PrivateChannelVerifiedWalletDto[]> {
+  const { wallets } = await client.fetch<{ wallets: PrivateChannelVerifiedWalletDto[] }>(
+    "/v1/private-channels/wallets"
+  );
+  return wallets;
+}
+
+/**
+ * Verify a custody wallet with the connected SPC instance (challenge → sign →
+ * verify, server-side). Returns the persisted verification.
+ */
+export async function verifyPrivateChannelWallet(
+  client: SdpApiClient,
+  walletId: string
+): Promise<PrivateChannelVerifiedWalletDto> {
+  const { wallet } = await client.fetch<{ wallet: PrivateChannelVerifiedWalletDto }>(
+    `/v1/private-channels/wallets/${encodeURIComponent(walletId)}/verify`,
+    { method: "POST" }
+  );
+  return wallet;
+}
+
+/** Revoke a wallet verification (SPC + SDP mirror) by pubkey. */
+export function deletePrivateChannelVerifiedWallet(
+  client: SdpApiClient,
+  pubkey: string
+): Promise<unknown> {
+  return client.fetch(`/v1/private-channels/wallets/${encodeURIComponent(pubkey)}`, {
+    method: "DELETE",
+  });
+}
+
+/** List the org's custody wallets across all providers (the verify picker source). */
+export async function fetchCustodyWallets(client: SdpApiClient): Promise<CustodyWalletSummary[]> {
+  const query = new URLSearchParams({ includeAllProviders: "true" }).toString();
+  const { wallets } = await client.fetch<{ wallets: CustodyWalletSummary[] }>(
+    `/v1/wallets?${query}`
+  );
+  return wallets;
 }

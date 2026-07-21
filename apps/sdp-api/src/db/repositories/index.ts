@@ -222,6 +222,17 @@ export {
 } from "./private-channel-user.repository";
 export { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
 export type {
+  PrivateChannelVerifiedWalletRepository,
+  PrivateChannelVerifiedWalletRow,
+  UpsertVerifiedWalletInput,
+  VerifiedWalletScope,
+} from "./private-channel-verified-wallet.repository";
+export {
+  generatePrivateChannelVerifiedWalletId,
+  mapPrivateChannelVerifiedWalletRow,
+} from "./private-channel-verified-wallet.repository";
+export { createPostgresPrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository.postgres";
+export type {
   ProjectUserRepository,
   ProjectUserRepositoryContext,
   ProjectUserRow,
@@ -241,6 +252,7 @@ export {
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
   createPrivateChannelUserRepository,
+  createPrivateChannelVerifiedWalletRepository,
   createProjectUserRepository,
   createTokenRepository,
 } from "./repository-factory";

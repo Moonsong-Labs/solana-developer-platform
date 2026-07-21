@@ -9,9 +9,7 @@ export default async function PrivateChannelsPage() {
   let target = "/dashboard/payments/private-channels/instance";
   try {
     const client = await createSdpApiClient();
-    const res = await client.fetch<PrivateChannelInstanceEnvelope>(
-      "/v1/private-channels/instance"
-    );
+    const res = await client.fetch<PrivateChannelInstanceEnvelope>("/v1/private-channels/instance");
     if (res.instance?.isActive) {
       target = "/dashboard/payments/private-channels/overview";
     }
