@@ -318,7 +318,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     summary: "Verify a custody wallet with the SPC auth service",
     operationId: "verifyPrivateChannelWallet",
     description:
-      "Runs the SPC challenge → sign → verify handshake for a custody wallet (any SDP provider), then records the verification. Idempotent per (project, member, wallet). Requires the connected instance to have auth enabled and the caller to be an invited member.",
+      "Runs the SPC challenge → sign → verify handshake for a custody wallet (any SDP provider), then records the verification. A member may verify many wallets; idempotent per (member, instance, wallet). Requires the connected instance to have auth enabled and the caller to be an invited member.",
     security: [{ apiKeyAuth: [] }],
     request: { headers: projectScopeHeaders, params: privateChannelVerifyWalletParamSchema },
     responses: {

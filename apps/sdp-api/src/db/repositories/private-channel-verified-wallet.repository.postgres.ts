@@ -4,7 +4,6 @@ import {
   mapPrivateChannelVerifiedWalletRow,
   type PrivateChannelVerifiedWalletRepository,
   type UpsertVerifiedWalletInput,
-  type VerifiedWalletScope,
 } from "./private-channel-verified-wallet.repository";
 
 export function createPostgresPrivateChannelVerifiedWalletRepository(
@@ -18,9 +17,8 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
                id, organization_id, project_id, user_id, instance_id,
                wallet_id, pubkey
              ) VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (organization_id, project_id, user_id, pubkey) DO UPDATE
-               SET instance_id = excluded.instance_id,
-                   wallet_id = excluded.wallet_id,
+             ON CONFLICT (user_id, instance_id, pubkey) DO UPDATE
+               SET wallet_id = excluded.wallet_id,
                    verified_at = sdp_iso_now(),
                    updated_at = sdp_iso_now()
           RETURNING *`
@@ -41,31 +39,29 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
       return mapPrivateChannelVerifiedWalletRow(row);
     },
 
-    async deleteByScopeAndPubkey(scope: VerifiedWalletScope, userId: string, pubkey: string) {
+    async deleteByUserInstanceAndPubkey(userId: string, instanceId: string, pubkey: string) {
       const row = await db
         .prepare(
           `DELETE FROM private_channel_verified_wallets
-             WHERE organization_id = ?
-               AND project_id = ?
-               AND user_id = ?
+             WHERE user_id = ?
+               AND instance_id = ?
                AND pubkey = ?
           RETURNING id`
         )
-        .bind(scope.organizationId, scope.projectId, userId, pubkey)
+        .bind(userId, instanceId, pubkey)
         .first<Record<string, unknown>>();
       return row !== null;
     },
 
-    async listByProjectAndUser(scope: VerifiedWalletScope, userId: string) {
+    async listByUserAndInstance(userId: string, instanceId: string) {
       const result = await db
         .prepare(
           `SELECT * FROM private_channel_verified_wallets
-             WHERE organization_id = ?
-               AND project_id = ?
-               AND user_id = ?
+             WHERE user_id = ?
+               AND instance_id = ?
              ORDER BY verified_at DESC`
         )
-        .bind(scope.organizationId, scope.projectId, userId)
+        .bind(userId, instanceId)
         .all<Record<string, unknown>>();
       return (result.results ?? []).map(mapPrivateChannelVerifiedWalletRow);
     },

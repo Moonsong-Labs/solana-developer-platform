@@ -5,7 +5,7 @@
  *   1. resolve the connected (auth-enabled) instance + the acting member's SPC user
  *   2. get an SPC session JWT (decrypt credential → login; see ./auth/spc-session)
  *   3. `challenge-wallet` → sign the challenge with THAT wallet → `verify-wallet`
- *   4. persist the verification (idempotent per (org, project, user, pubkey))
+ *   4. persist the verification (idempotent per (user, instance, pubkey))
  *
  * Signing is wallet-specific via `createOrgSigner(...walletId)` (not
  * `SigningService.sign`, which signs with the scope-default wallet). The
@@ -98,7 +98,11 @@ async function resolveWalletSession(
   return { scope, instance, pcUser, client, session };
 }
 
-/** List the acting member's verified wallets for a project (empty for non-members). */
+/**
+ * The acting member's verified wallets for the project's active instance (empty
+ * for non-members or when no instance is connected). Scoped to the active
+ * instance so a verification never leaks across instances.
+ */
 export async function listPrivateChannelWallets(
   env: Env,
   auth: ApiKeyContext,
@@ -115,13 +119,22 @@ export async function listPrivateChannelWallets(
   if (!pcUser) {
     return [];
   }
-  return createPrivateChannelVerifiedWalletRepository(env).listByProjectAndUser(scope, pcUser.id);
+  const instance = await createPrivateChannelInstanceRepository(env).getActiveByProject(scope);
+  if (!instance) {
+    return [];
+  }
+  return createPrivateChannelVerifiedWalletRepository(env).listByUserAndInstance(
+    pcUser.id,
+    instance.id
+  );
 }
 
 /**
  * Verify one custody wallet with the connected SPC instance's auth service, as
  * the acting member's SPC user. Returns the persisted row + the instance (the
- * handler emits events). Idempotent: the upsert refreshes an existing row.
+ * handler emits events). A member may verify many wallets per instance; the
+ * upsert refreshes an existing (user, instance, pubkey) row so re-verify is
+ * idempotent.
  */
 export async function verifyPrivateChannelWallet(
   env: Env,
@@ -198,11 +211,7 @@ export async function deletePrivateChannelWallet(
   projectId: string,
   pubkey: string
 ): Promise<{ instance: PrivateChannelInstanceRow; deleted: boolean }> {
-  const { scope, instance, pcUser, client, session } = await resolveWalletSession(
-    env,
-    auth,
-    projectId
-  );
+  const { instance, pcUser, client, session } = await resolveWalletSession(env, auth, projectId);
 
   // SPC's delete returns 400 ("wallet not associated with this user") when the
   // pubkey is already unlinked or never existed — the only non-401/500 status that
@@ -217,11 +226,9 @@ export async function deletePrivateChannelWallet(
     }
   }
 
-  const deleted = await createPrivateChannelVerifiedWalletRepository(env).deleteByScopeAndPubkey(
-    scope,
-    pcUser.id,
-    pubkey
-  );
+  const deleted = await createPrivateChannelVerifiedWalletRepository(
+    env
+  ).deleteByUserInstanceAndPubkey(pcUser.id, instance.id, pubkey);
 
   return { instance, deleted };
 }

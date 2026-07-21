@@ -32,26 +32,29 @@ export interface UpsertVerifiedWalletInput extends VerifiedWalletScope {
 
 export interface PrivateChannelVerifiedWalletRepository {
   /**
-   * Idempotently record a verified wallet. A re-verify of the same
-   * (org, project, user_id, pubkey) refreshes the row. Call this ONLY from the
-   * wallets domain module's verify logic (services/private-channels/wallets.ts) —
-   * that flow is the single writer of private_channel_verified_wallets, after a
-   * successful SPC verify.
+   * Idempotently record a member's verified wallet. A re-verify of the same
+   * (user_id, instance_id, pubkey) refreshes the row; a member may verify many
+   * wallets per instance. Call this ONLY from the wallets domain
+   * module's verify logic (services/private-channels/wallets.ts) — that flow is
+   * the single writer of private_channel_verified_wallets, after a successful
+   * SPC verify.
    */
   upsert(input: UpsertVerifiedWalletInput): Promise<PrivateChannelVerifiedWalletRow>;
   /**
-   * Remove a verified wallet after a successful SPC delete. Returns true if a
-   * row was deleted. Single-writer contract as for upsert.
+   * Remove a verified wallet after a successful SPC delete, keyed on the unique
+   * (user_id, instance_id, pubkey): a pubkey verified under another instance (or
+   * by another member) is untouched. Returns true if a row was deleted.
+   * Single-writer contract as for upsert.
    */
-  deleteByScopeAndPubkey(
-    scope: VerifiedWalletScope,
+  deleteByUserInstanceAndPubkey(
     userId: string,
+    instanceId: string,
     pubkey: string
   ): Promise<boolean>;
-  /** List a single user's verified wallets within a project scope, newest first. */
-  listByProjectAndUser(
-    scope: VerifiedWalletScope,
-    userId: string
+  /** The member's verified wallets for one instance, newest first. */
+  listByUserAndInstance(
+    userId: string,
+    instanceId: string
   ): Promise<PrivateChannelVerifiedWalletRow[]>;
 }
 

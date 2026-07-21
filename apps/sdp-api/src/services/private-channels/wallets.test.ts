@@ -43,8 +43,8 @@ let client: {
 };
 let verifiedRepo: {
   upsert: ReturnType<typeof vi.fn>;
-  deleteByScopeAndPubkey: ReturnType<typeof vi.fn>;
-  listByProjectAndUser: ReturnType<typeof vi.fn>;
+  deleteByUserInstanceAndPubkey: ReturnType<typeof vi.fn>;
+  listByUserAndInstance: ReturnType<typeof vi.fn>;
 };
 
 beforeEach(() => {
@@ -55,8 +55,8 @@ beforeEach(() => {
       pubkey: PUBKEY,
       verified_at: "2026-07-20T00:00:00Z",
     }),
-    deleteByScopeAndPubkey: vi.fn().mockResolvedValue(true),
-    listByProjectAndUser: vi.fn(),
+    deleteByUserInstanceAndPubkey: vi.fn().mockResolvedValue(true),
+    listByUserAndInstance: vi.fn().mockResolvedValue([]),
   };
   client = {
     challengeWallet: vi
@@ -109,6 +109,14 @@ describe("verifyPrivateChannelWallet", () => {
     expect(verifiedRepo.upsert).not.toHaveBeenCalled();
   });
 
+  it("upserts the mirror scoped to the acting member and active instance", async () => {
+    await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
+
+    expect(verifiedRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "pcu_1", instanceId: "pci_1", walletId: WALLET_ID, pubkey: PUBKEY })
+    );
+  });
+
   it("resolves the signer before requesting the SPC challenge", async () => {
     await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
     const signerOrder = vi.mocked(solana.createOrgSigner).mock.invocationCallOrder[0];
@@ -137,7 +145,7 @@ describe("deletePrivateChannelWallet", () => {
     const { deleted } = await deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY);
 
     expect(client.deleteWallet).toHaveBeenCalledTimes(1);
-    expect(verifiedRepo.deleteByScopeAndPubkey).toHaveBeenCalledTimes(1);
+    expect(verifiedRepo.deleteByUserInstanceAndPubkey).toHaveBeenCalledWith("pcu_1", "pci_1", PUBKEY);
     expect(deleted).toBe(true);
   });
 
@@ -147,6 +155,6 @@ describe("deletePrivateChannelWallet", () => {
     await expect(deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY)).rejects.toMatchObject({
       code: "AUTH_UNAVAILABLE",
     });
-    expect(verifiedRepo.deleteByScopeAndPubkey).not.toHaveBeenCalled();
+    expect(verifiedRepo.deleteByUserInstanceAndPubkey).not.toHaveBeenCalled();
   });
 });
