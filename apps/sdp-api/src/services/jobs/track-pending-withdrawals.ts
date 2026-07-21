@@ -39,6 +39,10 @@ import {
   type PrivateChannelWithdrawalRepository,
   type PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
+import {
+  gatewayAuthOptions,
+  resolveOwnerGatewayAuth,
+} from "@/services/private-channels/auth/gateway-auth";
 import { inferCluster, knownMintDecimals } from "@/services/private-channels/mint";
 import { emitWithdrawalEvent } from "@/services/private-channels/withdraw-events";
 import type { Env } from "@/types/env";
@@ -176,8 +180,33 @@ async function reconcileSubmitted(
     return;
   }
 
+  // The gateway JWT-gates signature reads. The cron has no request user, so derive
+  // the SPC identity from the burn OWNER's verified wallet (same mechanism deposits
+  // use for the credit recipient). `unavailable` — e.g. an unverified owner — leaves
+  // the withdrawal `submitted` for a later tick / manual resolution. It must NOT be
+  // auto-failed: we can't tell whether the burn confirmed, and after burn_confirmed
+  // the balance is already gone.
+  const gatewayAuth = await resolveOwnerGatewayAuth(env, {
+    organizationId: withdrawal.organization_id,
+    projectId: withdrawal.project_id,
+    instanceId: withdrawal.instance_id,
+    owner: withdrawal.owner,
+  });
+  if (gatewayAuth.kind === "unavailable") {
+    console.warn("trackPendingWithdrawals: skipping burn confirmation, gateway auth unavailable", {
+      withdrawalId: withdrawal.id,
+      owner: withdrawal.owner,
+      reason: gatewayAuth.reason,
+    });
+    return;
+  }
+
   // Query the snapshotted GATEWAY — the burn lives on the channel chain.
-  const gatewayRpc = createChannelGatewayRpc(env, withdrawal.gateway_url);
+  const gatewayRpc = createChannelGatewayRpc(
+    env,
+    withdrawal.gateway_url,
+    gatewayAuthOptions(gatewayAuth.kind === "token" ? gatewayAuth.token : undefined)
+  );
   const [status] = await solanaRpc.getSignatureStatuses(gatewayRpc, [
     withdrawal.burn_signature as Signature,
   ]);

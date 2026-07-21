@@ -22,6 +22,7 @@ import type {
   PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
 import type { Env } from "@/types/env";
+import { gatewayAuthOptions } from "./auth/gateway-auth";
 
 /**
  * Confirm a broadcast burn on the gateway (channel chain) and persist the outcome:
@@ -32,10 +33,20 @@ import type { Env } from "@/types/env";
 export async function confirmAndPersistWithdrawal(
   env: Env,
   repo: PrivateChannelWithdrawalRepository,
-  input: { withdrawalId: string; gatewayUrl: string; signature: Signature }
+  input: {
+    withdrawalId: string;
+    gatewayUrl: string;
+    signature: Signature;
+    /** SPC bearer token — the gateway JWT-gates signature reads. */
+    authToken?: string;
+  }
 ): Promise<PrivateChannelWithdrawalRow | null> {
   try {
-    const gatewayRpc = createChannelGatewayRpc(env, input.gatewayUrl);
+    const gatewayRpc = createChannelGatewayRpc(
+      env,
+      input.gatewayUrl,
+      gatewayAuthOptions(input.authToken)
+    );
     const confirmation = await solanaRpc.confirmTransaction(gatewayRpc, input.signature, {
       commitment: "confirmed",
     });

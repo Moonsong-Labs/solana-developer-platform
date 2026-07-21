@@ -46,6 +46,19 @@ vi.mock("@solana-program/token", () => ({
 const { emitWithdrawalEvent } = vi.hoisted(() => ({ emitWithdrawalEvent: vi.fn() }));
 vi.mock("@/services/private-channels/withdraw-events", () => ({ emitWithdrawalEvent }));
 
+// Gateway auth for the cron: derived from the burn owner's verified wallet. Default
+// to an auth-less instance ("open"); tests override to assert the gated behaviour.
+const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
+  resolveOwnerGatewayAuth: vi.fn(
+    async () => ({ kind: "open" }) as { kind: string; token?: string; reason?: string }
+  ),
+}));
+vi.mock("@/services/private-channels/auth/gateway-auth", () => ({
+  resolveOwnerGatewayAuth,
+  gatewayAuthOptions: (token?: string) =>
+    token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+}));
+
 import { trackPendingWithdrawals } from "./track-pending-withdrawals";
 
 // Valid base58 addresses (the reconciler runs `address()` on these fixtures).
@@ -82,6 +95,7 @@ function withdrawalRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resolveOwnerGatewayAuth.mockResolvedValue({ kind: "open" });
   vi.useFakeTimers();
   vi.setSystemTime(new Date(NOW_ISO));
   withdrawalRepo.updateWithdrawal.mockImplementation(async (input: Record<string, unknown>) => ({
@@ -100,7 +114,7 @@ describe("trackPendingWithdrawals", () => {
 
     await trackPendingWithdrawals({} as Env);
 
-    expect(createChannelGatewayRpc).toHaveBeenCalledWith(expect.anything(), "gw-SNAP");
+    expect(createChannelGatewayRpc).toHaveBeenCalledWith(expect.anything(), "gw-SNAP", undefined);
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
       expect.objectContaining({ id: "w1", status: "burn_confirmed", expectedStatus: "submitted" })
     );
@@ -117,6 +131,39 @@ describe("trackPendingWithdrawals", () => {
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
       expect.objectContaining({ id: "w1", status: "failed", expectedStatus: "submitted" })
     );
+  });
+
+  it("sends the owner's SPC token when the instance is auth-enabled", async () => {
+    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "submitted", gateway_url: "gw-SNAP" }),
+    ]);
+    resolveOwnerGatewayAuth.mockResolvedValue({ kind: "token", token: "jwt-xyz" });
+    getSignatureStatuses.mockResolvedValueOnce([{ confirmationStatus: "confirmed" }]);
+
+    await trackPendingWithdrawals({} as Env);
+
+    expect(createChannelGatewayRpc).toHaveBeenCalledWith(expect.anything(), "gw-SNAP", {
+      headers: { Authorization: "Bearer jwt-xyz" },
+    });
+    expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "w1", status: "burn_confirmed" })
+    );
+  });
+
+  it("leaves a submitted burn UNTOUCHED when no SPC identity can be derived", async () => {
+    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "submitted" }),
+    ]);
+    resolveOwnerGatewayAuth.mockResolvedValue({
+      kind: "unavailable",
+      reason: "no verified wallet",
+    });
+
+    await expect(trackPendingWithdrawals({} as Env)).resolves.toBeUndefined();
+
+    // Never touched the gateway, and crucially NOT failed — it stays `submitted`.
+    expect(getSignatureStatuses).not.toHaveBeenCalled();
+    expect(withdrawalRepo.updateWithdrawal).not.toHaveBeenCalled();
   });
 
   it("moves burn_confirmed → release_pending (bookkeeping)", async () => {

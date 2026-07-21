@@ -50,6 +50,7 @@ import { AppError, badRequest } from "@/lib/errors";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
+import { gatewayAuthOptions } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 import { confirmAndPersistWithdrawal } from "./withdraw-confirm";
 import { emitWithdrawalEvent } from "./withdraw-events";
@@ -70,6 +71,12 @@ export interface CreateChannelWithdrawalInput {
   amount: string;
   /** Devnet address that receives the operator's release; defaults to the owner. */
   destination?: string;
+  /**
+   * SPC bearer token for the gateway. Required when the connected instance has auth
+   * enabled — broadcasting the burn is a gateway WRITE and confirming it a gateway
+   * READ, both JWT-gated. Resolved by the handler.
+   */
+  gatewayAuthToken?: string;
 }
 
 /**
@@ -86,6 +93,7 @@ async function broadcastWithdrawal(
     mint: Address;
     destination: Address;
     amountBaseUnits: bigint;
+    authToken?: string;
   }
 ): Promise<Signature> {
   const signer = await solanaServices.createOrgSigner(
@@ -106,7 +114,11 @@ async function broadcastWithdrawal(
   });
 
   // Blockhash + broadcast target the GATEWAY (channel chain), not devnet.
-  const gatewayRpc = createChannelGatewayRpc(env, input.instance.gatewayUrl);
+  const gatewayRpc = createChannelGatewayRpc(
+    env,
+    input.instance.gatewayUrl,
+    gatewayAuthOptions(input.authToken)
+  );
   const { blockhash, lastValidBlockHeight } = await solanaRpc.getRecentBlockhash(
     gatewayRpc,
     "confirmed"
@@ -177,6 +189,7 @@ export async function createChannelWithdrawal(
       mint: address(mint),
       destination: address(destination),
       amountBaseUnits,
+      authToken: input.gatewayAuthToken,
     });
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : "Withdrawal submission failed.";
@@ -213,6 +226,7 @@ export async function createChannelWithdrawal(
     withdrawalId: created.id,
     gatewayUrl: instance.gatewayUrl,
     signature,
+    authToken: input.gatewayAuthToken,
   });
   if (settled) {
     latest = settled;
