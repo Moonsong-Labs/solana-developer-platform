@@ -188,6 +188,28 @@ async function reconcileCreditGroup(
     return;
   }
 
+  // Read the recipient's channel balance via the group's snapshotted gateway.
+  // A deposit row written before the snapshot columns existed can carry EMPTY urls.
+  // Never build a gateway client from an empty URL — that throws "Invalid URL: " and
+  // takes down the whole group, including healthy deposits that DO have a snapshot.
+  // Pick a deposit that actually carries one; skip the group if none does.
+  //
+  // NOTE: this still assumes every deposit in the group shares one config. When
+  // snapshots legitimately diverge, the group should be keyed by the snapshot
+  // itself — tracked as finding #3 in DEPOSIT_REVIEW_FIXES.md.
+  const snapshot = deposits.find((deposit) => deposit.gateway_url && deposit.chain_rpc_url);
+  if (!snapshot) {
+    console.warn("trackPendingDeposits: skipping credit group with no usable config snapshot", {
+      instanceId: group.instanceId,
+      recipient: group.recipient,
+      mint: group.mint,
+    });
+    return;
+  }
+
+  // Resolved AFTER the snapshot guard on purpose: this does DB lookups plus an SPC
+  // login (a network round-trip), so never pay for it on a group we're about to skip.
+  //
   // The gateway JWT-gates balance reads. The cron has no request user, so derive
   // the SPC identity from the data: the recipient's VERIFIED wallet maps the pubkey
   // back to the member whose credential can mint a token. `unavailable` (e.g. an
@@ -205,25 +227,6 @@ async function reconcileCreditGroup(
       recipient: group.recipient,
       mint: group.mint,
       reason: gatewayAuth.reason,
-    });
-    return;
-  }
-
-  // Read the recipient's channel balance via the group's snapshotted gateway.
-  // A deposit row written before the snapshot columns existed can carry EMPTY urls.
-  // Never build a gateway client from an empty URL — that throws "Invalid URL: " and
-  // takes down the whole group, including healthy deposits that DO have a snapshot.
-  // Pick a deposit that actually carries one; skip the group if none does.
-  //
-  // NOTE: this still assumes every deposit in the group shares one config. When
-  // snapshots legitimately diverge, the group should be keyed by the snapshot
-  // itself — tracked as finding #3 in DEPOSIT_REVIEW_FIXES.md.
-  const snapshot = deposits.find((deposit) => deposit.gateway_url && deposit.chain_rpc_url);
-  if (!snapshot) {
-    console.warn("trackPendingDeposits: skipping credit group with no usable config snapshot", {
-      instanceId: group.instanceId,
-      recipient: group.recipient,
-      mint: group.mint,
     });
     return;
   }
