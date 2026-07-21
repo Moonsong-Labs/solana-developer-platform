@@ -4,6 +4,7 @@ import { badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { resolveScope, resolveWalletAddress } from "@/routes/payments/wallets";
 import { getChannelBalance, mapPrivateChannelError } from "@/services/private-channels";
+import { resolveGatewayAuthToken } from "@/services/private-channels/auth/gateway-auth";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository } from "../context";
 import { balanceQuerySchema } from "../schemas";
@@ -52,7 +53,20 @@ export async function getPrivateChannelBalance(c: AppContext) {
     const { wallets } = await resolveScope(c);
     const owner = resolveWalletAddress(wallets, parsed.data.owner, "owner", auth, ["wallets:read"]);
 
-    const balance = await getChannelBalance(c.env, { instance, owner, mint: parsed.data.mint });
+    // Auth-enabled instances JWT-gate balance reads; mint the caller's SPC session.
+    const authToken = await resolveGatewayAuthToken(c.env, {
+      instance,
+      organizationId: auth.organizationId,
+      projectId,
+      userId: auth.userId,
+    });
+
+    const balance = await getChannelBalance(c.env, {
+      instance,
+      owner,
+      mint: parsed.data.mint,
+      authToken,
+    });
     return success(c, balance);
   } catch (error) {
     throw mapPrivateChannelError(error);

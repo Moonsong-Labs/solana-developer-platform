@@ -16,21 +16,33 @@ import { createChannelGatewayRpc, getChannelTokenBalance } from "@sdp/private-ch
 import { assertValidAddress } from "@sdp/solana/address";
 import type { PrivateChannelBalance, PrivateChannelInstance } from "@sdp/types";
 import type { Env } from "@/types/env";
+import { gatewayAuthOptions } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 
 /** The instance fields the balance read needs: gateway URL + a cluster hint. */
 type BalanceInstance = Pick<PrivateChannelInstance, "gatewayUrl" | "chainRpcUrl">;
 
-/** Read an owner's channel token balance through the gateway → wire DTO. */
+/**
+ * Read an owner's channel token balance through the gateway → wire DTO.
+ *
+ * `authToken` is the SPC-issued bearer token for gateway reads (see
+ * `./auth/gateway-auth`). Required when the connected instance has auth enabled —
+ * the gateway JWT-gates balance reads — and omitted for open deployments.
+ */
 export async function getChannelBalance(
   env: Env,
-  { instance, owner, mint }: { instance: BalanceInstance; owner: string; mint?: string }
+  {
+    instance,
+    owner,
+    mint,
+    authToken,
+  }: { instance: BalanceInstance; owner: string; mint?: string; authToken?: string }
 ): Promise<PrivateChannelBalance> {
   const cluster = inferCluster(instance.chainRpcUrl);
   const ownerAddress = assertValidAddress(owner, "owner");
   const mintAddress = assertValidAddress(mint ?? defaultChannelMint(cluster), "mint");
 
-  const rpc = createChannelGatewayRpc(env, instance.gatewayUrl);
+  const rpc = createChannelGatewayRpc(env, instance.gatewayUrl, gatewayAuthOptions(authToken));
   const { tokenAccount, balance } = await getChannelTokenBalance(rpc, ownerAddress, mintAddress);
 
   // A missing token account is a zero balance; fall back to the mint's known

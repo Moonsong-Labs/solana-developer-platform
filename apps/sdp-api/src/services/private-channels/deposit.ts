@@ -71,6 +71,12 @@ export interface CreateChannelDepositInput {
   amount: string;
   /** Address credited in the channel; defaults to the depositor. */
   recipient?: string;
+  /**
+   * SPC bearer token for the gateway baseline read. Required when the connected
+   * instance has auth enabled (the gateway JWT-gates balance reads); resolved by
+   * the handler via `resolveGatewayAuthToken`.
+   */
+  gatewayAuthToken?: string;
 }
 
 /**
@@ -160,7 +166,12 @@ export async function createChannelDeposit(
 
   // Capture the recipient's current channel balance so the reconciler can detect
   // the credit delta once the operator credits the deposit.
-  const baseline = await getChannelBalance(env, { instance, owner: recipient, mint });
+  const baseline = await getChannelBalance(env, {
+    instance,
+    owner: recipient,
+    mint,
+    authToken: input.gatewayAuthToken,
+  });
 
   const repo = createPrivateChannelDepositRepository(env);
   const created = await repo.createDeposit({

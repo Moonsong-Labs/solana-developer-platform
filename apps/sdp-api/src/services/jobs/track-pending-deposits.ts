@@ -183,6 +183,15 @@ async function reconcileCreditGroup(
   }
 
   // Read the recipient's channel balance via the group's snapshotted gateway.
+  //
+  // TODO(gateway-auth): this read is UNAUTHENTICATED and will 401 on an
+  // auth-enabled instance, stalling credit detection at `confirmed`. The request
+  // paths mint the caller's SPC session (`resolveGatewayAuthToken`), but the cron
+  // has no user identity, so it has no member to log in as. Resolving it needs a
+  // deliberate choice of SPC identity — e.g. map the recipient pubkey back to its
+  // member via `private_channel_verified_wallets` (needs a by-pubkey lookup, which
+  // that repository doesn't expose yet) or introduce a service/operator SPC user.
+  // Track with the settlement-ledger rework; see DEPOSIT_REVIEW_FIXES.md.
   const snapshot = deposits[0];
   const balance = await getChannelBalance(env, {
     instance: { gatewayUrl: snapshot.gateway_url, chainRpcUrl: snapshot.chain_rpc_url },
