@@ -43,6 +43,15 @@ vi.mock("./recurring-payments", () => {
   };
 });
 
+// The private-channels reconciler pulls in heavy Solana modules; mock the wrapper so
+// runner.ts loads without them. Unmocked it fails to resolve (@solana/mosaic-sdk ships
+// a directory import Node ESM rejects), which also poisons the module graph for any
+// test file sharing the pool.
+vi.mock("./pending-deposits", () => ({
+  PENDING_DEPOSITS_CRON: "* * * * *",
+  runPendingDepositsReconciliation: vi.fn(),
+}));
+
 function makeBg(): BackgroundRunner {
   return { run: vi.fn(), awaitAll: vi.fn(async () => {}), draining: false };
 }

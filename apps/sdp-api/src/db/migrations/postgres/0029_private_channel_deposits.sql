@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS private_channel_deposits (
     amount TEXT NOT NULL,
     baseline_credited TEXT NOT NULL DEFAULT '0',
     -- Instance config snapshotted at intent time (immutable reconciliation context).
+    --
+    -- TODO(snapshot-recovery): immutability cuts both ways. It stops a reconnect from
+    -- silently moving the chain a pending deposit reconciles against, but it also
+    -- pins a deposit to an endpoint that may DIE — if `chain_rpc_url` goes down or
+    -- runs out of credits and the operator repoints the instance at a working URL,
+    -- deposits snapshotted against the old one can never confirm. Needs an explicit,
+    -- audited operator action to re-point a stuck deposit's snapshot (accepting
+    -- responsibility for the change), rather than either silently following the
+    -- instance or stranding the row.
     gateway_url TEXT NOT NULL DEFAULT '',
     chain_rpc_url TEXT NOT NULL DEFAULT '',
     escrow_program_id TEXT NOT NULL DEFAULT '',

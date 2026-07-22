@@ -105,11 +105,18 @@ function run(command, args, options = {}) {
 }
 
 /**
- * Local emulation of the Cloudflare cron. In production the platform invokes the
- * Worker's `scheduled()` handler on the `wrangler.toml` `crons` schedule; `wrangler
- * dev` does not. With `--test-scheduled` exposing `/__scheduled`, this ticker hits
- * it on the same cadence so the reconcilers run under local dev too. Opt out with
- * `SDP_API_DISABLE_CRON_TICKER=1`; tune the interval with `SDP_API_CRON_TICK_MS`.
+ * Local cron TRIGGER (not a reimplementation of cron).
+ *
+ * We do run in workerd, and workerd/wrangler does expose the Worker's `scheduled()`
+ * handler in local dev — that's what `--test-scheduled` mounts at `/__scheduled`,
+ * and it's exactly what this hits. What local dev has no equivalent of is the
+ * SCHEDULER: `wrangler dev` never fires `scheduled()` on the `wrangler.toml` `crons`
+ * entry by itself, so without something poking that endpoint the reconcilers simply
+ * never run locally (deposits sit at `confirmed` forever). This ticker supplies only
+ * the missing timer, on the same cadence; the execution path is workerd's own.
+ *
+ * Production is untouched — Cloudflare fires the real `crons` schedule there.
+ * Opt out with `SDP_API_DISABLE_CRON_TICKER=1`; tune with `SDP_API_CRON_TICK_MS`.
  * Returns a stop() to clear the timer.
  */
 function startCronTicker() {
