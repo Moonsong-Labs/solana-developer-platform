@@ -9,14 +9,13 @@
  *
  * Signing model (locked): SDP custody wallet, server-signed — same as deposits;
  * the wallet is the sole signer and (for now) self-pays the channel-chain fee.
- * TODO(gasless/fees): confirm the gateway fee model for user-signed gateway txs
- * (WITHDRAWAL_PLAN §6.3); wire a sponsored fee payer if the gateway requires one.
+ * TODO(gasless/fees): confirm the gateway fee model for gateway-broadcast txs and
+ * wire a sponsored fee payer if the gateway requires one.
  *
- * TODO(gateway-auth): broadcasting the burn is a gateway WRITE and confirming it
- * is a gateway READ; both may be JWT-gated once the gateway enforces auth on
- * private ops (WITHDRAWAL_PLAN §6.1). The `createChannelGatewayRpc` header seam is
- * ready — pass `{ Authorization: Bearer <jwt> }` when the wallet-verification work
- * lands. Until then this broadcasts unauthenticated (the empirical test).
+ * Gateway auth: broadcasting the burn is a gateway WRITE and confirming it a
+ * gateway READ — both JWT-gated. The caller's SPC session is resolved by the
+ * handler and passed in as `gatewayAuthToken`; verified end-to-end on devnet
+ * against an auth-enabled gateway.
  *
  * Lifecycle here: pending (persist) → submitted (broadcast) → burn_confirmed
  * (confirmed on the gateway). `release_pending` → `released` is detected
