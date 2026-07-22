@@ -97,6 +97,68 @@ export interface CreatePrivateChannelRequest {
 }
 
 /**
+ * Deposit lifecycle: `prepared` (intent + tx built) → `submitted` (broadcast to
+ * devnet) → `confirmed` (on-chain) → `credited` (reflected in the channel balance
+ * via the gateway). `failed` is terminal.
+ */
+export type PrivateChannelDepositStatus =
+  | "prepared"
+  | "submitted"
+  | "confirmed"
+  | "credited"
+  | "failed";
+
+/**
+ * A deposit intent: moves `amount` of `mint` from the `depositor` custody wallet
+ * into the instance escrow on devnet, credited to `recipient` in the channel.
+ * `amount` is a decimal string (never numeric/float).
+ */
+export interface PrivateChannelDeposit {
+  id: string;
+  instanceId: string;
+  organizationId: string;
+  projectId: string;
+  /** Custody wallet the deposit is signed from. */
+  walletId: string;
+  /** Resolved depositor address (the custody wallet's public key). */
+  depositor: string;
+  /** Resolved recipient address credited in the channel (defaults to the depositor). */
+  recipient: string;
+  mint: string;
+  amount: string;
+  status: PrivateChannelDepositStatus;
+  /** Devnet escrow transaction signature (null until submitted). */
+  signature: string | null;
+  /** Set when `status === "failed"`. */
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * An owner's token balance on the channel, read through the gateway. Amounts are
+ * strings to stay JSON- and precision-safe: `amount` is base units, `uiAmount` is
+ * the human-readable value. A never-credited owner reads as a zero balance.
+ *
+ * Balances live at the SPC layer, one per (wallet, mint) — logical channels are
+ * labels, so a wallet in multiple channels shows the SAME balance in each.
+ */
+export interface PrivateChannelBalance {
+  /** Resolved owner address the balance is for. */
+  owner: string;
+  /** Token mint the balance is denominated in. */
+  mint: string;
+  /** The associated-token account probed on the channel (classic Token program). */
+  tokenAccount: string;
+  /** Raw base-unit amount. */
+  amount: string;
+  /** Mint decimals. */
+  decimals: number;
+  /** Human-readable amount. */
+  uiAmount: string;
+}
+
+/**
  * A custody wallet that has completed the SPC challenge → verify handshake for
  * the project's connected instance. Returned by the verify + list endpoints.
  */

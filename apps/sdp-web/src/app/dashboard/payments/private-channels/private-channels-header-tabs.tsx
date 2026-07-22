@@ -22,6 +22,12 @@ const TABS = [
     requiresActive: true,
   },
   {
+    id: "deposit",
+    label: "Deposit",
+    href: "/dashboard/payments/private-channels/deposit",
+    requiresActive: true,
+  },
+  {
     id: "members",
     label: "Members",
     href: "/dashboard/payments/private-channels/members",

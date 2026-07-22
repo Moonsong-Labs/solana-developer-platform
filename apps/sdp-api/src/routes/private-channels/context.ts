@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import {
+  createPrivateChannelDepositRepository,
   createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
@@ -18,6 +19,10 @@ export function getPrivateChannelInstanceRepository(c: AppContext) {
 
 export function getPrivateChannelRepository(c: AppContext) {
   return createPrivateChannelRepository(c.env);
+}
+
+export function getPrivateChannelDepositRepository(c: AppContext) {
+  return createPrivateChannelDepositRepository(c.env);
 }
 
 export function getPrivateChannelEventRepository(c: AppContext) {

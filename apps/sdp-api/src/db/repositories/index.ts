@@ -169,6 +169,21 @@ export type {
 export { generatePrivateChannelId } from "./private-channel.repository";
 export { createPostgresPrivateChannelRepository } from "./private-channel.repository.postgres";
 export type {
+  CreateDepositInput,
+  DepositProjectScope,
+  DepositRecipientScope,
+  ListDepositsByStatusInput,
+  PrivateChannelDepositRepository,
+  PrivateChannelDepositRepositoryContext,
+  PrivateChannelDepositRow,
+  UpdateDepositInput,
+} from "./private-channel-deposit.repository";
+export {
+  generatePrivateChannelDepositId,
+  mapPrivateChannelDepositRow,
+} from "./private-channel-deposit.repository";
+export { createPostgresPrivateChannelDepositRepository } from "./private-channel-deposit.repository.postgres";
+export type {
   ListPrivateChannelEventsParams,
   PrivateChannelEventRepository,
   PrivateChannelEventRepositoryContext,
@@ -232,6 +247,7 @@ export {
   createPaymentsRepository,
   createPaymentTransferBatchesRepository,
   createPolicyRepository,
+  createPrivateChannelDepositRepository,
   createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,

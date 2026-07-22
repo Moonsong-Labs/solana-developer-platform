@@ -13,12 +13,14 @@
 
 import { type ScheduledTask, schedule } from "node-cron";
 import {
+  isPrivateChannelsEnabled,
   isRecurringPaymentCollectionEnabled,
   isRecurringPaymentsEnabled,
 } from "@/lib/feature-flags";
 import type { BackgroundRunner } from "@/runtime/background";
 import type { Observability } from "@/runtime/observability";
 import type { Env } from "@/types/env";
+import { PENDING_DEPOSITS_CRON, runPendingDepositsReconciliation } from "./pending-deposits";
 import { PENDING_TRANSFERS_CRON, runPendingTransfersReconciliation } from "./pending-transfers";
 import {
   RECURRING_PAYMENTS_COLLECTION_CRON,
@@ -90,6 +92,21 @@ export function startCron(deps: CronDeps): CronHandle | null {
           return;
         }
         runRecurringPaymentsCollection({
+          env: deps.env,
+          bg: deps.bg,
+          observability: deps.observability,
+        });
+      })
+    );
+  }
+
+  if (isPrivateChannelsEnabled(deps.env)) {
+    tasks.push(
+      schedule(PENDING_DEPOSITS_CRON, () => {
+        if (stopping) {
+          return;
+        }
+        runPendingDepositsReconciliation({
           env: deps.env,
           bg: deps.bg,
           observability: deps.observability,

@@ -176,6 +176,95 @@ export const privateChannelIdParamSchema = z.object({
     }),
 });
 
+export const privateChannelBalanceQuerySchema = z.object({
+  owner: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "owner", in: "query" },
+      description:
+        "Owner to read the balance for: a `walletId` from GET /v1/wallets, a wallet public key, or a raw Solana address.",
+      example: "7C1Pu8mbHaDDTFnGH8YTqemNDofqXP3XEotzSo6TbwHz",
+    }),
+  mint: solanaAddressSchema.optional().openapi({
+    param: { name: "mint", in: "query" },
+    description: "Token mint to read. Defaults to the instance cluster's USDC mint.",
+  }),
+});
+
+export const privateChannelBalanceSchema = z
+  .object({
+    owner: solanaAddressSchema,
+    mint: solanaAddressSchema,
+    tokenAccount: solanaAddressSchema.openapi({
+      description: "The classic-Token associated-token account probed on the channel.",
+    }),
+    amount: z.string().openapi({ description: "Raw base-unit amount.", example: "1500000" }),
+    decimals: z.number().openapi({ example: 6 }),
+    uiAmount: z.string().openapi({ description: "Human-readable amount.", example: "1.5" }),
+  })
+  .openapi({
+    description:
+      "An owner's channel token balance (per wallet+mint, via the gateway). Shared across the wallet's channels.",
+  });
+
+export const privateChannelDepositSchema = z
+  .object({
+    id: z.string().openapi({ example: "dep_9f1c..." }),
+    instanceId: z.string(),
+    organizationId: z.string(),
+    projectId: z.string(),
+    walletId: z.string().openapi({ description: "Custody wallet the deposit is signed from." }),
+    depositor: solanaAddressSchema,
+    recipient: solanaAddressSchema.openapi({
+      description: "Address credited in the channel (defaults to the depositor).",
+    }),
+    mint: solanaAddressSchema,
+    amount: z.string().openapi({ description: "Decimal amount.", example: "1.5" }),
+    status: z
+      .enum(["prepared", "submitted", "confirmed", "credited", "failed"])
+      .openapi({ description: "Deposit lifecycle status.", example: "confirmed" }),
+    signature: z
+      .string()
+      .nullable()
+      .openapi({ description: "Devnet escrow tx signature (null until submitted)." }),
+    failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi({ description: "A Private Channels deposit intent." });
+
+export const privateChannelDepositListSchema = z.object({
+  deposits: z.array(privateChannelDepositSchema),
+});
+
+export const createPrivateChannelDepositBodySchema = z
+  .object({
+    walletId: z.string().min(1).openapi({
+      description: "Source custody wallet (walletId or public key).",
+      example: "wlt_…",
+    }),
+    amount: z
+      .string()
+      .min(1)
+      .openapi({ description: "Decimal amount to deposit.", example: "1.5" }),
+    recipient: z.string().min(1).optional().openapi({
+      description: "Address/walletId to credit in the channel. Defaults to the depositor.",
+    }),
+  })
+  .openapi({ description: "Create a deposit into the channel escrow." });
+
+export const privateChannelDepositIdParamSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "id", in: "path" },
+      description: "Deposit id.",
+      example: "dep_9f1c...",
+    }),
+});
+
 export const privateChannelVerifiedWalletSchema = z
   .object({
     id: z.string().openapi({ example: "pcvw_9f1c..." }),

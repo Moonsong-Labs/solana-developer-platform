@@ -2,8 +2,14 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 
 import {
   createPrivateChannelBodySchema,
+  createPrivateChannelDepositBodySchema,
   errorResponseSchema,
+  privateChannelBalanceQuerySchema,
+  privateChannelBalanceSchema,
   privateChannelDeleteWalletParamSchema,
+  privateChannelDepositIdParamSchema,
+  privateChannelDepositListSchema,
+  privateChannelDepositSchema,
   privateChannelEventListSchema,
   privateChannelEventsQuerySchema,
   privateChannelHealthQuerySchema,
@@ -171,6 +177,83 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelHealthSchema)),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/balance",
+    tags: [TAG],
+    summary: "Read an owner's channel token balance",
+    operationId: "getPrivateChannelBalance",
+    description:
+      "Reads an owner's token balance on the channel via the gateway (per wallet+mint; shared across the wallet's channels). `owner` accepts a walletId, wallet public key, or raw address; `mint` defaults to the instance cluster's USDC mint. A never-credited owner reads as a zero balance.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, query: privateChannelBalanceQuerySchema },
+    responses: {
+      200: {
+        description: "The owner's channel token balance.",
+        content: jsonContent(successResponseSchema(privateChannelBalanceSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/deposits",
+    tags: [TAG],
+    summary: "Create a deposit into the channel escrow",
+    operationId: "createPrivateChannelDeposit",
+    description:
+      "Builds, server-signs, and broadcasts an escrow deposit from a custody wallet to the instance chain (devnet), crediting `recipient` (defaults to the depositor) in the channel. Returns the deposit with its current status (submitted/confirmed, or failed). The credit (`credited`) is detected asynchronously via the gateway balance.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      body: { content: jsonContent(createPrivateChannelDepositBodySchema) },
+    },
+    responses: {
+      200: {
+        description: "The created deposit.",
+        content: jsonContent(successResponseSchema(privateChannelDepositSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/deposits",
+    tags: [TAG],
+    summary: "List deposits for the project",
+    operationId: "listPrivateChannelDeposits",
+    description: "Lists the project's deposits, newest first.",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders },
+    responses: {
+      200: {
+        description: "Deposits",
+        content: jsonContent(successResponseSchema(privateChannelDepositListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/deposits/{id}",
+    tags: [TAG],
+    summary: "Get a deposit",
+    operationId: "getPrivateChannelDeposit",
+    description: "Reads one deposit for the project (poll this for status transitions).",
+    security: [{ apiKeyAuth: [] }],
+    request: { headers: projectScopeHeaders, params: privateChannelDepositIdParamSchema },
+    responses: {
+      200: {
+        description: "The deposit.",
+        content: jsonContent(successResponseSchema(privateChannelDepositSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [401, 403, 404, 500, 503]),
     },
   });
 

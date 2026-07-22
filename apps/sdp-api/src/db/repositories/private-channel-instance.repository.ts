@@ -45,6 +45,12 @@ export interface PrivateChannelInstanceRepositoryContext {
 
 export interface PrivateChannelInstanceRepository {
   getActiveByProject(scope: ProjectScope): Promise<PrivateChannelInstanceRow | null>;
+  /**
+   * Load a specific instance by id regardless of is_active. Used by the deposit
+   * reconciler so a pending deposit is settled against the exact instance that
+   * received it, even if the project has since disconnected/replaced it.
+   */
+  getById(id: string): Promise<PrivateChannelInstanceRow | null>;
   /** Returns rows regardless of is_active — used to detect a prior connection. */
   findByProjectAndGateway(input: FindByGatewayInput): Promise<PrivateChannelInstanceRow | null>;
   /** Caller must ensure no other active row for this project (409 upstream). */
