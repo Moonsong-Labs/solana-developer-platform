@@ -196,7 +196,7 @@ async function reconcileCreditGroup(
   //
   // NOTE: this still assumes every deposit in the group shares one config. When
   // snapshots legitimately diverge, the group should be keyed by the snapshot
-  // itself — tracked as finding #3 in DEPOSIT_REVIEW_FIXES.md.
+  // itself — a known follow-up, landing with the settlement-ledger rework.
   const snapshot = deposits.find((deposit) => deposit.gateway_url && deposit.chain_rpc_url);
   if (!snapshot) {
     console.warn("trackPendingDeposits: skipping credit group with no usable config snapshot", {
