@@ -302,6 +302,78 @@ export const privateChannelDeleteWalletParamSchema = z.object({
     }),
 });
 
+export const privateChannelWithdrawalSchema = z
+  .object({
+    id: z.string().openapi({ example: "wd_9f1c..." }),
+    instanceId: z.string(),
+    organizationId: z.string(),
+    projectId: z.string(),
+    walletId: z
+      .string()
+      .openapi({ description: "Custody wallet whose channel-chain balance is burned." }),
+    owner: solanaAddressSchema.openapi({
+      description: "Channel-chain address whose token balance is burned.",
+    }),
+    destination: solanaAddressSchema.openapi({
+      description: "Devnet address that receives the operator's release (defaults to the owner).",
+    }),
+    mint: solanaAddressSchema,
+    amount: z.string().openapi({ description: "Decimal amount.", example: "1.5" }),
+    status: z
+      .enum([
+        "pending",
+        "submitted",
+        "burn_confirmed",
+        "release_pending",
+        "released",
+        "failed",
+        "manual_review",
+      ])
+      .openapi({ description: "Withdrawal lifecycle status.", example: "burn_confirmed" }),
+    burnSignature: z
+      .string()
+      .nullable()
+      .openapi({ description: "Channel-chain burn signature (null until submitted)." }),
+    releaseSignature: z.string().nullable().openapi({
+      description: "Devnet release signature = settlement correlation (null until released).",
+    }),
+    failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi({ description: "A Private Channels withdrawal intent." });
+
+export const privateChannelWithdrawalListSchema = z.object({
+  withdrawals: z.array(privateChannelWithdrawalSchema),
+});
+
+export const createPrivateChannelWithdrawalBodySchema = z
+  .object({
+    walletId: z.string().min(1).openapi({
+      description: "Custody wallet to burn from (walletId or public key).",
+      example: "wlt_…",
+    }),
+    amount: z
+      .string()
+      .min(1)
+      .openapi({ description: "Decimal amount to withdraw.", example: "1.5" }),
+    destination: z.string().min(1).optional().openapi({
+      description: "Devnet address/walletId to release to. Defaults to the owner wallet.",
+    }),
+  })
+  .openapi({ description: "Create a withdrawal from the channel balance." });
+
+export const privateChannelWithdrawalIdParamSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "id", in: "path" },
+      description: "Withdrawal id.",
+      example: "wd_9f1c...",
+    }),
+});
+
 export const privateChannelEventFamilySchema = z.enum(PRIVATE_CHANNEL_EVENT_FAMILY_VALUES);
 
 export const privateChannelEventStatusSchema = z.enum(PRIVATE_CHANNEL_EVENT_STATUS_VALUES);
