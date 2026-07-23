@@ -222,7 +222,7 @@ export async function deletePrivateChannelWallet(
   // pubkey is already unlinked or never existed — the only non-401/500 status that
   // endpoint emits, so it's unambiguous (SPC never 404s here). Treat that 400 as
   // already-revoked and still drop the SDP mirror row so the two systems converge;
-  // rethrow real failures (auth, unavailable, …).
+  // rethrow other failures (auth, unavailable, …).
   await withSpcAuth(spcAuth, async (token) => {
     try {
       await client.deleteWallet(token, pubkey);

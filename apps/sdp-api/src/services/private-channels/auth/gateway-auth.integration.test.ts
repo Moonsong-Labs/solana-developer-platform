@@ -1,12 +1,12 @@
 /**
  * Integration test for SPC gateway auth: the KV token cache + 401 invalidate-and-retry,
- * exercised against REAL infrastructure — Miniflare's `SDP_CACHE` KV and the test Postgres.
+ * exercised against Miniflare's `SDP_CACHE` KV and the test Postgres.
  *
  * Only the external SPC boundary is mocked: `createAuthClient().login` (so no live SPC auth
- * service). Everything else is the production path — `resolveGatewayAuth` does its real DB
- * lookup for the member, `getSpcSession` reads/writes real KV and does real AES-GCM
- * encryption, and `withGatewayRpc` runs the real retry with the real `isUnauthorizedRpcError`
- * classifier. The gateway RPC op itself is supplied by the test (a real Solana RPC call
+ * service). Everything else is the production path — `resolveGatewayAuth` does its DB
+ * lookup for the member, `getSpcSession` reads/writes KV and does AES-GCM
+ * encryption, and `withGatewayRpc` runs the retry with the `isUnauthorizedRpcError`
+ * classifier. The gateway RPC op itself is supplied by the test (a Solana RPC call
  * isn't part of the caching feature), simulating success / 401 / non-401.
  */
 
@@ -92,7 +92,7 @@ beforeEach(async () => {
     .bind(PROJECT_ID, TEST_ORG.id, PROJECT_ID, TEST_USER.id)
     .run();
 
-  // The member row resolveGatewayAuth looks up, with a real encrypted SPC credential.
+  // The member row resolveGatewayAuth looks up, with an encrypted SPC credential.
   const { ciphertext } = await createSpcCredentialEncryption(testEnv).encrypt(
     TEST_ORG.id,
     "spc-password"
@@ -118,7 +118,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("SPC gateway auth — KV cache + 401 retry (real Miniflare KV + Postgres)", () => {
+describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", () => {
   it("caches the SPC token in KV so a second resolve does not re-login", async () => {
     const first = await resolveGatewayAuth(testEnv, resolveInput);
     expect(first?.current).toBeTruthy();

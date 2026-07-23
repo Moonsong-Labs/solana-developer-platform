@@ -230,7 +230,7 @@ describe("deletePrivateChannelWallet", () => {
     expect(deleted).toBe(true);
   });
 
-  it("rethrows a real SPC failure and does not remove the mirror row", async () => {
+  it("rethrows an SPC failure and does not remove the mirror row", async () => {
     client.deleteWallet.mockRejectedValue(new PrivateChannelError("AUTH_UNAVAILABLE", "down"));
 
     await expect(deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY)).rejects.toMatchObject({

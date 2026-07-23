@@ -5,7 +5,7 @@ import type { Env } from "@/types/env";
 import type { SpcAuthHandle } from "./gateway-auth";
 
 // Mock the packages whose runtime graph doesn't resolve in the node pool. gateway-auth
-// imports SolanaRpc as a TYPE only, so @sdp/rpc/solana is never loaded here; the real
+// imports SolanaRpc as a TYPE only, so @sdp/rpc/solana is never loaded here; the
 // isUnauthorizedRpcError (@sdp/rpc) IS used so the 401 classification is exercised end-to-end.
 const { createChannelGatewayRpc } = vi.hoisted(() => ({
   // Return a sentinel identifying which token the rpc was built with.
@@ -40,7 +40,7 @@ import { withGatewayRpc, withSpcAuth } from "./gateway-auth";
 const ENV = {} as Env;
 const URL = "https://gw.example";
 
-/** The token sentinel our mocked createChannelGatewayRpc returns in place of a real SolanaRpc. */
+/** The token sentinel our mocked createChannelGatewayRpc returns in place of a SolanaRpc. */
 type FakeRpc = { url: string; authorization?: string };
 
 /** A 401 in the shape @solana/kit's HTTP transport throws. */
