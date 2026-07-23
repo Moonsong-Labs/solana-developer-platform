@@ -32,11 +32,7 @@ import type { ApiKeyContext } from "@/lib/auth";
 import { AppError, badRequest, forbidden, providerNotConfigured } from "@/lib/errors";
 import { createOrgSigner } from "@/services/solana";
 import type { Env } from "@/types/env";
-import {
-  openSpcAuthHandle,
-  type SpcAuthHandle,
-  withSpcAuth,
-} from "./auth/gateway-auth";
+import { openSpcAuthHandle, type SpcAuthHandle, withSpcAuth } from "./auth/gateway-auth";
 
 const base58 = getBase58Codec();
 
@@ -174,9 +170,13 @@ export async function verifyPrivateChannelWallet(
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError("SIGNING_FAILED", "The wallet failed to sign the verification challenge.", {
-        cause: error instanceof Error ? error.message : String(error),
-      });
+      throw new AppError(
+        "SIGNING_FAILED",
+        "The wallet failed to sign the verification challenge.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        }
+      );
     }
 
     // SPC enforces UNIQUE(user_id, pubkey) and returns 409 on re-verify. Treat that

@@ -92,10 +92,28 @@ describe("PrivateChannelVerifiedWalletRepository (postgres)", () => {
   });
 
   it("allows many wallets per (user, instance); re-verifying a pubkey refreshes in place", async () => {
-    await repo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1", pubkey: PUBKEY_A });
-    await repo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_2", pubkey: PUBKEY_B });
+    await repo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1",
+      pubkey: PUBKEY_A,
+    });
+    await repo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_2",
+      pubkey: PUBKEY_B,
+    });
     // Re-verify PUBKEY_A under a new wallet id: refresh, not a new row.
-    await repo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1b", pubkey: PUBKEY_A });
+    await repo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1b",
+      pubkey: PUBKEY_A,
+    });
 
     const rows = await repo.listByUserAndInstance(PCU_ID, instanceA);
     expect(rows).toHaveLength(2);
@@ -104,15 +122,33 @@ describe("PrivateChannelVerifiedWalletRepository (postgres)", () => {
   });
 
   it("listByUserAndInstance is scoped to the instance (no cross-instance leak)", async () => {
-    await repo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1", pubkey: PUBKEY_A });
+    await repo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1",
+      pubkey: PUBKEY_A,
+    });
 
     expect(await repo.listByUserAndInstance(PCU_ID, instanceA)).toHaveLength(1);
     expect(await repo.listByUserAndInstance(PCU_ID, instanceB)).toHaveLength(0);
   });
 
   it("deleteByUserInstanceAndPubkey removes only the named pubkey; stale pubkey → false", async () => {
-    await repo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1", pubkey: PUBKEY_A });
-    await repo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_2", pubkey: PUBKEY_B });
+    await repo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1",
+      pubkey: PUBKEY_A,
+    });
+    await repo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_2",
+      pubkey: PUBKEY_B,
+    });
 
     // A pubkey verified only under another instance is not deletable here.
     expect(await repo.deleteByUserInstanceAndPubkey(PCU_ID, instanceB, PUBKEY_A)).toBe(false);

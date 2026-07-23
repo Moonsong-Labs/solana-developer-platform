@@ -12,7 +12,7 @@
  * an invited membership — we fail with a clear error rather than an opaque 401.
  */
 
-import { PrivateChannelError, createChannelGatewayRpc } from "@sdp/private-channels";
+import { createChannelGatewayRpc, PrivateChannelError } from "@sdp/private-channels";
 import { createAuthClient, type SpcAuthClient } from "@sdp/private-channels/auth";
 import { isUnauthorizedRpcError } from "@sdp/rpc";
 import type { SolanaRpc } from "@sdp/rpc/solana";
