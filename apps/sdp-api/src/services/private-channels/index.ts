@@ -23,3 +23,8 @@ export {
   listPrivateChannelWallets,
   verifyPrivateChannelWallet,
 } from "./wallets";
+export {
+  createChannelWithdrawal,
+  getChannelWithdrawal,
+  listChannelWithdrawals,
+} from "./withdraw";

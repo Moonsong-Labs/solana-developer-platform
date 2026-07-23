@@ -10,6 +10,7 @@
 import { createApp } from "@/app";
 import { runPendingDepositsReconciliation } from "@/cron/pending-deposits";
 import { runPendingTransfersReconciliation } from "@/cron/pending-transfers";
+import { runPendingWithdrawalsReconciliation } from "@/cron/pending-withdrawals";
 import { runRecurringPaymentsCollection } from "@/cron/recurring-payments";
 import {
   isPrivateChannelsEnabled,
@@ -50,6 +51,11 @@ const worker = {
     }
     if (isPrivateChannelsEnabled(runtimeEnv)) {
       runPendingDepositsReconciliation({
+        env: runtimeEnv,
+        bg,
+        observability,
+      });
+      runPendingWithdrawalsReconciliation({
         env: runtimeEnv,
         bg,
         observability,

@@ -142,7 +142,8 @@
       "!**/*.d.ts",
       "!**/pnpm-lock.yaml",
       "!**/.source",
-      "!**/packages/sdp-spc-escrow/src/generated"
+      "!**/packages/sdp-spc-escrow/src/generated",
+      "!**/packages/sdp-spc-withdraw/src/generated"
     ]
   },
   "vcs": {

@@ -58,6 +58,23 @@ export const depositIdParamSchema = z.object({
   id: z.string().min(1),
 });
 
+/**
+ * Body for `POST /withdrawals`. `walletId` is the custody wallet whose channel-chain
+ * balance is burned (a `walletId` from GET /v1/wallets or its public key); `amount`
+ * is a decimal string; optional `destination` (address) receives the operator's
+ * devnet USDC release, defaulting to the owner wallet.
+ */
+export const createWithdrawalBodySchema = z.object({
+  walletId: z.string().min(1),
+  amount: z.string().min(1),
+  destination: z.string().min(1).optional(),
+});
+
+/** Path param for `GET /withdrawals/:id`. */
+export const withdrawalIdParamSchema = z.object({
+  id: z.string().min(1),
+});
+
 /** Query params for `GET /channels/:id/events` and `GET /events`. */
 export const privateChannelEventsQuerySchema = z.object({
   family: z.enum(PRIVATE_CHANNEL_EVENT_FAMILY_VALUES).optional(),

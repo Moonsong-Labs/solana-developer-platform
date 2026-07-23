@@ -23,6 +23,10 @@ import type { Env } from "@/types/env";
 import { PENDING_DEPOSITS_CRON, runPendingDepositsReconciliation } from "./pending-deposits";
 import { PENDING_TRANSFERS_CRON, runPendingTransfersReconciliation } from "./pending-transfers";
 import {
+  PENDING_WITHDRAWALS_CRON,
+  runPendingWithdrawalsReconciliation,
+} from "./pending-withdrawals";
+import {
   RECURRING_PAYMENTS_COLLECTION_CRON,
   runRecurringPaymentsCollection,
 } from "./recurring-payments";
@@ -107,6 +111,18 @@ export function startCron(deps: CronDeps): CronHandle | null {
           return;
         }
         runPendingDepositsReconciliation({
+          env: deps.env,
+          bg: deps.bg,
+          observability: deps.observability,
+        });
+      })
+    );
+    tasks.push(
+      schedule(PENDING_WITHDRAWALS_CRON, () => {
+        if (stopping) {
+          return;
+        }
+        runPendingWithdrawalsReconciliation({
           env: deps.env,
           bg: deps.bg,
           observability: deps.observability,

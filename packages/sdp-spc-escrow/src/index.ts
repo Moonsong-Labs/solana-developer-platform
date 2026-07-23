@@ -11,8 +11,9 @@
  */
 
 // Side-effect import: augments `@solana/kit` with the `ExtendedClient` type the
-// generated program-client plugin references but the repo's kit 6.8 lacks.
-import "./kit-augment";
+// generated program-client plugin references but the repo's kit 6.8 lacks. Shared
+// so a consumer importing multiple codama clients sees the augment exactly once.
+import "@sdp/kit-augment";
 
 export * from "./generated";
 // Friendlier alias for the (verbose, codama-suffixed) program address constant.

@@ -1,0 +1,252 @@
+/**
+ * Private Channels withdrawal flow.
+ *
+ * Burns `amount` of the instance mint from the custody wallet's CHANNEL-chain
+ * balance (via the withdraw program = an SPL Burn), then the operator later
+ * releases the matching real USDC on devnet to `destination`. The burn is
+ * server-signed by the custody wallet (the burn `user`) and broadcast to the
+ * GATEWAY (the channel chain) — NOT devnet, unlike the deposit escrow tx.
+ *
+ * Signing model (locked): SDP custody wallet, server-signed — same as deposits;
+ * the wallet is the sole signer and (for now) self-pays the channel-chain fee.
+ * TODO(gasless/fees): confirm the gateway fee model for gateway-broadcast txs and
+ * wire a sponsored fee payer if the gateway requires one.
+ *
+ * Gateway auth: broadcasting the burn is a gateway WRITE and confirming it a
+ * gateway READ — both JWT-gated. The caller's SPC session is resolved by the
+ * handler and passed in as `gatewayAuthToken`; verified end-to-end on devnet
+ * against an auth-enabled gateway.
+ *
+ * Lifecycle here: pending (persist) → submitted (broadcast) → burn_confirmed
+ * (confirmed on the gateway). `release_pending` → `released` is detected
+ * asynchronously by the reconciler via the devnet release on the instance ATA.
+ */
+
+import { createChannelGatewayRpc } from "@sdp/private-channels";
+import * as solanaRpc from "@sdp/rpc/solana";
+import { parseDecimalAmount } from "@sdp/solana/amount";
+import { getWithdrawFundsInstructionAsync } from "@sdp/spc-withdraw";
+import type { PrivateChannelInstance } from "@sdp/types";
+import { PRIVATE_CHANNEL_EVENT_TYPES, type PrivateChannelWithdrawal } from "@sdp/types";
+import {
+  type Address,
+  address,
+  appendTransactionMessageInstructions,
+  createTransactionMessage,
+  getTransactionEncoder,
+  pipe,
+  type Signature,
+  setTransactionMessageFeePayerSigner,
+  setTransactionMessageLifetimeUsingBlockhash,
+} from "@solana/kit";
+import { signTransactionMessageWithSigners } from "@solana/signers";
+import {
+  createPrivateChannelWithdrawalRepository,
+  mapPrivateChannelWithdrawalRow,
+  type PrivateChannelWithdrawalRow,
+} from "@/db/repositories";
+import { AppError, badRequest } from "@/lib/errors";
+import * as solanaServices from "@/services/solana";
+import type { CustodyWallet } from "@/services/stores/custody-config.store";
+import type { Env } from "@/types/env";
+import { gatewayAuthOptions } from "./auth/gateway-auth";
+import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
+import { confirmAndPersistWithdrawal } from "./withdraw-confirm";
+import { emitWithdrawalEvent } from "./withdraw-events";
+
+/** The instance fields the withdrawal needs. */
+type WithdrawalInstance = Pick<
+  PrivateChannelInstance,
+  "id" | "gatewayUrl" | "chainRpcUrl" | "escrowProgramId" | "escrowInstanceAddr"
+>;
+
+export interface CreateChannelWithdrawalInput {
+  instance: WithdrawalInstance;
+  organizationId: string;
+  projectId: string;
+  /** Custody wallet the burn is signed from (the burn `user` / balance owner). */
+  wallet: CustodyWallet;
+  /** UI decimal amount (e.g. "1.5"). */
+  amount: string;
+  /** Devnet address that receives the operator's release; defaults to the owner. */
+  destination?: string;
+  /**
+   * SPC bearer token for the gateway. Required — broadcasting the burn is a gateway
+   * WRITE and confirming it a gateway READ, both JWT-gated. Resolved by the handler.
+   */
+  gatewayAuthToken: string;
+}
+
+/**
+ * Build, sign, and broadcast the burn to the gateway. Returns the channel-chain
+ * signature. The custody wallet is the sole signer (owner + fee payer).
+ */
+async function broadcastWithdrawal(
+  env: Env,
+  input: {
+    instance: WithdrawalInstance;
+    organizationId: string;
+    projectId: string;
+    wallet: CustodyWallet;
+    mint: Address;
+    destination: Address;
+    amountBaseUnits: bigint;
+    authToken: string;
+  }
+): Promise<Signature> {
+  const signer = await solanaServices.createOrgSigner(
+    env,
+    input.organizationId,
+    input.projectId,
+    input.wallet.walletId
+  );
+  if (signer.address !== input.wallet.publicKey) {
+    throw badRequest("Resolved signing wallet does not match the withdrawal wallet");
+  }
+
+  const burnIx = await getWithdrawFundsInstructionAsync({
+    user: signer,
+    mint: input.mint,
+    amount: input.amountBaseUnits,
+    destination: input.destination,
+  });
+
+  // Blockhash + broadcast target the GATEWAY (channel chain), not devnet.
+  const gatewayRpc = createChannelGatewayRpc(
+    env,
+    input.instance.gatewayUrl,
+    gatewayAuthOptions(input.authToken)
+  );
+  const { blockhash, lastValidBlockHeight } = await solanaRpc.getRecentBlockhash(
+    gatewayRpc,
+    "confirmed"
+  );
+
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(signer, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
+    (m) => appendTransactionMessageInstructions([burnIx], m)
+  );
+
+  const signed = await signTransactionMessageWithSigners(message);
+  const signedBytes = new Uint8Array(getTransactionEncoder().encode(signed));
+  return solanaRpc.sendTransaction(gatewayRpc, signedBytes);
+}
+
+/** Create a withdrawal intent: persist, broadcast the burn to the gateway, confirm. */
+export async function createChannelWithdrawal(
+  env: Env,
+  input: CreateChannelWithdrawalInput
+): Promise<PrivateChannelWithdrawal> {
+  const { instance, organizationId, projectId, wallet } = input;
+
+  const cluster = inferCluster(instance.chainRpcUrl);
+  const mint = defaultChannelMint(cluster);
+  const decimals = knownMintDecimals(mint, cluster) ?? 6;
+  const owner = wallet.publicKey;
+  const destination = input.destination ?? owner;
+
+  const amountBaseUnits = parseDecimalAmount(input.amount, decimals);
+  if (amountBaseUnits <= 0n) {
+    throw badRequest("amount must be greater than zero");
+  }
+
+  const repo = createPrivateChannelWithdrawalRepository(env);
+  const created = await repo.createWithdrawal({
+    organizationId,
+    projectId,
+    instanceId: instance.id,
+    walletId: wallet.walletId,
+    owner,
+    destination,
+    mint,
+    amount: input.amount,
+    // Snapshot the reconciliation context so a later reconnect can't move it.
+    gatewayUrl: instance.gatewayUrl,
+    chainRpcUrl: instance.chainRpcUrl,
+    escrowProgramId: instance.escrowProgramId,
+    escrowInstanceAddr: instance.escrowInstanceAddr,
+  });
+  if (!created) {
+    throw new AppError("INTERNAL_ERROR", "Failed to persist the withdrawal intent.");
+  }
+
+  let latest: PrivateChannelWithdrawalRow = created;
+
+  // Broadcast the burn. A failure here means the burn never reached the chain (no
+  // signature) — a legitimate terminal `failed` (no balance moved). This is the
+  // ONLY path to `failed`: once the burn confirms, the reconciler uses manual_review.
+  let signature: Signature;
+  try {
+    signature = await broadcastWithdrawal(env, {
+      instance,
+      organizationId,
+      projectId,
+      wallet,
+      mint: address(mint),
+      destination: address(destination),
+      amountBaseUnits,
+      authToken: input.gatewayAuthToken,
+    });
+  } catch (error) {
+    const failureReason = error instanceof Error ? error.message : "Withdrawal submission failed.";
+    const failed = await repo.updateWithdrawal({
+      id: created.id,
+      status: "failed",
+      failureReason,
+      expectedStatus: "pending",
+    });
+    return mapPrivateChannelWithdrawalRow(failed ?? created);
+  }
+
+  latest =
+    (await repo.updateWithdrawal({
+      id: created.id,
+      status: "submitted",
+      burnSignature: signature,
+      expectedStatus: "pending",
+    })) ?? latest;
+
+  // Best-effort activity event (never bubbles): burn broadcast.
+  await emitWithdrawalEvent(
+    env,
+    latest,
+    PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_SUBMITTED,
+    "pending",
+    { signature }
+  );
+
+  // Confirm the burn on the gateway. A transport/auth error here leaves the
+  // withdrawal `submitted` (the reconciler finalizes it); only a real on-chain
+  // burn error marks it `failed`. See `confirmAndPersistWithdrawal`.
+  const settled = await confirmAndPersistWithdrawal(env, repo, {
+    withdrawalId: created.id,
+    gatewayUrl: instance.gatewayUrl,
+    signature,
+    authToken: input.gatewayAuthToken,
+  });
+  if (settled) {
+    latest = settled;
+  }
+
+  return mapPrivateChannelWithdrawalRow(latest);
+}
+
+/** Read a single withdrawal for the project. */
+export async function getChannelWithdrawal(
+  env: Env,
+  scope: { organizationId: string; projectId: string; id: string }
+): Promise<PrivateChannelWithdrawal | null> {
+  const row = await createPrivateChannelWithdrawalRepository(env).getWithdrawalById(scope);
+  return row ? mapPrivateChannelWithdrawalRow(row) : null;
+}
+
+/** List a project's withdrawals, newest first. */
+export async function listChannelWithdrawals(
+  env: Env,
+  scope: { organizationId: string; projectId: string }
+): Promise<PrivateChannelWithdrawal[]> {
+  const rows = await createPrivateChannelWithdrawalRepository(env).listWithdrawalsByProject(scope);
+  return rows.map(mapPrivateChannelWithdrawalRow);
+}

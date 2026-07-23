@@ -112,7 +112,12 @@ describe("verifyPrivateChannelWallet", () => {
     await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
 
     expect(verifiedRepo.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "pcu_1", instanceId: "pci_1", walletId: WALLET_ID, pubkey: PUBKEY })
+      expect.objectContaining({
+        userId: "pcu_1",
+        instanceId: "pci_1",
+        walletId: WALLET_ID,
+        pubkey: PUBKEY,
+      })
     );
   });
 
@@ -144,7 +149,11 @@ describe("deletePrivateChannelWallet", () => {
     const { deleted } = await deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY);
 
     expect(client.deleteWallet).toHaveBeenCalledTimes(1);
-    expect(verifiedRepo.deleteByUserInstanceAndPubkey).toHaveBeenCalledWith("pcu_1", "pci_1", PUBKEY);
+    expect(verifiedRepo.deleteByUserInstanceAndPubkey).toHaveBeenCalledWith(
+      "pcu_1",
+      "pci_1",
+      PUBKEY
+    );
     expect(deleted).toBe(true);
   });
 

@@ -135,6 +135,54 @@ export interface PrivateChannelDeposit {
 }
 
 /**
+ * Withdrawal lifecycle: `pending` (intent persisted) → `submitted` (burn relayed
+ * to the gateway) → `burn_confirmed` (burn confirmed on the channel chain; the
+ * balance is authoritatively gone) → `release_pending` (awaiting the operator's
+ * devnet USDC release) → `released` (release detected on devnet). `failed` is
+ * terminal and reachable ONLY from a pre-burn failure (gateway rejected the tx /
+ * burn failed on chain). `manual_review` is terminal-ish: anything uncertain
+ * AFTER `burn_confirmed` (release not observed within the timeout, ambiguous
+ * match) — never auto-`failed`, since the user's balance is already burned.
+ */
+export type PrivateChannelWithdrawalStatus =
+  | "pending"
+  | "submitted"
+  | "burn_confirmed"
+  | "release_pending"
+  | "released"
+  | "failed"
+  | "manual_review";
+
+/**
+ * A withdrawal intent: burns `amount` of `mint` from the `owner`'s channel-chain
+ * balance, then the operator releases the matching real USDC on devnet to
+ * `destination`. `amount` is a decimal string (never numeric/float).
+ */
+export interface PrivateChannelWithdrawal {
+  id: string;
+  instanceId: string;
+  organizationId: string;
+  projectId: string;
+  /** Custody wallet the withdrawal (burn) is signed from. */
+  walletId: string;
+  /** Channel-chain address whose token balance is burned. */
+  owner: string;
+  /** Devnet address that receives the operator's real-USDC release. */
+  destination: string;
+  mint: string;
+  amount: string;
+  status: PrivateChannelWithdrawalStatus;
+  /** Channel-chain burn signature (null until submitted). */
+  burnSignature: string | null;
+  /** Devnet release signature = the settlement correlation (null until released). */
+  releaseSignature: string | null;
+  /** Set when `status === "failed"`. */
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * An owner's token balance on the channel, read through the gateway. Amounts are
  * strings to stay JSON- and precision-safe: `amount` is base units, `uiAmount` is
  * the human-readable value. A never-credited owner reads as a zero balance.

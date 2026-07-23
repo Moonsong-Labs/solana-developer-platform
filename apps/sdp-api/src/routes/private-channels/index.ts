@@ -9,6 +9,7 @@ import {
   connectPrivateChannelInstance,
   createChannel,
   createPrivateChannelDeposit,
+  createPrivateChannelWithdrawal,
   deleteChannel,
   deletePrivateChannelInstance,
   deletePrivateChannelUser,
@@ -22,11 +23,13 @@ import {
   getPrivateChannelInstance,
   getPrivateChannelOverview,
   getPrivateChannelUser,
+  getPrivateChannelWithdrawalById,
   invitePrivateChannelUser,
   listChannelEvents,
   listChannels,
   listPrivateChannelDeposits,
   listPrivateChannelUsers,
+  listPrivateChannelWithdrawals,
   listProjectEvents,
   listVerifiedWallets,
   probePrivateChannelConnection,
@@ -86,15 +89,31 @@ privateChannels.post(
   requirePermissions("payments:write"),
   createPrivateChannelDeposit
 );
-privateChannels.get(
-  "/deposits",
-  requirePermissions("payments:read"),
-  listPrivateChannelDeposits
-);
+privateChannels.get("/deposits", requirePermissions("payments:read"), listPrivateChannelDeposits);
 privateChannels.get(
   "/deposits/:id",
   requirePermissions("payments:read"),
   getPrivateChannelDepositById
+);
+
+// --- /withdrawals ---------------------------------------------------------
+// Burn the custody wallet's channel-chain balance (relayed to the gateway); the
+// operator releases real USDC on devnet. Tracked pending -> submitted ->
+// burn_confirmed -> release_pending -> released.
+privateChannels.post(
+  "/withdrawals",
+  requirePermissions("payments:write"),
+  createPrivateChannelWithdrawal
+);
+privateChannels.get(
+  "/withdrawals",
+  requirePermissions("payments:read"),
+  listPrivateChannelWithdrawals
+);
+privateChannels.get(
+  "/withdrawals/:id",
+  requirePermissions("payments:read"),
+  getPrivateChannelWithdrawalById
 );
 
 // --- /events --------------------------------------------------------------

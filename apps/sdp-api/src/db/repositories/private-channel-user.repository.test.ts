@@ -85,8 +85,20 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
 
   it("counts the member's wallets verified under the active instance", async () => {
     const instanceA = await connectInstance();
-    await walletRepo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1", pubkey: PUBKEY_A });
-    await walletRepo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_2", pubkey: PUBKEY_B });
+    await walletRepo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1",
+      pubkey: PUBKEY_A,
+    });
+    await walletRepo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_2",
+      pubkey: PUBKEY_B,
+    });
 
     const [listed] = await repo.listByProject(scope);
     expect(listed.verified_wallet_count).toBe(2);
@@ -96,12 +108,24 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
 
   it("excludes verifications made under a since-deactivated instance", async () => {
     const instanceA = await connectInstance();
-    await walletRepo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1", pubkey: PUBKEY_A });
+    await walletRepo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1",
+      pubkey: PUBKEY_A,
+    });
 
     // Reconnect to a new instance: A is deactivated, B becomes the active one.
     await instanceRepo.deactivateActive(scope);
     const instanceB = await connectInstance("http://other.example:8899");
-    await walletRepo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceB, walletId: "wal_2", pubkey: PUBKEY_B });
+    await walletRepo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceB,
+      walletId: "wal_2",
+      pubkey: PUBKEY_B,
+    });
 
     const [listed] = await repo.listByProject(scope);
     expect(listed.verified_wallet_count).toBe(1);
@@ -109,7 +133,13 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
 
   it("is 0 when the project has no active instance", async () => {
     const instanceA = await connectInstance();
-    await walletRepo.upsert({ ...scope, userId: PCU_ID, instanceId: instanceA, walletId: "wal_1", pubkey: PUBKEY_A });
+    await walletRepo.upsert({
+      ...scope,
+      userId: PCU_ID,
+      instanceId: instanceA,
+      walletId: "wal_1",
+      pubkey: PUBKEY_A,
+    });
     await instanceRepo.deactivateActive(scope);
 
     const [listed] = await repo.listByProject(scope);

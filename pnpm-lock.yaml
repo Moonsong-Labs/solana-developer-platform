@@ -95,6 +95,9 @@ importers:
       '@sdp/spc-escrow':
         specifier: workspace:*
         version: link:../../packages/sdp-spc-escrow
+      '@sdp/spc-withdraw':
+        specifier: workspace:*
+        version: link:../../packages/sdp-spc-withdraw
       '@sdp/types':
         specifier: workspace:*
         version: link:../../packages/sdp-types
@@ -107,6 +110,9 @@ importers:
       '@solana-program/system':
         specifier: 'catalog:'
         version: 0.12.2(@solana/kit@6.8.0(typescript@6.0.3))
+      '@solana-program/token':
+        specifier: 'catalog:'
+        version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
       '@solana-program/token-2022':
         specifier: 'catalog:'
         version: 0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3))
@@ -148,7 +154,7 @@ importers:
         version: 0.1.1(patch_hash=b814110d007b64ff76f72cf843d93ba928a9c4f39acc34dbc2ee3e27d1149689)(typescript@6.0.3)
       '@solana/pay':
         specifier: 1.0.0-beta.14
-        version: 1.0.0-beta.14(@solana-program/memo@0.10.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/system@0.12.2(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/token-2022@0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3)))(@solana/keys@6.9.0(typescript@6.0.3))(@solana/kit-plugin-payer@0.6.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana/kit@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-api@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-spec@6.9.0(typescript@6.0.3))(typescript@6.0.3)
+        version: 1.0.0-beta.14(@solana-program/memo@0.10.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/system@0.12.2(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/token-2022@0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3)))(@solana-program/token@0.13.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana/keys@6.9.0(typescript@6.0.3))(@solana/kit-plugin-payer@0.6.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana/kit@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-api@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-spec@6.9.0(typescript@6.0.3))(typescript@6.0.3)
       '@solana/signers':
         specifier: 'catalog:'
         version: 6.8.0(typescript@6.0.3)
@@ -420,6 +426,12 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.2)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/kit-augment:
+    dependencies:
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
+
   packages/sdp-api-integration:
     dependencies:
       '@sdp/private-channels':
@@ -660,6 +672,34 @@ importers:
 
   packages/sdp-spc-escrow:
     dependencies:
+      '@sdp/kit-augment':
+        specifier: workspace:*
+        version: link:../kit-augment
+      '@solana-program/token':
+        specifier: 'catalog:'
+        version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
+      '@solana/kit':
+        specifier: 'catalog:'
+        version: 6.8.0(typescript@6.0.3)
+    devDependencies:
+      '@codama/renderers-js':
+        specifier: ^2.2.0
+        version: 2.3.0(typescript@6.0.3)
+      codama:
+        specifier: ^1.6.0
+        version: 1.8.0
+      tsx:
+        specifier: 4.22.4
+        version: 4.22.4
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/coverage-istanbul@4.1.8)(vite@7.3.2(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/sdp-spc-withdraw:
+    dependencies:
+      '@sdp/kit-augment':
+        specifier: workspace:*
+        version: link:../kit-augment
       '@solana-program/token':
         specifier: 'catalog:'
         version: 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
@@ -12292,10 +12332,11 @@ snapshots:
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
 
-  '@solana/pay@1.0.0-beta.14(@solana-program/memo@0.10.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/system@0.12.2(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/token-2022@0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3)))(@solana/keys@6.9.0(typescript@6.0.3))(@solana/kit-plugin-payer@0.6.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana/kit@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-api@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-spec@6.9.0(typescript@6.0.3))(typescript@6.0.3)':
+  '@solana/pay@1.0.0-beta.14(@solana-program/memo@0.10.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/system@0.12.2(@solana/kit@6.8.0(typescript@6.0.3)))(@solana-program/token-2022@0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3)))(@solana-program/token@0.13.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana/keys@6.9.0(typescript@6.0.3))(@solana/kit-plugin-payer@0.6.0(@solana/kit@6.8.0(typescript@6.0.3)))(@solana/kit@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-api@6.8.0(typescript@6.0.3))(@solana/rpc-subscriptions-spec@6.9.0(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@solana-program/memo': 0.10.0(@solana/kit@6.8.0(typescript@6.0.3))
       '@solana-program/system': 0.12.2(@solana/kit@6.8.0(typescript@6.0.3))
+      '@solana-program/token': 0.13.0(@solana/kit@6.8.0(typescript@6.0.3))
       '@solana-program/token-2022': 0.9.0(@solana/kit@6.8.0(typescript@6.0.3))(@solana/sysvars@6.8.0(typescript@6.0.3))
       '@solana/keys': 6.9.0(typescript@6.0.3)
       '@solana/kit': 6.8.0(typescript@6.0.3)

@@ -1,10 +1,10 @@
 import * as privateChannelsPkg from "@sdp/private-channels";
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
 import {
+  type CachedApiKey,
   PRIVATE_CHANNEL_EVENT_FAMILIES,
   PRIVATE_CHANNEL_EVENT_STATUSES,
   PRIVATE_CHANNEL_EVENT_TYPES,
-  type CachedApiKey,
   type PrivateChannelDto,
   type PrivateChannelEventListEnvelope,
 } from "@sdp/types";
@@ -175,7 +175,9 @@ describe("Private Channels — event routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
     expect(
-      body.data.events.some((e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED)
+      body.data.events.some(
+        (e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED
+      )
     ).toBe(true);
   });
 
@@ -357,7 +359,9 @@ describe("Private Channels — event routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
     expect(
-      body.data.events.some((e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED)
+      body.data.events.some(
+        (e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED
+      )
     ).toBe(true);
   });
 });

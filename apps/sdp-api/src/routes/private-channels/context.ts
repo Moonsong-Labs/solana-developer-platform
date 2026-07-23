@@ -5,6 +5,7 @@ import {
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
   createPrivateChannelUserRepository,
+  createPrivateChannelWithdrawalRepository,
   createProjectUserRepository,
 } from "@/db/repositories";
 import { createPrivateChannelEventService } from "@/services/private-channels/event.service";
@@ -23,6 +24,10 @@ export function getPrivateChannelRepository(c: AppContext) {
 
 export function getPrivateChannelDepositRepository(c: AppContext) {
   return createPrivateChannelDepositRepository(c.env);
+}
+
+export function getPrivateChannelWithdrawalRepository(c: AppContext) {
+  return createPrivateChannelWithdrawalRepository(c.env);
 }
 
 export function getPrivateChannelEventRepository(c: AppContext) {
