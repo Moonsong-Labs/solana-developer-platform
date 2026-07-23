@@ -1,0 +1,142 @@
+import { isUnauthorizedRpcError } from "@sdp/rpc";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Env } from "@/types/env";
+import type { GatewayAuthHandle } from "./gateway-auth";
+
+// Mock the packages whose runtime graph doesn't resolve in the node pool. gateway-auth
+// imports SolanaRpc as a TYPE only, so @sdp/rpc/solana is never loaded here; the real
+// isUnauthorizedRpcError (@sdp/rpc) IS used so the 401 classification is exercised end-to-end.
+const { createChannelGatewayRpc } = vi.hoisted(() => ({
+  // Return a sentinel identifying which token the rpc was built with.
+  createChannelGatewayRpc: vi.fn(
+    (_env: unknown, url: string, opts?: { headers?: Record<string, string> }) => ({
+      url,
+      authorization: opts?.headers?.Authorization,
+    })
+  ),
+}));
+vi.mock("@sdp/private-channels", () => ({ createChannelGatewayRpc }));
+vi.mock("@sdp/private-channels/auth", () => ({ createAuthClient: vi.fn() }));
+vi.mock("@/db/repositories", () => ({
+  createPrivateChannelInstanceRepository: vi.fn(),
+  createPrivateChannelUserRepository: vi.fn(),
+  createPrivateChannelVerifiedWalletRepository: vi.fn(),
+}));
+
+import { withGatewayRpc } from "./gateway-auth";
+
+const ENV = {} as Env;
+const URL = "https://gw.example";
+
+/** The token sentinel our mocked createChannelGatewayRpc returns in place of a real SolanaRpc. */
+type FakeRpc = { url: string; authorization?: string };
+
+/** A 401 in the shape @solana/kit's HTTP transport throws. */
+function http401() {
+  return { context: { statusCode: 401 } };
+}
+function http403() {
+  return { context: { statusCode: 403 } };
+}
+
+function handle(
+  current: string,
+  refreshTo?: string
+): GatewayAuthHandle & { refresh: ReturnType<typeof vi.fn> } {
+  const h = {
+    current,
+    refresh: vi.fn(async () => {
+      h.current = refreshTo ?? "refreshed";
+      return h.current;
+    }),
+  };
+  return h;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("withGatewayRpc", () => {
+  it("passes the current token through and does not refresh on success", async () => {
+    const h = handle("tok-1");
+    const run = vi.fn(async (rpc: unknown) => (rpc as FakeRpc).authorization);
+
+    const result = await withGatewayRpc(ENV, URL, h, run);
+
+    expect(result).toBe("Bearer tok-1");
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("on a 401 refreshes once and retries with the new token", async () => {
+    const h = handle("stale", "fresh");
+    const run = vi.fn(async (rpc: unknown) => {
+      const { authorization } = rpc as FakeRpc;
+      if (authorization === "Bearer stale") throw http401();
+      return authorization;
+    });
+
+    const result = await withGatewayRpc(ENV, URL, h, run);
+
+    expect(result).toBe("Bearer fresh");
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT retry on a 403 (valid token, not permitted)", async () => {
+    const h = handle("tok");
+    const run = vi.fn(async () => {
+      throw http403();
+    });
+
+    await expect(withGatewayRpc(ENV, URL, h, run)).rejects.toEqual(http403());
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT retry when there is no token (open instance)", async () => {
+    const run = vi.fn(async () => {
+      throw http401();
+    });
+
+    await expect(withGatewayRpc(ENV, URL, undefined, run)).rejects.toEqual(http401());
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries at most once — a persistent 401 propagates", async () => {
+    const h = handle("stale", "fresh");
+    const run = vi.fn(async () => {
+      throw http401();
+    });
+
+    await expect(withGatewayRpc(ENV, URL, h, run)).rejects.toEqual(http401());
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a refresh() failure (e.g. login unavailable) instead of the 401", async () => {
+    const h = handle("stale");
+    h.refresh.mockRejectedValueOnce(new Error("auth unavailable"));
+    const run = vi.fn(async () => {
+      throw http401();
+    });
+
+    await expect(withGatewayRpc(ENV, URL, h, run)).rejects.toThrow("auth unavailable");
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("isUnauthorizedRpcError", () => {
+  it("is true only for a 401 on a SolanaError-shaped context", () => {
+    expect(isUnauthorizedRpcError({ context: { statusCode: 401 } })).toBe(true);
+  });
+
+  it("is false for 403 / 500 / transient / non-object errors", () => {
+    expect(isUnauthorizedRpcError({ context: { statusCode: 403 } })).toBe(false);
+    expect(isUnauthorizedRpcError({ context: { statusCode: 500 } })).toBe(false);
+    expect(isUnauthorizedRpcError(new Error("503 Service Unavailable"))).toBe(false);
+    expect(isUnauthorizedRpcError(null)).toBe(false);
+    expect(isUnauthorizedRpcError("401")).toBe(false);
+  });
+});

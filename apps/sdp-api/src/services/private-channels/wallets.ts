@@ -89,10 +89,8 @@ async function resolveWalletSession(
   }
 
   const client = createAuthClient(instance.auth_url as string, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
-  // TODO: refactor SPC user-auth JWT management so we don't log in on every SPC
-  // endpoint call. getSpcSession currently mints a fresh 24h JWT per request (see
-  // ./auth/spc-session); cache/persist the token per SPC user (e.g. KV, keyed by
-  // pcUser.id, with refresh-before-expiry) and reuse it here across verify/delete.
+  // Uncached on purpose: verify/delete hit SPC AUTH (no gateway 401 retry). Hot paths
+  // use the KV session cache (see ./auth/spc-session).
   const session = await getSpcSession(env, auth.organizationId, pcUser, client);
 
   return { scope, instance, pcUser, client, session };

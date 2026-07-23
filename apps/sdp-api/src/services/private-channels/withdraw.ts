@@ -14,15 +14,14 @@
  *
  * Gateway auth: broadcasting the burn is a gateway WRITE and confirming it a
  * gateway READ — both JWT-gated. The caller's SPC session is resolved by the
- * handler and passed in as `gatewayAuthToken`; verified end-to-end on devnet
- * against an auth-enabled gateway.
+ * handler and passed in as `gatewayAuth` (a self-refreshing handle, shared across
+ * broadcast + confirm); verified end-to-end on devnet against an auth-enabled gateway.
  *
  * Lifecycle here: pending (persist) → submitted (broadcast) → burn_confirmed
  * (confirmed on the gateway). `release_pending` → `released` is detected
  * asynchronously by the reconciler via the devnet release on the instance ATA.
  */
 
-import { createChannelGatewayRpc } from "@sdp/private-channels";
 import * as solanaRpc from "@sdp/rpc/solana";
 import { parseDecimalAmount } from "@sdp/solana/amount";
 import { getWithdrawFundsInstructionAsync } from "@sdp/spc-withdraw";
@@ -49,7 +48,7 @@ import { AppError, badRequest } from "@/lib/errors";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
-import { gatewayAuthOptions } from "./auth/gateway-auth";
+import { type GatewayAuthHandle, withGatewayRpc } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 import { confirmAndPersistWithdrawal } from "./withdraw-confirm";
 import { emitWithdrawalEvent } from "./withdraw-events";
@@ -71,11 +70,12 @@ export interface CreateChannelWithdrawalInput {
   /** Devnet address that receives the operator's release; defaults to the owner. */
   destination?: string;
   /**
-   * SPC bearer token for the gateway. Required when the connected instance has auth
-   * enabled — broadcasting the burn is a gateway WRITE and confirming it a gateway
-   * READ, both JWT-gated. Resolved by the handler.
+   * SPC gateway auth handle. Required when the connected instance has auth enabled —
+   * broadcasting the burn is a gateway WRITE and confirming it a gateway READ, both
+   * JWT-gated. Resolved by the handler; shared across broadcast + confirm so confirm
+   * reuses a token broadcast already refreshed.
    */
-  gatewayAuthToken?: string;
+  gatewayAuth?: GatewayAuthHandle;
 }
 
 /**
@@ -92,9 +92,12 @@ async function broadcastWithdrawal(
     mint: Address;
     destination: Address;
     amountBaseUnits: bigint;
-    authToken?: string;
+    gatewayAuth?: GatewayAuthHandle;
   }
 ): Promise<Signature> {
+  // Signer derivation + the (blockhash-independent) burn instruction are built ONCE,
+  // outside the retried gateway unit — a 401 retry re-signs against a fresh blockhash
+  // but must not re-derive the signer.
   const signer = await solanaServices.createOrgSigner(
     env,
     input.organizationId,
@@ -112,27 +115,24 @@ async function broadcastWithdrawal(
     destination: input.destination,
   });
 
-  // Blockhash + broadcast target the GATEWAY (channel chain), not devnet.
-  const gatewayRpc = createChannelGatewayRpc(
-    env,
-    input.instance.gatewayUrl,
-    gatewayAuthOptions(input.authToken)
-  );
-  const { blockhash, lastValidBlockHeight } = await solanaRpc.getRecentBlockhash(
-    gatewayRpc,
-    "confirmed"
-  );
+  // Blockhash + broadcast on the gateway; whole sequence is the withGatewayRpc retry unit.
+  return withGatewayRpc(env, input.instance.gatewayUrl, input.gatewayAuth, async (gatewayRpc) => {
+    const { blockhash, lastValidBlockHeight } = await solanaRpc.getRecentBlockhash(
+      gatewayRpc,
+      "confirmed"
+    );
 
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayerSigner(signer, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions([burnIx], m)
-  );
+    const message = pipe(
+      createTransactionMessage({ version: 0 }),
+      (m) => setTransactionMessageFeePayerSigner(signer, m),
+      (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
+      (m) => appendTransactionMessageInstructions([burnIx], m)
+    );
 
-  const signed = await signTransactionMessageWithSigners(message);
-  const signedBytes = new Uint8Array(getTransactionEncoder().encode(signed));
-  return solanaRpc.sendTransaction(gatewayRpc, signedBytes);
+    const signed = await signTransactionMessageWithSigners(message);
+    const signedBytes = new Uint8Array(getTransactionEncoder().encode(signed));
+    return solanaRpc.sendTransaction(gatewayRpc, signedBytes);
+  });
 }
 
 /** Create a withdrawal intent: persist, broadcast the burn to the gateway, confirm. */
@@ -188,7 +188,7 @@ export async function createChannelWithdrawal(
       mint: address(mint),
       destination: address(destination),
       amountBaseUnits,
-      authToken: input.gatewayAuthToken,
+      gatewayAuth: input.gatewayAuth,
     });
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : "Withdrawal submission failed.";
@@ -225,7 +225,7 @@ export async function createChannelWithdrawal(
     withdrawalId: created.id,
     gatewayUrl: instance.gatewayUrl,
     signature,
-    authToken: input.gatewayAuthToken,
+    gatewayAuth: input.gatewayAuth,
   });
   if (settled) {
     latest = settled;

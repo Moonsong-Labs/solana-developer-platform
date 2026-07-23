@@ -24,7 +24,7 @@ vi.mock("@/services/private-channels/deposit-events", () => ({ emitDepositEvent 
 // to an auth-less instance ("open"); individual tests override to assert behaviour.
 const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
   resolveOwnerGatewayAuth: vi.fn(
-    async () => ({ kind: "open" }) as { kind: string; token?: string; reason?: string }
+    async () => ({ kind: "open" }) as { kind: string; handle?: unknown; reason?: string }
   ),
 }));
 vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveOwnerGatewayAuth }));
@@ -137,7 +137,10 @@ describe("trackPendingDeposits", () => {
     const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
     depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
     depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
-    resolveOwnerGatewayAuth.mockResolvedValue({ kind: "token", token: "jwt-abc" });
+    resolveOwnerGatewayAuth.mockResolvedValue({
+      kind: "token",
+      handle: { current: "jwt-abc", refresh: vi.fn() },
+    });
     getChannelBalance.mockResolvedValueOnce({ amount: "10", decimals: 0 });
 
     await trackPendingDeposits({} as Env);
@@ -149,7 +152,7 @@ describe("trackPendingDeposits", () => {
     );
     expect(getChannelBalance).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ authToken: "jwt-abc" })
+      expect.objectContaining({ auth: expect.objectContaining({ current: "jwt-abc" }) })
     );
     expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "a", status: "credited" })

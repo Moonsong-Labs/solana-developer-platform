@@ -1,29 +1,33 @@
 /**
- * Gateway authorization for Private Channels reads.
+ * Gateway authorization for Private Channels reads and writes.
  *
  * The SPC gateway JWT-gates private data (token balances, account info, tx
- * lookups). The token is minted by the SPC AUTH service (`instance.authUrl`, a
- * different service from `instance.gatewayUrl`) by logging in as the acting
- * member's SPC user — see `./spc-session`. This helper resolves that token so
- * callers can hand it to `createChannelGatewayRpc(..., { headers })`.
+ * lookups, burn broadcast). The token is minted by the SPC AUTH service
+ * (`instance.authUrl`, a different service from `instance.gatewayUrl`) by logging
+ * in as the acting member's SPC user — see `./spc-session`, which caches it per
+ * (instance, SPC user) in KV and refreshes before expiry.
  *
- * Returns `undefined` when the connected instance has auth DISABLED, so
- * unauthenticated deployments keep working unchanged. When auth IS enabled the
- * caller must have a user identity and an invited membership — we fail with a
- * clear error rather than letting the gateway answer an opaque 401.
- *
- * TODO(session-cache): `getSpcSession` mints a fresh 24h JWT on every call. Once
- * the cached/persisted session lands (keyed per SPC user, refreshed before
- * expiry) it will extend that helper, so keep going through this function.
+ * Callers do not hold a bare token; they hold a `GatewayAuthHandle` and run their
+ * gateway op through `withGatewayRpc`, which retries ONCE on a gateway 401 with a
+ * re-minted token. Returns `undefined` when the connected instance has auth
+ * DISABLED, so unauthenticated deployments keep working unchanged. When auth IS
+ * enabled the caller must have a user identity and an invited membership — we fail
+ * with a clear error rather than letting the gateway answer an opaque 401.
  */
 
-import { createAuthClient } from "@sdp/private-channels/auth";
+import { createChannelGatewayRpc } from "@sdp/private-channels";
+import { createAuthClient, type SpcAuthClient } from "@sdp/private-channels/auth";
+import { isUnauthorizedRpcError } from "@sdp/rpc";
+import type { SolanaRpc } from "@sdp/rpc/solana";
 import {
   createPrivateChannelInstanceRepository,
   createPrivateChannelUserRepository,
   createPrivateChannelVerifiedWalletRepository,
+  type PrivateChannelUserRow,
 } from "@/db/repositories";
 import { forbidden } from "@/lib/errors";
+import { createKVStoreSet } from "@/runtime/factory";
+import type { KVStore } from "@/runtime/kv";
 import type { Env } from "@/types/env";
 import { getSpcSession } from "./spc-session";
 
@@ -32,12 +36,24 @@ const SPC_AUTH_TIMEOUT_MS = 8_000;
 
 /** The instance fields needed to decide on, and mint, a gateway token. */
 export interface GatewayAuthInstance {
+  /** Instance id — the SPC-session cache is scoped per (instance, SPC user). */
+  id: string;
   useAuth: boolean;
   /** Null/empty when the auth service isn't part of the deployment. */
   authUrl: string | null;
 }
 
-export interface ResolveGatewayAuthTokenInput {
+/**
+ * A live gateway bearer token that can re-mint itself. `current` is the token to
+ * send; `refresh()` re-logins (evicting the cached entry) and updates `current`.
+ * `undefined` in place of a handle means the instance is open (no auth).
+ */
+export interface GatewayAuthHandle {
+  current: string | undefined;
+  refresh(): Promise<string | undefined>;
+}
+
+export interface ResolveGatewayAuthInput {
   instance: GatewayAuthInstance;
   organizationId: string;
   projectId: string;
@@ -45,15 +61,47 @@ export interface ResolveGatewayAuthTokenInput {
   userId: string | null | undefined;
 }
 
+/** Best-effort KV `cache` store; `undefined` when KV isn't configured on this runtime. */
+function tryGetCache(env: Env): KVStore | undefined {
+  try {
+    return createKVStoreSet(env).cache;
+  } catch {
+    return undefined; // No KV binding → no caching, fall back to fresh login each call.
+  }
+}
+
 /**
- * Resolve the bearer token for gateway reads, or `undefined` when the instance
+ * Mint the initial SPC token and wrap it in a self-refreshing handle. `refresh()`
+ * calls only `getSpcSession(forceRefresh)` — it must NOT re-run the membership/identity
+ * checks, or it would re-throw `forbidden` instead of re-logging in.
+ */
+async function openGatewayAuthHandle(
+  env: Env,
+  organizationId: string,
+  instanceId: string,
+  pcUser: PrivateChannelUserRow,
+  client: SpcAuthClient,
+  cache: KVStore | undefined
+): Promise<GatewayAuthHandle> {
+  const session = (forceRefresh: boolean) =>
+    getSpcSession(env, organizationId, pcUser, client, { cache, instanceId, forceRefresh });
+  const { token } = await session(false);
+  const handle: GatewayAuthHandle = {
+    current: token,
+    refresh: async () => (handle.current = (await session(true)).token),
+  };
+  return handle;
+}
+
+/**
+ * Resolve a gateway auth handle for a request, or `undefined` when the instance
  * doesn't use auth. Throws a descriptive `FORBIDDEN` when auth is required but no
  * SPC session can be minted for the caller.
  */
-export async function resolveGatewayAuthToken(
+export async function resolveGatewayAuth(
   env: Env,
-  { instance, organizationId, projectId, userId }: ResolveGatewayAuthTokenInput
-): Promise<string | undefined> {
+  { instance, organizationId, projectId, userId }: ResolveGatewayAuthInput
+): Promise<GatewayAuthHandle | undefined> {
   if (!instance.useAuth || !instance.authUrl) {
     return undefined; // Gateway is open on this deployment.
   }
@@ -75,13 +123,45 @@ export async function resolveGatewayAuthToken(
   }
 
   const client = createAuthClient(instance.authUrl, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
-  const { token } = await getSpcSession(env, organizationId, pcUser, client);
-  return token;
+  const cache = tryGetCache(env);
+  return openGatewayAuthHandle(env, organizationId, instance.id, pcUser, client, cache);
 }
 
 /** Build the gateway RPC options for a (possibly absent) bearer token. */
-export function gatewayAuthOptions(token: string | undefined) {
+function gatewayAuthOptions(token: string | undefined) {
   return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+}
+
+/**
+ * Run a gateway RPC op with a handle's token, retrying ONCE on a gateway 401 with a
+ * re-minted token and a rebuilt client (the token is baked into headers at
+ * construction, so a rebuild is required).
+ *
+ * `run` must be the token-authenticated gateway sequence ONLY, never surrounding
+ * business logic — on the withdrawal write path this re-runs a burn broadcast. That
+ * is safe because `isUnauthorizedRpcError` is strict (status 401 only): a 401 is an
+ * auth-middleware rejection BEFORE the gateway forwards the tx, so nothing reached
+ * the channel chain and re-running (with a fresh blockhash) cannot double-burn.
+ *
+ * A refreshed-but-still-401 propagates (no loop). If `refresh()` itself throws (login
+ * 401 / auth unavailable), that error surfaces — it is more actionable than the 401.
+ */
+export async function withGatewayRpc<T>(
+  env: Env,
+  gatewayUrl: string,
+  handle: GatewayAuthHandle | undefined,
+  run: (rpc: SolanaRpc) => Promise<T>
+): Promise<T> {
+  const attempt = (token: string | undefined) =>
+    run(createChannelGatewayRpc(env, gatewayUrl, gatewayAuthOptions(token)));
+  try {
+    return await attempt(handle?.current);
+  } catch (error) {
+    if (!handle?.current || !isUnauthorizedRpcError(error)) {
+      throw error;
+    }
+    return await attempt(await handle.refresh());
+  }
 }
 
 /**
@@ -91,7 +171,7 @@ export function gatewayAuthOptions(token: string | undefined) {
  */
 export type OwnerGatewayAuth =
   | { kind: "open" }
-  | { kind: "token"; token: string }
+  | { kind: "token"; handle: GatewayAuthHandle }
   | { kind: "unavailable"; reason: string };
 
 export interface ResolveOwnerGatewayAuthInput {
@@ -154,8 +234,11 @@ export async function resolveOwnerGatewayAuth(
 
   try {
     const client = createAuthClient(instance.auth_url, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
-    const { token } = await getSpcSession(env, organizationId, pcUser, client);
-    return { kind: "token", token };
+    const cache = tryGetCache(env);
+    return {
+      kind: "token",
+      handle: await openGatewayAuthHandle(env, organizationId, instanceId, pcUser, client, cache),
+    };
   } catch (error) {
     return {
       kind: "unavailable",
