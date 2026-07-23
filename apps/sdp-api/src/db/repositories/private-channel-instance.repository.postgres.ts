@@ -19,8 +19,7 @@ function mapRow(row: Record<string, unknown>): PrivateChannelInstanceRow {
     escrow_program_id: row.escrow_program_id as string,
     withdraw_program_id: row.withdraw_program_id as string,
     escrow_instance_addr: row.escrow_instance_addr as string,
-    use_auth: row.use_auth as boolean,
-    auth_url: (row.auth_url ?? null) as string | null,
+    auth_url: row.auth_url as string,
     is_active: row.is_active as boolean,
     created_by: (row.created_by ?? null) as string | null,
     created_at: row.created_at as string,
@@ -80,9 +79,9 @@ export function createPostgresPrivateChannelInstanceRepository(
                id, organization_id, project_id,
                gateway_url, chain_rpc_url,
                escrow_program_id, withdraw_program_id, escrow_instance_addr,
-               use_auth, auth_url,
+               auth_url,
                is_active, created_by
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
           RETURNING *`
         )
         .bind(
@@ -94,8 +93,7 @@ export function createPostgresPrivateChannelInstanceRepository(
           input.escrowProgramId,
           input.withdrawProgramId,
           input.escrowInstanceAddr,
-          input.useAuth,
-          input.useAuth ? input.authUrl : null,
+          input.authUrl,
           input.createdBy
         )
         .first<Record<string, unknown>>();
@@ -110,7 +108,6 @@ export function createPostgresPrivateChannelInstanceRepository(
                   escrow_program_id = ?,
                   withdraw_program_id = ?,
                   escrow_instance_addr = ?,
-                  use_auth = ?,
                   auth_url = ?,
                   is_active = TRUE,
                   updated_at = sdp_iso_now()
@@ -122,8 +119,7 @@ export function createPostgresPrivateChannelInstanceRepository(
           input.escrowProgramId,
           input.withdrawProgramId,
           input.escrowInstanceAddr,
-          input.useAuth,
-          input.useAuth ? input.authUrl : null,
+          input.authUrl,
           input.id
         )
         .first<Record<string, unknown>>();

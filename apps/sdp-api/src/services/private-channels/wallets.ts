@@ -2,7 +2,7 @@
  * SPC wallet-verification orchestration (the write path) + the per-member read.
  *
  * Drives the SPC auth handshake for one SDP custody wallet:
- *   1. resolve the connected (auth-enabled) instance + the acting member's SPC user
+ *   1. resolve the connected instance + the acting member's SPC user
  *   2. get an SPC session JWT (decrypt credential → login; see ./auth/spc-session)
  *   3. `challenge-wallet` → sign the challenge with THAT wallet → `verify-wallet`
  *   4. persist the verification (idempotent per (user, instance, pubkey))
@@ -29,7 +29,7 @@ import {
   type PrivateChannelVerifiedWalletRow,
 } from "@/db/repositories";
 import type { ApiKeyContext } from "@/lib/auth";
-import { AppError, badRequest, forbidden, providerNotConfigured } from "@/lib/errors";
+import { AppError, forbidden, providerNotConfigured } from "@/lib/errors";
 import { createOrgSigner } from "@/services/solana";
 import type { Env } from "@/types/env";
 import { getSpcSession, type SpcSession } from "./auth/spc-session";
@@ -41,14 +41,11 @@ const base58 = getBase58Codec();
 // service can't stack into a ~45s request.
 const SPC_AUTH_TIMEOUT_MS = 8_000;
 
-function requireAuthEnabledInstance(instance: PrivateChannelInstanceRow | null): asserts instance {
+function requireActiveInstance(instance: PrivateChannelInstanceRow | null): asserts instance {
   if (!instance) {
     throw providerNotConfigured(
       "No active Private Channels instance is connected for this project."
     );
-  }
-  if (!instance.use_auth || !instance.auth_url) {
-    throw badRequest("Wallet verification requires the connected instance to have auth enabled.");
   }
 }
 
@@ -62,8 +59,8 @@ interface WalletSession {
 
 /**
  * Shared preamble for the verify/delete write paths: require a user identity,
- * resolve the connected auth-enabled instance and the acting member's SPC user,
- * and mint an SPC session JWT.
+ * resolve the connected instance and the acting member's SPC user, and mint an
+ * SPC session JWT.
  */
 async function resolveWalletSession(
   env: Env,
@@ -78,7 +75,7 @@ async function resolveWalletSession(
   const scope = { organizationId: auth.organizationId, projectId };
 
   const instance = await createPrivateChannelInstanceRepository(env).getActiveByProject(scope);
-  requireAuthEnabledInstance(instance);
+  requireActiveInstance(instance);
 
   const pcUser = await createPrivateChannelUserRepository(env).findByProjectAndUser(
     scope,
@@ -88,7 +85,7 @@ async function resolveWalletSession(
     throw forbidden("You must be an invited Private Channels member to manage verified wallets.");
   }
 
-  const client = createAuthClient(instance.auth_url as string, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
+  const client = createAuthClient(instance.auth_url, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
   // TODO: refactor SPC user-auth JWT management so we don't log in on every SPC
   // endpoint call. getSpcSession currently mints a fresh 24h JWT per request (see
   // ./auth/spc-session); cache/persist the token per SPC user (e.g. KV, keyed by

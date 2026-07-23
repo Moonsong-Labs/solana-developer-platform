@@ -15,6 +15,7 @@ export type TestConnectionResult = ConnectionProbeResult;
 export async function testConnectionAction(input: {
   gatewayUrl: string;
   chainRpcUrl: string;
+  authUrl: string;
 }): Promise<TestConnectionResult> {
   try {
     const client = await createSdpApiClient();
@@ -28,6 +29,7 @@ export async function testConnectionAction(input: {
       ok: false,
       gateway: { status: "unreachable", latencyMs: 0, error: message },
       rpc: { ok: false, latencyMs: 0, error: message },
+      auth: { ok: false, latencyMs: 0, error: message },
     };
   }
 }
@@ -162,23 +164,26 @@ function interpretApiError(error: unknown): ConnectPrivateChannelResult {
     };
   }
 
-  if (details?.gateway && details.rpc) {
+  if (details?.gateway && details.rpc && details.auth) {
     const probe = details as {
       gateway: ConnectionProbeResult["gateway"];
       rpc: ConnectionProbeResult["rpc"];
+      auth: ConnectionProbeResult["auth"];
     };
     const probeSummary =
-      probe.rpc.ok === false
-        ? `Chain RPC failed: ${probe.rpc.error}`
-        : probe.gateway.status === "degraded"
-          ? `Gateway degraded: ${probe.gateway.reason}`
-          : probe.gateway.status === "unreachable"
-            ? `Gateway unreachable: ${probe.gateway.error}`
-            : "Connection check failed.";
+      probe.auth.ok === false
+        ? `Auth failed: ${probe.auth.error}`
+        : probe.rpc.ok === false
+          ? `Chain RPC failed: ${probe.rpc.error}`
+          : probe.gateway.status === "degraded"
+            ? `Gateway degraded: ${probe.gateway.reason}`
+            : probe.gateway.status === "unreachable"
+              ? `Gateway unreachable: ${probe.gateway.error}`
+              : "Connection check failed.";
     return {
       ok: false,
       kind: "probe",
-      probe: { gateway: probe.gateway, rpc: probe.rpc, ok: false },
+      probe: { gateway: probe.gateway, rpc: probe.rpc, auth: probe.auth, ok: false },
       message: probeSummary,
     };
   }
@@ -200,6 +205,7 @@ function interpretApiError(error: unknown): ConnectPrivateChannelResult {
 interface ErrorDetails {
   gateway?: ConnectionProbeResult["gateway"];
   rpc?: ConnectionProbeResult["rpc"];
+  auth?: ConnectionProbeResult["auth"];
   fieldErrors?: Record<string, unknown>;
   requiresReactivateConfirmation?: boolean;
   existingInstance?: PrivateChannelInstance;

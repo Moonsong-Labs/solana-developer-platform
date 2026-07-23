@@ -7,8 +7,7 @@
  * member's SPC user — see `./spc-session`. This helper resolves that token so
  * callers can hand it to `createChannelGatewayRpc(..., { headers })`.
  *
- * Returns `undefined` when the connected instance has auth DISABLED, so
- * unauthenticated deployments keep working unchanged. When auth IS enabled the
+ * An SPC instance always has an auth service (enforced at connect time), so the
  * caller must have a user identity and an invited membership — we fail with a
  * clear error rather than letting the gateway answer an opaque 401.
  *
@@ -30,11 +29,9 @@ import { getSpcSession } from "./spc-session";
 /** Cap below the auth client's default so a degraded auth service can't stall a request. */
 const SPC_AUTH_TIMEOUT_MS = 8_000;
 
-/** The instance fields needed to decide on, and mint, a gateway token. */
+/** The instance fields needed to mint a gateway token. */
 export interface GatewayAuthInstance {
-  useAuth: boolean;
-  /** Null/empty when the auth service isn't part of the deployment. */
-  authUrl: string | null;
+  authUrl: string;
 }
 
 export interface ResolveGatewayAuthTokenInput {
@@ -46,21 +43,16 @@ export interface ResolveGatewayAuthTokenInput {
 }
 
 /**
- * Resolve the bearer token for gateway reads, or `undefined` when the instance
- * doesn't use auth. Throws a descriptive `FORBIDDEN` when auth is required but no
- * SPC session can be minted for the caller.
+ * Resolve the bearer token for gateway reads. Throws a descriptive `FORBIDDEN`
+ * when no SPC session can be minted for the caller.
  */
 export async function resolveGatewayAuthToken(
   env: Env,
   { instance, organizationId, projectId, userId }: ResolveGatewayAuthTokenInput
-): Promise<string | undefined> {
-  if (!instance.useAuth || !instance.authUrl) {
-    return undefined; // Gateway is open on this deployment.
-  }
-
+): Promise<string> {
   if (!userId) {
     throw forbidden(
-      "This Private Channels instance requires authentication; reading channel data needs a user identity and is not available for API-key auth."
+      "Reading Private Channels data needs a user identity and is not available for API-key auth."
     );
   }
 
@@ -79,9 +71,9 @@ export async function resolveGatewayAuthToken(
   return token;
 }
 
-/** Build the gateway RPC options for a (possibly absent) bearer token. */
-export function gatewayAuthOptions(token: string | undefined) {
-  return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+/** Build the gateway RPC options for a bearer token. */
+export function gatewayAuthOptions(token: string) {
+  return { headers: { Authorization: `Bearer ${token}` } };
 }
 
 /**
@@ -90,7 +82,6 @@ export function gatewayAuthOptions(token: string | undefined) {
  * (it would just re-throw every cron tick).
  */
 export type OwnerGatewayAuth =
-  | { kind: "open" }
   | { kind: "token"; token: string }
   | { kind: "unavailable"; reason: string };
 
@@ -116,10 +107,10 @@ export interface ResolveOwnerGatewayAuthInput {
  * recipient is an external/unverified address. The caller should skip that group
  * and leave the deposits for manual resolution rather than fail the whole tick.
  *
- * NOTE: `use_auth`/`auth_url` come from the instance's CURRENT row, not the
- * deposit's snapshot (the snapshot pins the chain/gateway, and carries no auth
- * endpoint). Authenticating against the current auth service is the desired
- * behaviour; if that ever needs pinning too, add it to the snapshot.
+ * NOTE: `auth_url` comes from the instance's CURRENT row, not the deposit's
+ * snapshot (the snapshot pins the chain/gateway, and carries no auth endpoint).
+ * Authenticating against the current auth service is the desired behaviour; if
+ * that ever needs pinning too, add it to the snapshot.
  */
 export async function resolveOwnerGatewayAuth(
   env: Env,
@@ -128,9 +119,6 @@ export async function resolveOwnerGatewayAuth(
   const instance = await createPrivateChannelInstanceRepository(env).getById(instanceId);
   if (!instance) {
     return { kind: "unavailable", reason: `instance ${instanceId} no longer exists` };
-  }
-  if (!instance.use_auth || !instance.auth_url) {
-    return { kind: "open" };
   }
 
   const scope = { organizationId, projectId };

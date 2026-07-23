@@ -104,18 +104,13 @@ export const invitePrivateChannelUser = async (c: AppContext) => {
 
   const scope = { organizationId: auth.organizationId, projectId };
 
-  // Instance must exist, be active, and expose an auth service — we can't
-  // register an SPC user without one.
+  // Instance must exist and be active — SPC user registration requires the
+  // configured auth service (guaranteed present on every active instance).
   const instance = await getPrivateChannelInstanceRepository(c).getActiveByProject(scope);
   if (!instance) {
     throw new AppError(
       "CONFLICT",
       "No active Private Channel instance for this project. Connect one first."
-    );
-  }
-  if (!instance.use_auth || !instance.auth_url) {
-    throw badRequest(
-      "The connected Private Channel instance has no auth service configured. Enable Use Auth on the instance before inviting members."
     );
   }
 

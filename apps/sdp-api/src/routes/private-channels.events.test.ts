@@ -30,7 +30,7 @@ function unreachableOverview(error = "gateway down") {
     chainRpc: { ok: false as const, error: "n/a" },
     escrowInstance: { present: false as const, error: "n/a" },
     escrowProgram: { present: false as const, error: "n/a" },
-    auth: null,
+    auth: { reachable: false as const, error: "n/a" },
   };
 }
 
@@ -65,6 +65,7 @@ function successProbe() {
       ready: { status: 200, ok: true },
     },
     rpc: { ok: true as const, latencyMs: 1, version: "2.0.0" },
+    auth: { ok: true as const, latencyMs: 1 },
   };
 }
 
@@ -130,8 +131,7 @@ async function connectInstance(): Promise<void> {
         escrowProgramId: SANDBOX_DEFAULTS.escrowProgramId,
         withdrawProgramId: SANDBOX_DEFAULTS.withdrawProgramId,
         escrowInstanceAddr: SANDBOX_DEFAULTS.escrowInstanceAddr,
-        useAuth: false,
-        authUrl: "",
+        authUrl: SANDBOX_DEFAULTS.authUrl,
       }),
     },
     env

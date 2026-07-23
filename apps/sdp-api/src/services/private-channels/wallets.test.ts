@@ -27,7 +27,6 @@ const instance = {
   id: "pci_1",
   organization_id: "org_1",
   project_id: "prj_1",
-  use_auth: true,
   auth_url: "http://auth.local:8903",
 } as unknown as repositories.PrivateChannelInstanceRow;
 

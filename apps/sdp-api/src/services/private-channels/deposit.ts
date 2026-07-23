@@ -72,11 +72,10 @@ export interface CreateChannelDepositInput {
   /** Address credited in the channel; defaults to the depositor. */
   recipient?: string;
   /**
-   * SPC bearer token for the gateway baseline read. Required when the connected
-   * instance has auth enabled (the gateway JWT-gates balance reads); resolved by
-   * the handler via `resolveGatewayAuthToken`.
+   * SPC bearer token for the gateway baseline read. The gateway JWT-gates
+   * balance reads; resolved by the handler via `resolveGatewayAuthToken`.
    */
-  gatewayAuthToken?: string;
+  gatewayAuthToken: string;
 }
 
 /**
