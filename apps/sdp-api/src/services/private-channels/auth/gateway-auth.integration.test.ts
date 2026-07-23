@@ -10,13 +10,20 @@
  * isn't part of the caching feature), simulating success / 401 / non-401.
  */
 
+import { PrivateChannelError } from "@sdp/private-channels";
 import * as spcAuth from "@sdp/private-channels/auth";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
+import { createPrivateChannelUserRepository } from "@/db/repositories";
 import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
 import { createKVStoreSet } from "@/runtime/factory";
 import { generateEncryptionKey } from "@/services/encryption.service";
-import { resolveGatewayAuth, withGatewayRpc } from "@/services/private-channels/auth/gateway-auth";
+import {
+  openSpcAuthHandle,
+  resolveGatewayAuth,
+  withGatewayRpc,
+  withSpcAuth,
+} from "@/services/private-channels/auth/gateway-auth";
 import { TEST_ORG, TEST_USER } from "@/test/fixtures/organizations";
 import { env as baseEnv } from "@/test/helpers/env";
 import { clearTestDatabase, seedTestDatabase } from "@/test/mocks/db";
@@ -166,5 +173,47 @@ describe("SPC gateway auth — KV cache + 401 retry (real Miniflare KV + Postgre
 
     expect(attempts).toBe(1);
     expect(loginMock).not.toHaveBeenCalled();
+  });
+
+  it("shares the KV cache between openSpcAuthHandle and resolveGatewayAuth", async () => {
+    const pcUser = await createPrivateChannelUserRepository(testEnv).getById(
+      { organizationId: TEST_ORG.id, projectId: PROJECT_ID },
+      PCU_ID
+    );
+    expect(pcUser).toBeTruthy();
+    const client = spcAuth.createAuthClient(AUTH_URL);
+
+    const walletHandle = await openSpcAuthHandle(
+      testEnv,
+      TEST_ORG.id,
+      INSTANCE_ID,
+      pcUser!,
+      client
+    );
+    expect(loginMock).toHaveBeenCalledTimes(1);
+
+    const gatewayHandle = await resolveGatewayAuth(testEnv, resolveInput);
+    expect(gatewayHandle?.current).toBe(walletHandle.current);
+    expect(loginMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("on Auth REST UNAUTHORIZED, evicts + re-mints via withSpcAuth and retries once", async () => {
+    const handle = await resolveGatewayAuth(testEnv, resolveInput);
+    expect(loginMock).toHaveBeenCalledTimes(1);
+    const firstToken = handle!.current;
+
+    let attempts = 0;
+    const result = await withSpcAuth(handle!, async (token) => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new PrivateChannelError("UNAUTHORIZED", "stale");
+      }
+      return token;
+    });
+
+    expect(attempts).toBe(2);
+    expect(loginMock).toHaveBeenCalledTimes(2);
+    expect(result).not.toBe(firstToken);
+    expect(handle!.current).toBe(result);
   });
 });

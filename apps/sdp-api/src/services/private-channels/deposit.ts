@@ -50,7 +50,7 @@ import { AppError, badRequest } from "@/lib/errors";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
-import type { GatewayAuthHandle } from "./auth/gateway-auth";
+import type { SpcAuthHandle } from "./auth/gateway-auth";
 import { getChannelBalance } from "./balance";
 import { confirmAndPersistDeposit } from "./deposit-confirm";
 import { emitDepositEvent } from "./deposit-events";
@@ -73,11 +73,11 @@ export interface CreateChannelDepositInput {
   /** Address credited in the channel; defaults to the depositor. */
   recipient?: string;
   /**
-   * SPC gateway auth handle for the baseline read. Required when the connected
-   * instance has auth enabled (the gateway JWT-gates balance reads); resolved by
-   * the handler via `resolveGatewayAuth`.
+   * SPC JWT handle for the baseline gateway balance read. Required when the
+   * connected instance has auth enabled; resolved by the handler via
+   * `resolveGatewayAuth`.
    */
-  gatewayAuth?: GatewayAuthHandle;
+  gatewayAuth?: SpcAuthHandle;
 }
 
 /**

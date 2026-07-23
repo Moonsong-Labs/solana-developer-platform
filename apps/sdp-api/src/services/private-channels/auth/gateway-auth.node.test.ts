@@ -1,7 +1,8 @@
+import { PrivateChannelError } from "@sdp/private-channels";
 import { isUnauthorizedRpcError } from "@sdp/rpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "@/types/env";
-import type { GatewayAuthHandle } from "./gateway-auth";
+import type { SpcAuthHandle } from "./gateway-auth";
 
 // Mock the packages whose runtime graph doesn't resolve in the node pool. gateway-auth
 // imports SolanaRpc as a TYPE only, so @sdp/rpc/solana is never loaded here; the real
@@ -15,7 +16,18 @@ const { createChannelGatewayRpc } = vi.hoisted(() => ({
     })
   ),
 }));
-vi.mock("@sdp/private-channels", () => ({ createChannelGatewayRpc }));
+vi.mock("@sdp/private-channels", () => ({
+  createChannelGatewayRpc,
+  PrivateChannelError: class PrivateChannelError extends Error {
+    constructor(
+      public readonly code: string,
+      message?: string
+    ) {
+      super(message ?? code);
+      this.name = "PrivateChannelError";
+    }
+  },
+}));
 vi.mock("@sdp/private-channels/auth", () => ({ createAuthClient: vi.fn() }));
 vi.mock("@/db/repositories", () => ({
   createPrivateChannelInstanceRepository: vi.fn(),
@@ -23,7 +35,7 @@ vi.mock("@/db/repositories", () => ({
   createPrivateChannelVerifiedWalletRepository: vi.fn(),
 }));
 
-import { withGatewayRpc } from "./gateway-auth";
+import { withGatewayRpc, withSpcAuth } from "./gateway-auth";
 
 const ENV = {} as Env;
 const URL = "https://gw.example";
@@ -42,7 +54,7 @@ function http403() {
 function handle(
   current: string,
   refreshTo?: string
-): GatewayAuthHandle & { refresh: ReturnType<typeof vi.fn> } {
+): SpcAuthHandle & { refresh: ReturnType<typeof vi.fn> } {
   const h = {
     current,
     refresh: vi.fn(async () => {
@@ -123,6 +135,79 @@ describe("withGatewayRpc", () => {
     });
 
     await expect(withGatewayRpc(ENV, URL, h, run)).rejects.toThrow("auth unavailable");
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("withSpcAuth", () => {
+  it("passes the current token through and does not refresh on success", async () => {
+    const h = handle("tok-1");
+    const run = vi.fn(async (token: string) => token);
+
+    const result = await withSpcAuth(h, run);
+
+    expect(result).toBe("tok-1");
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("on UNAUTHORIZED refreshes once and retries with the new token", async () => {
+    const h = handle("stale", "fresh");
+    const run = vi.fn(async (token: string) => {
+      if (token === "stale") throw new PrivateChannelError("UNAUTHORIZED", "bad token");
+      return token;
+    });
+
+    const result = await withSpcAuth(h, run);
+
+    expect(result).toBe("fresh");
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT retry on FORBIDDEN / CONFLICT / AUTH_UNAVAILABLE", async () => {
+    for (const code of ["FORBIDDEN", "CONFLICT", "AUTH_UNAVAILABLE"] as const) {
+      const h = handle("tok");
+      const err = new PrivateChannelError(code, code);
+      const run = vi.fn(async () => {
+        throw err;
+      });
+
+      await expect(withSpcAuth(h, run)).rejects.toBe(err);
+      expect(h.refresh).not.toHaveBeenCalled();
+      expect(run).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("does NOT retry on a plain Error", async () => {
+    const h = handle("tok");
+    const run = vi.fn(async () => {
+      throw new Error("boom");
+    });
+
+    await expect(withSpcAuth(h, run)).rejects.toThrow("boom");
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("retries at most once — a persistent UNAUTHORIZED propagates", async () => {
+    const h = handle("stale", "fresh");
+    const run = vi.fn(async () => {
+      throw new PrivateChannelError("UNAUTHORIZED", "still bad");
+    });
+
+    await expect(withSpcAuth(h, run)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a refresh() failure instead of the original UNAUTHORIZED", async () => {
+    const h = handle("stale");
+    h.refresh.mockRejectedValueOnce(new Error("auth unavailable"));
+    const run = vi.fn(async () => {
+      throw new PrivateChannelError("UNAUTHORIZED", "bad token");
+    });
+
+    await expect(withSpcAuth(h, run)).rejects.toThrow("auth unavailable");
     expect(run).toHaveBeenCalledTimes(1);
   });
 });

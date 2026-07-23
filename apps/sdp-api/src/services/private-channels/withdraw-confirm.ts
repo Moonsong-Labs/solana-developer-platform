@@ -21,7 +21,7 @@ import type {
   PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
 import type { Env } from "@/types/env";
-import { type GatewayAuthHandle, withGatewayRpc } from "./auth/gateway-auth";
+import { type SpcAuthHandle, withGatewayRpc } from "./auth/gateway-auth";
 
 /**
  * Confirm a broadcast burn on the gateway (channel chain) and persist the outcome:
@@ -36,8 +36,8 @@ export async function confirmAndPersistWithdrawal(
     withdrawalId: string;
     gatewayUrl: string;
     signature: Signature;
-    /** SPC gateway auth handle — the gateway JWT-gates signature reads. */
-    gatewayAuth?: GatewayAuthHandle;
+    /** SPC JWT handle — the gateway JWT-gates signature reads. */
+    gatewayAuth?: SpcAuthHandle;
   }
 ): Promise<PrivateChannelWithdrawalRow | null> {
   try {
