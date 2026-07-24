@@ -1,6 +1,6 @@
+import { hashString } from "@sdp/payments/hash";
 import * as privateChannelsPkg from "@sdp/private-channels";
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
-import { hashString } from "@sdp/payments/hash";
 import {
   type CachedApiKey,
   PRIVATE_CHANNEL_EVENT_FAMILIES,

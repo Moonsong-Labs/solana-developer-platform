@@ -10,10 +10,7 @@
  */
 
 import { type ScheduledTask, schedule } from "node-cron";
-import {
-  isPrivateChannelsEnabled,
-  isRecurringPaymentCollectionEnabled,
-} from "@/lib/feature-flags";
+import { isPrivateChannelsEnabled, isRecurringPaymentCollectionEnabled } from "@/lib/feature-flags";
 import type { BackgroundRunner } from "@/runtime/background";
 import type { Observability } from "@/runtime/observability";
 import type { Env } from "@/types/env";
