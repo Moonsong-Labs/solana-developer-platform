@@ -28,7 +28,6 @@
  * sharing all three; a memo/withdrawId on the release tx would make it exact.
  */
 
-import { createChannelGatewayRpc } from "@sdp/private-channels";
 import * as solanaRpc from "@sdp/rpc/solana";
 import { parseDecimalAmount } from "@sdp/solana/amount";
 import { PRIVATE_CHANNEL_EVENT_TYPES } from "@sdp/types";
@@ -40,8 +39,8 @@ import {
   type PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
 import {
-  gatewayAuthOptions,
   resolveOwnerGatewayAuth,
+  withGatewayRpc,
 } from "@/services/private-channels/auth/gateway-auth";
 import { inferCluster, knownMintDecimals } from "@/services/private-channels/mint";
 import { emitWithdrawalEvent } from "@/services/private-channels/withdraw-events";
@@ -201,15 +200,15 @@ async function reconcileSubmitted(
     return;
   }
 
-  // Query the snapshotted GATEWAY — the burn lives on the channel chain.
-  const gatewayRpc = createChannelGatewayRpc(
+  // Query the snapshotted gateway. Refresh on 401 so a stale token can't wedge this
+  // group across ticks.
+  const [status] = await withGatewayRpc(
     env,
     withdrawal.gateway_url,
-    gatewayAuthOptions(gatewayAuth.kind === "token" ? gatewayAuth.token : undefined)
+    gatewayAuth.context,
+    (gatewayRpc) =>
+      solanaRpc.getSignatureStatuses(gatewayRpc, [withdrawal.burn_signature as Signature])
   );
-  const [status] = await solanaRpc.getSignatureStatuses(gatewayRpc, [
-    withdrawal.burn_signature as Signature,
-  ]);
 
   if (!status) {
     // Not found on chain; if it's been a while, treat the burn as dropped. This is

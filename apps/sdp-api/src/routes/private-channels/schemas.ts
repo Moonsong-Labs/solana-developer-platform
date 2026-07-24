@@ -17,10 +17,11 @@ export type ConnectPrivateChannelInstanceInput = z.infer<
   typeof connectPrivateChannelInstanceSchema
 >;
 
-/** Body for `POST /probe`: the two URLs the connect flow re-probes. */
+/** Body for `POST /probe`: the three URLs the connect flow re-probes. */
 export const probeConnectionSchema = z.object({
   gatewayUrl: z.string().min(1),
   chainRpcUrl: z.string().min(1),
+  authUrl: z.string().min(1),
 });
 
 /** Query params for `GET /health`. */

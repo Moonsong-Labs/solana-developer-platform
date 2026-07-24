@@ -48,15 +48,20 @@ vi.mock("@/services/private-channels/withdraw-events", () => ({ emitWithdrawalEv
 
 // Gateway auth for the cron: derived from the burn owner's verified wallet. Default
 // to an auth-less instance ("open"); tests override to assert the gated behaviour.
-const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
+const { resolveOwnerGatewayAuth, withGatewayRpc } = vi.hoisted(() => ({
   resolveOwnerGatewayAuth: vi.fn(
-    async () => ({ kind: "open" }) as { kind: string; token?: string; reason?: string }
+    async () => ({ kind: "open" }) as { kind: string; context?: unknown; reason?: string }
+  ),
+  // Stand in for the real wrapper: run the gateway op with a dummy rpc so
+  // getSignatureStatuses still executes; tests assert the (url, handle) it received.
+  withGatewayRpc: vi.fn(
+    async (_env: unknown, _url: string, _context: unknown, run: (rpc: unknown) => unknown) =>
+      run({ __gateway: true })
   ),
 }));
 vi.mock("@/services/private-channels/auth/gateway-auth", () => ({
   resolveOwnerGatewayAuth,
-  gatewayAuthOptions: (token?: string) =>
-    token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+  withGatewayRpc,
 }));
 
 import { trackPendingWithdrawals } from "./track-pending-withdrawals";
@@ -114,7 +119,12 @@ describe("trackPendingWithdrawals", () => {
 
     await trackPendingWithdrawals({} as Env);
 
-    expect(createChannelGatewayRpc).toHaveBeenCalledWith(expect.anything(), "gw-SNAP", undefined);
+    expect(withGatewayRpc).toHaveBeenCalledWith(
+      expect.anything(),
+      "gw-SNAP",
+      undefined,
+      expect.any(Function)
+    );
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
       expect.objectContaining({ id: "w1", status: "burn_confirmed", expectedStatus: "submitted" })
     );
@@ -137,14 +147,20 @@ describe("trackPendingWithdrawals", () => {
     withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
       withdrawalRow({ id: "w1", status: "submitted", gateway_url: "gw-SNAP" }),
     ]);
-    resolveOwnerGatewayAuth.mockResolvedValue({ kind: "token", token: "jwt-xyz" });
+    resolveOwnerGatewayAuth.mockResolvedValue({
+      kind: "token",
+      context: { current: "jwt-xyz", refresh: vi.fn() },
+    });
     getSignatureStatuses.mockResolvedValueOnce([{ confirmationStatus: "confirmed" }]);
 
     await trackPendingWithdrawals({} as Env);
 
-    expect(createChannelGatewayRpc).toHaveBeenCalledWith(expect.anything(), "gw-SNAP", {
-      headers: { Authorization: "Bearer jwt-xyz" },
-    });
+    expect(withGatewayRpc).toHaveBeenCalledWith(
+      expect.anything(),
+      "gw-SNAP",
+      expect.objectContaining({ current: "jwt-xyz" }),
+      expect.any(Function)
+    );
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
       expect.objectContaining({ id: "w1", status: "burn_confirmed" })
     );

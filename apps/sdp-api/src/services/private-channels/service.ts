@@ -90,7 +90,7 @@ interface AccountInfoResult {
 
 type OverviewInput = Pick<
   PrivateChannelInstance,
-  "gatewayUrl" | "chainRpcUrl" | "escrowProgramId" | "escrowInstanceAddr" | "useAuth" | "authUrl"
+  "gatewayUrl" | "chainRpcUrl" | "escrowProgramId" | "escrowInstanceAddr" | "authUrl"
 >;
 
 function settledOrNull<T, U>(p: Promise<T>, map: (v: T) => U): Promise<U | null> {
@@ -102,7 +102,7 @@ function settledOrNull<T, U>(p: Promise<T>, map: (v: T) => U): Promise<U | null>
 export async function getInstanceOverview(
   input: OverviewInput
 ): Promise<PrivateChannelInstanceOverview> {
-  const authBase = input.useAuth && input.authUrl ? input.authUrl : null;
+  const authBase = input.authUrl;
 
   const [
     gatewayHealth,
@@ -154,22 +154,20 @@ export async function getInstanceOverview(
         return { present: false, error: "Program not deployed on-chain." };
       return { present: true, executable: r.value.value.executable };
     }),
-    authBase
-      ? Promise.allSettled([
-          fetch(`${authBase.replace(/\/$/, "")}/health`, {
-            method: "GET",
-            signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-            headers: { Accept: "application/json" },
-          }),
-        ]).then(([r]): PrivateChannelInstanceOverview["auth"] => {
-          if (r.status === "rejected") {
-            return { reachable: false, error: toError(r.reason) };
-          }
-          return r.value.ok
-            ? { reachable: true, error: null }
-            : { reachable: false, error: `HTTP ${r.value.status}` };
-        })
-      : Promise.resolve<PrivateChannelInstanceOverview["auth"]>(null),
+    Promise.allSettled([
+      fetch(`${authBase.replace(/\/$/, "")}/health`, {
+        method: "GET",
+        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+        headers: { Accept: "application/json" },
+      }),
+    ]).then(([r]): PrivateChannelInstanceOverview["auth"] => {
+      if (r.status === "rejected") {
+        return { reachable: false, error: toError(r.reason) };
+      }
+      return r.value.ok
+        ? { reachable: true, error: null }
+        : { reachable: false, error: `HTTP ${r.value.status}` };
+    }),
   ]);
 
   return {

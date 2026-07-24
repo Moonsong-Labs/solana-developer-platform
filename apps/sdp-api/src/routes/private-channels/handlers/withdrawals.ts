@@ -10,7 +10,7 @@ import {
   listChannelWithdrawals,
   mapPrivateChannelError,
 } from "@/services/private-channels";
-import { resolveGatewayAuthToken } from "@/services/private-channels/auth/gateway-auth";
+import { resolveGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository } from "../context";
 import { createWithdrawalBodySchema, withdrawalIdParamSchema } from "../schemas";
@@ -66,7 +66,7 @@ export async function createPrivateChannelWithdrawal(c: AppContext) {
       : undefined;
 
     // Auth-enabled instances JWT-gate the burn broadcast (write) + confirm (read).
-    const gatewayAuthToken = await resolveGatewayAuthToken(c.env, {
+    const gatewayAuth = await resolveGatewayAuth(c.env, {
       instance,
       organizationId: auth.organizationId,
       projectId,
@@ -80,7 +80,7 @@ export async function createPrivateChannelWithdrawal(c: AppContext) {
       wallet,
       amount: parsed.data.amount,
       destination,
-      gatewayAuthToken,
+      gatewayAuth,
     });
     return success(c, withdrawal);
   } catch (error) {

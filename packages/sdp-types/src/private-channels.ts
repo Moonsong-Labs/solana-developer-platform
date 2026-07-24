@@ -15,7 +15,7 @@ export interface PrivateChannelInstanceInput {
   escrowProgramId: string;
   withdrawProgramId: string;
   escrowInstanceAddr: string;
-  useAuth: boolean;
+  /** Base URL of the SPC auth service. Required — SPC's member/wallet model needs it. */
   authUrl: string;
 }
 
@@ -72,8 +72,7 @@ export interface PrivateChannelInstanceOverview {
     | { present: true; owner: string; ownerMatchesProgram: boolean; lamports: number }
     | { present: false; error: string };
   escrowProgram: { present: true; executable: boolean } | { present: false; error: string };
-  /** Null when `useAuth === false` — the auth service isn't in the deployment. */
-  auth: { reachable: boolean; error: string | null } | null;
+  auth: { reachable: boolean; error: string | null };
 }
 
 /** Soft-delete lifecycle for a channel. */

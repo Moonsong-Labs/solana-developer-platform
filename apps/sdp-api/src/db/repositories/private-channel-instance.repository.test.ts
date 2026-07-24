@@ -72,8 +72,7 @@ describe("PrivateChannelInstanceRepository (postgres)", () => {
     expect(inserted.id).toMatch(/^pci_/);
     expect(inserted.gateway_url).toBe(SANDBOX_DEFAULTS.gatewayUrl);
     expect(inserted.is_active).toBe(true);
-    expect(inserted.use_auth).toBe(false);
-    expect(inserted.auth_url).toBeNull();
+    expect(inserted.auth_url).toBe(SANDBOX_DEFAULTS.authUrl);
 
     const fetched = await repo.getActiveByProject({
       organizationId: TEST_ORG.id,
@@ -142,41 +141,14 @@ describe("PrivateChannelInstanceRepository (postgres)", () => {
       id: created.id,
       ...SANDBOX_DEFAULTS,
       chainRpcUrl: "https://mainnet.helius-rpc.com/?api-key=NEW",
-      useAuth: true,
       authUrl: "http://auth.example:8903",
     });
     expect(reactivated?.id).toBe(created.id);
     expect(reactivated?.is_active).toBe(true);
     expect(reactivated?.chain_rpc_url).toBe("https://mainnet.helius-rpc.com/?api-key=NEW");
-    expect(reactivated?.use_auth).toBe(true);
     expect(reactivated?.auth_url).toBe("http://auth.example:8903");
     // gateway_url is the identity key and must not change on reactivation.
     expect(reactivated?.gateway_url).toBe(created.gateway_url);
-  });
-
-  it("reactivateAndUpdate clears auth_url when useAuth flips back to false", async () => {
-    const created = await repo.createActive({
-      organizationId: TEST_ORG.id,
-      projectId: TEST_PROJECT_ID,
-      createdBy: TEST_USER.id,
-      ...SANDBOX_DEFAULTS,
-      useAuth: true,
-      authUrl: "http://auth.example:8903",
-    });
-    if (!created) throw new Error("createActive returned null");
-    await repo.deactivateActive({
-      organizationId: TEST_ORG.id,
-      projectId: TEST_PROJECT_ID,
-    });
-
-    const disabled = await repo.reactivateAndUpdate({
-      id: created.id,
-      ...SANDBOX_DEFAULTS,
-      useAuth: false,
-      authUrl: "",
-    });
-    expect(disabled?.use_auth).toBe(false);
-    expect(disabled?.auth_url).toBeNull();
   });
 
   it("deleteActive removes the active row", async () => {

@@ -13,8 +13,10 @@ CREATE TABLE IF NOT EXISTS private_channel_instances (
     escrow_program_id TEXT NOT NULL,
     withdraw_program_id TEXT NOT NULL,
     escrow_instance_addr TEXT NOT NULL,
-    use_auth BOOLEAN NOT NULL DEFAULT FALSE,
-    auth_url TEXT,
+    -- Auth service base URL. Required: SPC's whole member/wallet model is
+    -- meaningless without auth, so the connect flow rejects an instance whose
+    -- auth service can't be reached (see probeConnection).
+    auth_url TEXT NOT NULL,
 
     is_active BOOLEAN NOT NULL DEFAULT FALSE,
 
@@ -23,12 +25,7 @@ CREATE TABLE IF NOT EXISTS private_channel_instances (
     updated_at TEXT NOT NULL DEFAULT sdp_iso_now(),
 
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-
-    CONSTRAINT private_channel_instances_auth_url_matches_flag CHECK (
-        (use_auth = TRUE AND auth_url IS NOT NULL AND length(auth_url) > 0)
-        OR (use_auth = FALSE AND auth_url IS NULL)
-    )
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 -- Instance identity within a project. Gateway URL is the stable key: RPC URL

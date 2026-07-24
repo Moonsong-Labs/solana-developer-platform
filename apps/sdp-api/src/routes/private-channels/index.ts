@@ -86,58 +86,42 @@ instance.post(
 instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
 privateChannels.route("/instance", instance);
 
-// INTERIM GATE: balance + deposits touch financial data and act on custody wallets,
-// but the member/verified-wallet visibility model (from the merged user-mgmt work) is
-// not yet wired into these routes — a project member could otherwise read arbitrary
-// SPC balances or deposit to arbitrary addresses. Until wallet verification lands and
-// we can gate to "own verified wallet / channels you belong to", restrict to project
-// ADMINS (`projects:admin`, required IN ADDITION to payments:*). See handler TODOs.
-
 // --- /balance -------------------------------------------------------------
 // Read an owner's channel token balance (per wallet+mint) through the gateway.
-privateChannels.get(
-  "/balance",
-  requirePermissions("payments:read", "projects:admin"),
-  getPrivateChannelBalance
-);
+privateChannels.get("/balance", requirePermissions("payments:read"), getPrivateChannelBalance);
 
 // --- /deposits ------------------------------------------------------------
 // Escrow deposits from a custody wallet into the instance (devnet), tracked
 // prepared -> submitted -> confirmed -> credited.
 privateChannels.post(
   "/deposits",
-  requirePermissions("payments:write", "projects:admin"),
+  requirePermissions("payments:write"),
   createPrivateChannelDeposit
 );
-privateChannels.get(
-  "/deposits",
-  requirePermissions("payments:read", "projects:admin"),
-  listPrivateChannelDeposits
-);
+privateChannels.get("/deposits", requirePermissions("payments:read"), listPrivateChannelDeposits);
 privateChannels.get(
   "/deposits/:id",
-  requirePermissions("payments:read", "projects:admin"),
+  requirePermissions("payments:read"),
   getPrivateChannelDepositById
 );
 
 // --- /withdrawals ---------------------------------------------------------
 // Burn the custody wallet's channel-chain balance (relayed to the gateway); the
 // operator releases real USDC on devnet. Tracked pending -> submitted ->
-// burn_confirmed -> release_pending -> released. Same interim admin gate as
-// deposits (financial data + custody wallets).
+// burn_confirmed -> release_pending -> released.
 privateChannels.post(
   "/withdrawals",
-  requirePermissions("payments:write", "projects:admin"),
+  requirePermissions("payments:write"),
   createPrivateChannelWithdrawal
 );
 privateChannels.get(
   "/withdrawals",
-  requirePermissions("payments:read", "projects:admin"),
+  requirePermissions("payments:read"),
   listPrivateChannelWithdrawals
 );
 privateChannels.get(
   "/withdrawals/:id",
-  requirePermissions("payments:read", "projects:admin"),
+  requirePermissions("payments:read"),
   getPrivateChannelWithdrawalById
 );
 

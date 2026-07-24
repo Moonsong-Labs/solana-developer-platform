@@ -75,8 +75,8 @@ describe("PrivateChannelEventRepository (postgres)", () => {
       .prepare(
         `INSERT INTO private_channel_instances
            (id, organization_id, project_id, gateway_url, chain_rpc_url,
-            escrow_program_id, withdraw_program_id, escrow_instance_addr, is_active)
-         VALUES (?, ?, ?, 'http://gw', 'http://rpc', 'prog1', 'prog2', 'escrow1', true)`
+            escrow_program_id, withdraw_program_id, escrow_instance_addr, auth_url, is_active)
+         VALUES (?, ?, ?, 'http://gw', 'http://rpc', 'prog1', 'prog2', 'escrow1', 'http://auth', true)`
       )
       .bind(TEST_INSTANCE_ID, TEST_ORG.id, TEST_PROJECT_ID)
       .run();

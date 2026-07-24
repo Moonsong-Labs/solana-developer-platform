@@ -10,7 +10,7 @@ import {
   listChannelDeposits,
   mapPrivateChannelError,
 } from "@/services/private-channels";
-import { resolveGatewayAuthToken } from "@/services/private-channels/auth/gateway-auth";
+import { resolveGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
 import type { AppContext } from "../context";
 import { getPrivateChannelInstanceRepository } from "../context";
 import { createDepositBodySchema, depositIdParamSchema } from "../schemas";
@@ -66,7 +66,7 @@ export async function createPrivateChannelDeposit(c: AppContext) {
       : undefined;
 
     // Auth-enabled instances JWT-gate the gateway baseline read.
-    const gatewayAuthToken = await resolveGatewayAuthToken(c.env, {
+    const gatewayAuth = await resolveGatewayAuth(c.env, {
       instance,
       organizationId: auth.organizationId,
       projectId,
@@ -80,7 +80,7 @@ export async function createPrivateChannelDeposit(c: AppContext) {
       wallet,
       amount: parsed.data.amount,
       recipient,
-      gatewayAuthToken,
+      gatewayAuth,
     });
     return success(c, deposit);
   } catch (error) {
