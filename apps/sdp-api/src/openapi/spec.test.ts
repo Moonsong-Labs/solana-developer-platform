@@ -88,6 +88,7 @@ describe("OpenAPI spec", () => {
       "Issuance",
       "Payments",
       "Policies",
+      "Private Channels",
       "Compliance",
       "Counterparties",
       "Asset Profiles",
@@ -106,5 +107,9 @@ describe("OpenAPI spec", () => {
     expect(doc.paths?.["/v1/wallets"]?.get).toBeDefined();
     expect(doc.paths?.["/v1/payments/transfers"]?.post).toBeDefined();
     expect(doc.paths?.["/v1/policies"]?.get).toBeDefined();
+    // Private Channels is feature-flagged but publicly documented, same as
+    // Asset Profiles: the routes 403 unless PRIVATE_CHANNELS_ENABLED is set,
+    // and API keys can call them, so they belong in the published contract.
+    expect(doc.paths?.["/v1/private-channels/instance"]?.get).toBeDefined();
   });
 });
