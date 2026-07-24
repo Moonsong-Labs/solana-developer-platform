@@ -3,11 +3,11 @@
 > Public documentation and API discovery resources for Solana Developer Platform.
 
 ## Canonical URLs
-- Docs: https://sdp-docs-solana-foundation.vercel.app/docs
+- Docs: https://platform.solana.com/docs
 - API: https://api.solana.com
 - Interactive API docs: https://api.solana.com/docs
 - OpenAPI: https://api.solana.com/openapi.json
-- AI guide: https://sdp-docs-solana-foundation.vercel.app/docs/reference/ai-consumption
+- AI guide: https://platform.solana.com/docs/reference/ai-consumption
 
 ## Supported surfaces
 - Wallets and custody
@@ -19,37 +19,37 @@
 - Asset profiles and public token metadata
 
 ## Start here
-- [Introduction](https://sdp-docs-solana-foundation.vercel.app/docs/introduction): What SDP is, what it provides, and how it works.
-- [Set Up Your Organization](https://sdp-docs-solana-foundation.vercel.app/docs/guides/setup-organization): Create and configure your SDP organization through the dashboard.
-- [Set Up Wallets](https://sdp-docs-solana-foundation.vercel.app/docs/guides/setup-wallets): Initialize a custody provider and create wallets for signing transactions.
-- [Manage API Keys](https://sdp-docs-solana-foundation.vercel.app/docs/guides/manage-api-keys): Create, rotate, and revoke API keys with role-based access and environment scoping.
-- [Tokenize an Asset](https://sdp-docs-solana-foundation.vercel.app/docs/guides/tokenize-an-asset): Map a real-world tokenization use case to the right SDP template, authorities, and API flow.
-- [Create a Token](https://sdp-docs-solana-foundation.vercel.app/docs/guides/create-a-token): Define a new token using templates or custom configuration.
-- [Deploy a Token](https://sdp-docs-solana-foundation.vercel.app/docs/guides/deploy-a-token): Deploy a created token to the Solana blockchain.
-- [Mint and Burn Tokens](https://sdp-docs-solana-foundation.vercel.app/docs/guides/mint-and-burn): Increase or decrease token supply by minting and burning.
-- [Payments](https://sdp-docs-solana-foundation.vercel.app/docs/payments): Build payments on Solana with SDP — concepts, send, accept, ramps, and wallet operations.
-- [Basic payment](https://sdp-docs-solana-foundation.vercel.app/docs/payments/send-basic-payment): Send a single token transfer with SDP.
-- [Issuance Token Types](https://sdp-docs-solana-foundation.vercel.app/docs/reference/issuance-token-types): Supported issuance templates and default controls.
-- [End-to-end Payment Flow](https://sdp-docs-solana-foundation.vercel.app/docs/tutorials/end-to-end-payment-flow): A high-level payment flow from quote to settlement.
-- [Infrastructure Provider Onboarding](https://sdp-docs-solana-foundation.vercel.app/docs/reference/provider-onboarding): Add an infrastructure provider integration to SDP through the self-service contribution process.
-- [AI Consumption](https://sdp-docs-solana-foundation.vercel.app/docs/reference/ai-consumption): Public machine-readable entry points and guidance for agents and AI systems consuming SDP docs and APIs.
-- [Postman Collection](https://sdp-docs-solana-foundation.vercel.app/docs/reference/postman-collection): Download the public SDP API Postman collection generated from the OpenAPI contract.
-- [API Reference](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api): Endpoint index from the repository OpenAPI spec.
-- [Health](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/health): Service health and readiness endpoints.
-- [API Keys](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/api-keys): API key management endpoints.
-- [Wallets](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/wallets): Wallet signing provider configuration and wallet management.
-- [Projects](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/projects): Project and project member management.
-- [Issuance](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/issuance): Token issuance, allowlists, and lifecycle operations.
-- [Payments](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/payments): Wallet balances, transfer execution, policies, and ramps.
-- [Compliance](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/compliance): Risk and compliance screening endpoints.
-- [Asset Profiles](https://sdp-docs-solana-foundation.vercel.app/docs/reference/api/asset-profiles): Issued-asset identity and metadata profiles, plus the public token metadata URI.
+- [Introduction](https://platform.solana.com/docs/introduction): What SDP is, what it provides, and how it works.
+- [Set Up Your Organization](https://platform.solana.com/docs/guides/setup-organization): Create and configure your SDP organization through the dashboard.
+- [Set Up Wallets](https://platform.solana.com/docs/guides/setup-wallets): Initialize a custody provider and create wallets for signing transactions.
+- [Manage API Keys](https://platform.solana.com/docs/guides/manage-api-keys): Create, rotate, and revoke API keys with role-based access and environment scoping.
+- [Tokenize an Asset](https://platform.solana.com/docs/guides/tokenize-an-asset): Map a real-world tokenization use case to the right SDP template, authorities, and API flow.
+- [Create a Token](https://platform.solana.com/docs/guides/create-a-token): Define a new token using templates or custom configuration.
+- [Deploy a Token](https://platform.solana.com/docs/guides/deploy-a-token): Deploy a created token to the Solana blockchain.
+- [Mint and Burn Tokens](https://platform.solana.com/docs/guides/mint-and-burn): Increase or decrease token supply by minting and burning.
+- [Payments](https://platform.solana.com/docs/payments): Build payments on Solana with SDP — concepts, send, accept, and ramps.
+- [Basic payment](https://platform.solana.com/docs/payments/send-basic-payment): Send a single token transfer with SDP.
+- [Issuance Token Types](https://platform.solana.com/docs/reference/issuance-token-types): How to choose a token template, and the default controls each one applies.
+- [End-to-end Payment Flow](https://platform.solana.com/docs/tutorials/end-to-end-payment-flow): A high-level payment flow from quote to settlement.
+- [Infrastructure Provider Onboarding](https://platform.solana.com/docs/reference/provider-onboarding): Add an infrastructure provider integration to SDP through the self-service contribution process.
+- [AI Consumption](https://platform.solana.com/docs/reference/ai-consumption): Public machine-readable entry points and guidance for agents and AI systems consuming SDP docs and APIs.
+- [Postman Collection](https://platform.solana.com/docs/reference/postman-collection): Download the public SDP API Postman collection generated from the OpenAPI contract.
+- [API Reference](https://platform.solana.com/docs/reference/api): Endpoint index from the repository OpenAPI spec.
+- [Health](https://platform.solana.com/docs/reference/api/health): Service health and readiness endpoints.
+- [API Keys](https://platform.solana.com/docs/reference/api/api-keys): API key management endpoints.
+- [Wallets](https://platform.solana.com/docs/reference/api/wallets): Wallet signing provider configuration and wallet management.
+- [Projects](https://platform.solana.com/docs/reference/api/projects): Project and project member management.
+- [Issuance](https://platform.solana.com/docs/reference/api/issuance): Token issuance, allowlists, and lifecycle operations.
+- [Payments](https://platform.solana.com/docs/reference/api/payments): Wallet balances, transfer execution, policies, and ramps.
+- [Compliance](https://platform.solana.com/docs/reference/api/compliance): Risk and compliance screening endpoints.
+- [Asset Profiles](https://platform.solana.com/docs/reference/api/asset-profiles): Issued-asset identity and metadata profiles, plus the public token metadata URI.
 
 ## AI guide
-- [AI Consumption](https://sdp-docs-solana-foundation.vercel.app/docs/reference/ai-consumption): Human-readable landing page for machine-readable SDP docs resources, usage guidance, and public AI scope.
+- [AI Consumption](https://platform.solana.com/docs/reference/ai-consumption): Human-readable landing page for machine-readable SDP docs resources, usage guidance, and public AI scope.
 
 ## Machine-readable resources
-- [llms.txt](https://sdp-docs-solana-foundation.vercel.app/docs/ai/llms.txt)
-- [llms-full.txt](https://sdp-docs-solana-foundation.vercel.app/docs/ai/llms-full.txt)
+- [llms.txt](https://platform.solana.com/docs/ai/llms.txt)
+- [llms-full.txt](https://platform.solana.com/docs/ai/llms-full.txt)
 - [OpenAPI](https://api.solana.com/openapi.json)
 - [Swagger UI](https://api.solana.com/docs)
 
