@@ -69,7 +69,6 @@ const PUBLIC_OPENAPI_TAGS = [
   OPENAPI_TAG.ISSUANCE,
   OPENAPI_TAG.PAYMENTS,
   OPENAPI_TAG.POLICIES,
-  OPENAPI_TAG.PRIVATE_CHANNELS,
   OPENAPI_TAG.COMPLIANCE,
   OPENAPI_TAG.COUNTERPARTIES,
   OPENAPI_TAG.ASSET_PROFILES,
@@ -129,7 +128,6 @@ function registerPublicPaths(registry: OpenAPIRegistry) {
   registerIssuancePaths(registry);
   registerPaymentsPaths(registry);
   registerPolicyPaths(registry);
-  registerPrivateChannelsPaths(registry);
   registerCompliancePaths(registry);
   registerCounterpartyPaths(registry);
   registerAssetProfilePaths(registry);
