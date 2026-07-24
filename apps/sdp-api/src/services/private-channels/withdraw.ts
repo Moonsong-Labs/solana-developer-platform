@@ -48,7 +48,7 @@ import { AppError, badRequest } from "@/lib/errors";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
-import { type SpcAuthHandle, withGatewayRpc } from "./auth/gateway-auth";
+import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 import { confirmAndPersistWithdrawal } from "./withdraw-confirm";
 import { emitWithdrawalEvent } from "./withdraw-events";
@@ -75,7 +75,7 @@ export interface CreateChannelWithdrawalInput {
    * JWT-gated. Resolved by the handler; shared across broadcast + confirm so confirm
    * reuses a token broadcast already refreshed.
    */
-  gatewayAuth?: SpcAuthHandle;
+  gatewayAuth?: SpcAuthContext;
 }
 
 /**
@@ -92,7 +92,7 @@ async function broadcastWithdrawal(
     mint: Address;
     destination: Address;
     amountBaseUnits: bigint;
-    gatewayAuth?: SpcAuthHandle;
+    gatewayAuth?: SpcAuthContext;
   }
 ): Promise<Signature> {
   // Signer derivation + the (blockhash-independent) burn instruction are built ONCE,

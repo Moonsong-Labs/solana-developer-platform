@@ -16,7 +16,7 @@ import { getChannelTokenBalance } from "@sdp/private-channels";
 import { assertValidAddress } from "@sdp/solana/address";
 import type { PrivateChannelBalance, PrivateChannelInstance } from "@sdp/types";
 import type { Env } from "@/types/env";
-import { type SpcAuthHandle, withGatewayRpc } from "./auth/gateway-auth";
+import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 
 /** The instance fields the balance read needs: gateway URL + a cluster hint. */
@@ -36,7 +36,7 @@ export async function getChannelBalance(
     owner,
     mint,
     auth,
-  }: { instance: BalanceInstance; owner: string; mint?: string; auth?: SpcAuthHandle }
+  }: { instance: BalanceInstance; owner: string; mint?: string; auth?: SpcAuthContext }
 ): Promise<PrivateChannelBalance> {
   const cluster = inferCluster(instance.chainRpcUrl);
   const ownerAddress = assertValidAddress(owner, "owner");

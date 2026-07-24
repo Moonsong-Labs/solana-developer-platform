@@ -50,12 +50,12 @@ vi.mock("@/services/private-channels/withdraw-events", () => ({ emitWithdrawalEv
 // to an auth-less instance ("open"); tests override to assert the gated behaviour.
 const { resolveOwnerGatewayAuth, withGatewayRpc } = vi.hoisted(() => ({
   resolveOwnerGatewayAuth: vi.fn(
-    async () => ({ kind: "open" }) as { kind: string; handle?: unknown; reason?: string }
+    async () => ({ kind: "open" }) as { kind: string; context?: unknown; reason?: string }
   ),
   // Stand in for the real wrapper: run the gateway op with a dummy rpc so
   // getSignatureStatuses still executes; tests assert the (url, handle) it received.
   withGatewayRpc: vi.fn(
-    async (_env: unknown, _url: string, _handle: unknown, run: (rpc: unknown) => unknown) =>
+    async (_env: unknown, _url: string, _context: unknown, run: (rpc: unknown) => unknown) =>
       run({ __gateway: true })
   ),
 }));
@@ -149,7 +149,7 @@ describe("trackPendingWithdrawals", () => {
     ]);
     resolveOwnerGatewayAuth.mockResolvedValue({
       kind: "token",
-      handle: { current: "jwt-xyz", refresh: vi.fn() },
+      context: { current: "jwt-xyz", refresh: vi.fn() },
     });
     getSignatureStatuses.mockResolvedValueOnce([{ confirmationStatus: "confirmed" }]);
 

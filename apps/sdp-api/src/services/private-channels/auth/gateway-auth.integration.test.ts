@@ -19,7 +19,7 @@ import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
 import { createKVStoreSet } from "@/runtime/factory";
 import { generateEncryptionKey } from "@/services/encryption.service";
 import {
-  openSpcAuthHandle,
+  openSpcAuthContext,
   resolveGatewayAuth,
   withGatewayRpc,
   withSpcAuth,
@@ -137,13 +137,13 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
     expect(loginMock).toHaveBeenCalledTimes(1);
   });
 
-  it("on a gateway 401, evicts + re-mints via the handle and retries once", async () => {
-    const handle = await resolveGatewayAuth(testEnv, resolveInput);
+  it("on a gateway 401, evicts + re-mints via the context and retries once", async () => {
+    const auth = await resolveGatewayAuth(testEnv, resolveInput);
     expect(loginMock).toHaveBeenCalledTimes(1);
-    const firstToken = handle?.current;
+    const firstToken = auth?.current;
 
     let attempts = 0;
-    const result = await withGatewayRpc(testEnv, GATEWAY_URL, handle, async (rpc) => {
+    const result = await withGatewayRpc(testEnv, GATEWAY_URL, auth, async (rpc) => {
       attempts += 1;
       if (attempts === 1) {
         throw { context: { statusCode: 401 } };
@@ -153,19 +153,19 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
 
     expect(attempts).toBe(2);
     expect(loginMock).toHaveBeenCalledTimes(2);
-    expect(handle?.current).not.toBe(firstToken);
+    expect(auth?.current).not.toBe(firstToken);
     expect(result).toBeTruthy();
 
     expect(await createKVStoreSet(testEnv).cache.get(CACHE_KEY, "json")).not.toBeNull();
   });
 
   it("does not retry or re-login on a non-401 gateway error", async () => {
-    const handle = await resolveGatewayAuth(testEnv, resolveInput);
+    const auth = await resolveGatewayAuth(testEnv, resolveInput);
     loginMock.mockClear();
 
     let attempts = 0;
     await expect(
-      withGatewayRpc(testEnv, GATEWAY_URL, handle, async () => {
+      withGatewayRpc(testEnv, GATEWAY_URL, auth, async () => {
         attempts += 1;
         throw { context: { statusCode: 500 } };
       })
@@ -175,7 +175,7 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
     expect(loginMock).not.toHaveBeenCalled();
   });
 
-  it("shares the KV cache between openSpcAuthHandle and resolveGatewayAuth", async () => {
+  it("shares the KV cache between openSpcAuthContext and resolveGatewayAuth", async () => {
     const pcUser = await createPrivateChannelUserRepository(testEnv).getById(
       { organizationId: TEST_ORG.id, projectId: PROJECT_ID },
       PCU_ID
@@ -183,7 +183,7 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
     expect(pcUser).toBeTruthy();
     const client = spcAuth.createAuthClient(AUTH_URL);
 
-    const walletHandle = await openSpcAuthHandle(
+    const walletAuth = await openSpcAuthContext(
       testEnv,
       TEST_ORG.id,
       INSTANCE_ID,
@@ -192,18 +192,18 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
     );
     expect(loginMock).toHaveBeenCalledTimes(1);
 
-    const gatewayHandle = await resolveGatewayAuth(testEnv, resolveInput);
-    expect(gatewayHandle?.current).toBe(walletHandle.current);
+    const gatewayAuth = await resolveGatewayAuth(testEnv, resolveInput);
+    expect(gatewayAuth?.current).toBe(walletAuth.current);
     expect(loginMock).toHaveBeenCalledTimes(1);
   });
 
   it("on Auth REST UNAUTHORIZED, evicts + re-mints via withSpcAuth and retries once", async () => {
-    const handle = await resolveGatewayAuth(testEnv, resolveInput);
+    const auth = await resolveGatewayAuth(testEnv, resolveInput);
     expect(loginMock).toHaveBeenCalledTimes(1);
-    const firstToken = handle!.current;
+    const firstToken = auth!.current;
 
     let attempts = 0;
-    const result = await withSpcAuth(handle!, async (token) => {
+    const result = await withSpcAuth(auth!, async (token) => {
       attempts += 1;
       if (attempts === 1) {
         throw new PrivateChannelError("UNAUTHORIZED", "stale");
@@ -214,6 +214,6 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
     expect(attempts).toBe(2);
     expect(loginMock).toHaveBeenCalledTimes(2);
     expect(result).not.toBe(firstToken);
-    expect(handle!.current).toBe(result);
+    expect(auth!.current).toBe(result);
   });
 });

@@ -10,7 +10,7 @@
 // per (instance, SPC user): reuse a token that is comfortably before expiry,
 // otherwise re-login and cache the fresh one. The cache is best-effort — any KV
 // or decrypt failure degrades to a plain login, never a hard error. Production
-// callers go through `openSpcAuthHandle` (see ./gateway-auth), which always
+// callers go through `openSpcAuthContext` (see ./gateway-auth), which always
 // supplies the cache when KV is configured.
 
 import { PrivateChannelError } from "@sdp/private-channels";

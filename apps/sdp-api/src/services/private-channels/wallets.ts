@@ -32,7 +32,7 @@ import type { ApiKeyContext } from "@/lib/auth";
 import { AppError, badRequest, forbidden, providerNotConfigured } from "@/lib/errors";
 import { createOrgSigner } from "@/services/solana";
 import type { Env } from "@/types/env";
-import { openSpcAuthHandle, type SpcAuthHandle, withSpcAuth } from "./auth/gateway-auth";
+import { openSpcAuthContext, type SpcAuthContext, withSpcAuth } from "./auth/gateway-auth";
 
 const base58 = getBase58Codec();
 
@@ -57,7 +57,7 @@ interface WalletSession {
   instance: PrivateChannelInstanceRow;
   pcUser: PrivateChannelUserRow;
   client: SpcAuthClient;
-  spcAuth: SpcAuthHandle;
+  spcAuth: SpcAuthContext;
 }
 
 /**
@@ -89,7 +89,7 @@ async function resolveWalletSession(
   }
 
   const client = createAuthClient(instance.auth_url as string, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
-  const spcAuth = await openSpcAuthHandle(env, auth.organizationId, instance.id, pcUser, client);
+  const spcAuth = await openSpcAuthContext(env, auth.organizationId, instance.id, pcUser, client);
 
   return { scope, instance, pcUser, client, spcAuth };
 }

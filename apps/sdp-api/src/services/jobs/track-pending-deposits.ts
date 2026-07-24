@@ -235,7 +235,7 @@ async function reconcileCreditGroup(
     instance: { gatewayUrl: snapshot.gateway_url, chainRpcUrl: snapshot.chain_rpc_url },
     owner: group.recipient,
     mint: group.mint,
-    auth: gatewayAuth.kind === "token" ? gatewayAuth.handle : undefined,
+    auth: gatewayAuth.kind === "token" ? gatewayAuth.context : undefined,
   });
 
   const toCredit = planDepositCredits(deposits, BigInt(balance.amount), balance.decimals);

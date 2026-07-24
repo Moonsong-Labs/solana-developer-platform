@@ -141,7 +141,7 @@ describe("verifyPrivateChannelWallet", () => {
   });
 
   it("opens the session through the shared cached handle layer", async () => {
-    const openSpy = vi.spyOn(gatewayAuth, "openSpcAuthHandle");
+    const openSpy = vi.spyOn(gatewayAuth, "openSpcAuthContext");
 
     await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
 

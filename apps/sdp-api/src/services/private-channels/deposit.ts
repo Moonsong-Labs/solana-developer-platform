@@ -50,7 +50,7 @@ import { AppError, badRequest } from "@/lib/errors";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
-import type { SpcAuthHandle } from "./auth/gateway-auth";
+import type { SpcAuthContext } from "./auth/gateway-auth";
 import { getChannelBalance } from "./balance";
 import { confirmAndPersistDeposit } from "./deposit-confirm";
 import { emitDepositEvent } from "./deposit-events";
@@ -77,7 +77,7 @@ export interface CreateChannelDepositInput {
    * connected instance has auth enabled; resolved by the handler via
    * `resolveGatewayAuth`.
    */
-  gatewayAuth?: SpcAuthHandle;
+  gatewayAuth?: SpcAuthContext;
 }
 
 /**

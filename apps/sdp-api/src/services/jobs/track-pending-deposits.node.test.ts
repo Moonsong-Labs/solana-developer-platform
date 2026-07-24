@@ -24,7 +24,7 @@ vi.mock("@/services/private-channels/deposit-events", () => ({ emitDepositEvent 
 // to an auth-less instance ("open"); individual tests override to assert behaviour.
 const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
   resolveOwnerGatewayAuth: vi.fn(
-    async () => ({ kind: "open" }) as { kind: string; handle?: unknown; reason?: string }
+    async () => ({ kind: "open" }) as { kind: string; context?: unknown; reason?: string }
   ),
 }));
 vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveOwnerGatewayAuth }));
@@ -139,7 +139,7 @@ describe("trackPendingDeposits", () => {
     depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
     resolveOwnerGatewayAuth.mockResolvedValue({
       kind: "token",
-      handle: { current: "jwt-abc", refresh: vi.fn() },
+      context: { current: "jwt-abc", refresh: vi.fn() },
     });
     getChannelBalance.mockResolvedValueOnce({ amount: "10", decimals: 0 });
 

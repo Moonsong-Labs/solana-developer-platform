@@ -202,8 +202,8 @@ async function reconcileSubmitted(
 
   // Query the snapshotted gateway. Refresh on 401 so a stale token can't wedge this
   // group across ticks.
-  const gatewayHandle = gatewayAuth.kind === "token" ? gatewayAuth.handle : undefined;
-  const [status] = await withGatewayRpc(env, withdrawal.gateway_url, gatewayHandle, (gatewayRpc) =>
+  const gatewayContext = gatewayAuth.kind === "token" ? gatewayAuth.context : undefined;
+  const [status] = await withGatewayRpc(env, withdrawal.gateway_url, gatewayContext, (gatewayRpc) =>
     solanaRpc.getSignatureStatuses(gatewayRpc, [withdrawal.burn_signature as Signature])
   );
 

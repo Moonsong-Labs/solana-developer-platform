@@ -2,7 +2,7 @@ import { PrivateChannelError } from "@sdp/private-channels";
 import { isUnauthorizedRpcError } from "@sdp/rpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "@/types/env";
-import type { SpcAuthHandle } from "./gateway-auth";
+import type { SpcAuthContext } from "./gateway-auth";
 
 // Mock the packages whose runtime graph doesn't resolve in the node pool. gateway-auth
 // imports SolanaRpc as a TYPE only, so @sdp/rpc/solana is never loaded here; the
@@ -51,18 +51,18 @@ function http403() {
   return { context: { statusCode: 403 } };
 }
 
-function handle(
+function context(
   current: string,
   refreshTo?: string
-): SpcAuthHandle & { refresh: ReturnType<typeof vi.fn> } {
-  const h = {
+): SpcAuthContext & { refresh: ReturnType<typeof vi.fn> } {
+  const c = {
     current,
     refresh: vi.fn(async () => {
-      h.current = refreshTo ?? "refreshed";
-      return h.current;
+      c.current = refreshTo ?? "refreshed";
+      return c.current;
     }),
   };
-  return h;
+  return c;
 }
 
 beforeEach(() => {
@@ -71,7 +71,7 @@ beforeEach(() => {
 
 describe("withGatewayRpc", () => {
   it("passes the current token through and does not refresh on success", async () => {
-    const h = handle("tok-1");
+    const h = context("tok-1");
     const run = vi.fn(async (rpc: unknown) => (rpc as FakeRpc).authorization);
 
     const result = await withGatewayRpc(ENV, URL, h, run);
@@ -82,7 +82,7 @@ describe("withGatewayRpc", () => {
   });
 
   it("on a 401 refreshes once and retries with the new token", async () => {
-    const h = handle("stale", "fresh");
+    const h = context("stale", "fresh");
     const run = vi.fn(async (rpc: unknown) => {
       const { authorization } = rpc as FakeRpc;
       if (authorization === "Bearer stale") throw http401();
@@ -97,7 +97,7 @@ describe("withGatewayRpc", () => {
   });
 
   it("does NOT retry on a 403 (valid token, not permitted)", async () => {
-    const h = handle("tok");
+    const h = context("tok");
     const run = vi.fn(async () => {
       throw http403();
     });
@@ -117,7 +117,7 @@ describe("withGatewayRpc", () => {
   });
 
   it("retries at most once — a persistent 401 propagates", async () => {
-    const h = handle("stale", "fresh");
+    const h = context("stale", "fresh");
     const run = vi.fn(async () => {
       throw http401();
     });
@@ -128,7 +128,7 @@ describe("withGatewayRpc", () => {
   });
 
   it("surfaces a refresh() failure (e.g. login unavailable) instead of the 401", async () => {
-    const h = handle("stale");
+    const h = context("stale");
     h.refresh.mockRejectedValueOnce(new Error("auth unavailable"));
     const run = vi.fn(async () => {
       throw http401();
@@ -141,7 +141,7 @@ describe("withGatewayRpc", () => {
 
 describe("withSpcAuth", () => {
   it("passes the current token through and does not refresh on success", async () => {
-    const h = handle("tok-1");
+    const h = context("tok-1");
     const run = vi.fn(async (token: string) => token);
 
     const result = await withSpcAuth(h, run);
@@ -152,7 +152,7 @@ describe("withSpcAuth", () => {
   });
 
   it("on UNAUTHORIZED refreshes once and retries with the new token", async () => {
-    const h = handle("stale", "fresh");
+    const h = context("stale", "fresh");
     const run = vi.fn(async (token: string) => {
       if (token === "stale") throw new PrivateChannelError("UNAUTHORIZED", "bad token");
       return token;
@@ -167,7 +167,7 @@ describe("withSpcAuth", () => {
 
   it("does NOT retry on FORBIDDEN / CONFLICT / AUTH_UNAVAILABLE", async () => {
     for (const code of ["FORBIDDEN", "CONFLICT", "AUTH_UNAVAILABLE"] as const) {
-      const h = handle("tok");
+      const h = context("tok");
       const err = new PrivateChannelError(code, code);
       const run = vi.fn(async () => {
         throw err;
@@ -180,7 +180,7 @@ describe("withSpcAuth", () => {
   });
 
   it("does NOT retry on a plain Error", async () => {
-    const h = handle("tok");
+    const h = context("tok");
     const run = vi.fn(async () => {
       throw new Error("boom");
     });
@@ -190,7 +190,7 @@ describe("withSpcAuth", () => {
   });
 
   it("retries at most once — a persistent UNAUTHORIZED propagates", async () => {
-    const h = handle("stale", "fresh");
+    const h = context("stale", "fresh");
     const run = vi.fn(async () => {
       throw new PrivateChannelError("UNAUTHORIZED", "still bad");
     });
@@ -201,7 +201,7 @@ describe("withSpcAuth", () => {
   });
 
   it("surfaces a refresh() failure instead of the original UNAUTHORIZED", async () => {
-    const h = handle("stale");
+    const h = context("stale");
     h.refresh.mockRejectedValueOnce(new Error("auth unavailable"));
     const run = vi.fn(async () => {
       throw new PrivateChannelError("UNAUTHORIZED", "bad token");
