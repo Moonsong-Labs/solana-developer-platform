@@ -9,10 +9,10 @@ DROP TABLE IF EXISTS private_channel_verified_wallets CASCADE;
 DROP TABLE IF EXISTS private_channel_memberships CASCADE;
 DROP TABLE IF EXISTS private_channel_users CASCADE;
 DROP TABLE IF EXISTS private_channel_events CASCADE;
+DROP TABLE IF EXISTS private_channel_withdrawals CASCADE;
 DROP TABLE IF EXISTS private_channel_deposits CASCADE;
 DROP TABLE IF EXISTS private_channels CASCADE;
 DROP TABLE IF EXISTS private_channel_instances CASCADE;
 
 DELETE FROM schema_migrations
- WHERE version LIKE '002%_private_channel%'
-    OR version = '0028_private_channel_events.sql';
+ WHERE version ~ '^00(2[5-9]|3[0-1])_private_channel';
