@@ -135,11 +135,15 @@ describe("PrivateChannelRepository (postgres)", () => {
   });
 
   describe("listChannels", () => {
-    it("returns the instance's channels, newest first", async () => {
+    it("returns the instance's active channels", async () => {
       const first = await repo.createChannel({ ...SCOPE, name: "Alpha", description: null });
       const second = await repo.createChannel({ ...SCOPE, name: "Beta", description: null });
       const rows = await repo.listChannels({ instanceId: TEST_INSTANCE_ID });
-      expect(rows.map((r) => r.id)).toEqual([second?.id, first?.id]);
+      // Ordering is `created_at DESC, id DESC`. Back-to-back creates can land in
+      // the same millisecond (sdp_iso_now() is millisecond precision) and the tie
+      // then breaks on a random UUID, so assert membership rather than sequence.
+      expect(rows).toHaveLength(2);
+      expect(new Set(rows.map((r) => r.id))).toEqual(new Set([first?.id, second?.id]));
     });
   });
 
