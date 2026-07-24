@@ -68,6 +68,16 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
     repo = createPostgresPrivateChannelWithdrawalRepository(db);
   });
 
+  // Guarded creation: createWithdrawal returns Row | null; tests that use the row
+  // need it non-null without a `!` assertion.
+  async function seed(overrides: Partial<CreateWithdrawalInput> = {}) {
+    const row = await repo.createWithdrawal(makeInput(overrides));
+    if (!row) {
+      throw new Error("test setup: createWithdrawal returned null");
+    }
+    return row;
+  }
+
   it("createWithdrawal persists the snapshot and defaults to pending", async () => {
     const row = await repo.createWithdrawal(makeInput());
 
@@ -83,9 +93,9 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
   });
 
   it("updateWithdrawal applies the CAS transition when expectedStatus matches", async () => {
-    const created = await repo.createWithdrawal(makeInput());
+    const created = await seed();
     const updated = await repo.updateWithdrawal({
-      id: created!.id,
+      id: created.id,
       status: "submitted",
       burnSignature: "burnSig1",
       expectedStatus: "pending",
@@ -96,10 +106,10 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
   });
 
   it("updateWithdrawal is a no-op (null) when expectedStatus does not match", async () => {
-    const created = await repo.createWithdrawal(makeInput());
+    const created = await seed();
     // Row is `pending`; a worker that thinks it's `burn_confirmed` must not win.
     const updated = await repo.updateWithdrawal({
-      id: created!.id,
+      id: created.id,
       status: "released",
       expectedStatus: "burn_confirmed",
     });
@@ -108,26 +118,26 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
     const reread = await repo.getWithdrawalById({
       organizationId: TEST_ORG.id,
       projectId: TEST_PROJECT_ID,
-      id: created!.id,
+      id: created.id,
     });
     expect(reread?.status).toBe("pending");
   });
 
   it("updateWithdrawal COALESCEs: a later transition keeps the burn signature", async () => {
-    const created = await repo.createWithdrawal(makeInput());
+    const created = await seed();
     await repo.updateWithdrawal({
-      id: created!.id,
+      id: created.id,
       status: "submitted",
       burnSignature: "burnSig2",
       expectedStatus: "pending",
     });
     await repo.updateWithdrawal({
-      id: created!.id,
+      id: created.id,
       status: "burn_confirmed",
       expectedStatus: "submitted",
     });
     const released = await repo.updateWithdrawal({
-      id: created!.id,
+      id: created.id,
       status: "released",
       releaseSignature: "releaseSig2",
       expectedStatus: "burn_confirmed",
@@ -139,12 +149,12 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
   });
 
   it("listWithdrawalsByStatus returns matching rows oldest-first, bounded by limit", async () => {
-    const a = await repo.createWithdrawal(makeInput());
-    const b = await repo.createWithdrawal(makeInput());
-    await repo.updateWithdrawal({ id: b!.id, status: "submitted", expectedStatus: "pending" });
+    const a = await seed();
+    const b = await seed();
+    await repo.updateWithdrawal({ id: b.id, status: "submitted", expectedStatus: "pending" });
 
     const pending = await repo.listWithdrawalsByStatus({ statuses: ["pending"], limit: 10 });
-    expect(pending.map((r) => r.id)).toEqual([a!.id]);
+    expect(pending.map((r) => r.id)).toEqual([a.id]);
 
     const nonTerminal = await repo.listWithdrawalsByStatus({
       statuses: ["pending", "submitted"],
@@ -155,22 +165,22 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
 
   it("countNonTerminalByInstance counts only in-flight rows for the instance", async () => {
     const inFlight = await repo.createWithdrawal(makeInput({ instanceId: "inst_A" }));
-    const other = await repo.createWithdrawal(makeInput({ instanceId: "inst_A" }));
+    const other = await seed({ instanceId: "inst_A" });
     await repo.createWithdrawal(makeInput({ instanceId: "inst_B" }));
     // Drive one to a terminal state — it must drop out of the count.
-    await repo.updateWithdrawal({ id: other!.id, status: "submitted", expectedStatus: "pending" });
+    await repo.updateWithdrawal({ id: other.id, status: "submitted", expectedStatus: "pending" });
     await repo.updateWithdrawal({
-      id: other!.id,
+      id: other.id,
       status: "burn_confirmed",
       expectedStatus: "submitted",
     });
     await repo.updateWithdrawal({
-      id: other!.id,
+      id: other.id,
       status: "release_pending",
       expectedStatus: "burn_confirmed",
     });
     await repo.updateWithdrawal({
-      id: other!.id,
+      id: other.id,
       status: "released",
       expectedStatus: "release_pending",
     });

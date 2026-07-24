@@ -165,27 +165,7 @@ function interpretApiError(error: unknown): ConnectPrivateChannelResult {
   }
 
   if (details?.gateway && details.rpc && details.auth) {
-    const probe = details as {
-      gateway: ConnectionProbeResult["gateway"];
-      rpc: ConnectionProbeResult["rpc"];
-      auth: ConnectionProbeResult["auth"];
-    };
-    const probeSummary =
-      probe.auth.ok === false
-        ? `Auth failed: ${probe.auth.error}`
-        : probe.rpc.ok === false
-          ? `Chain RPC failed: ${probe.rpc.error}`
-          : probe.gateway.status === "degraded"
-            ? `Gateway degraded: ${probe.gateway.reason}`
-            : probe.gateway.status === "unreachable"
-              ? `Gateway unreachable: ${probe.gateway.error}`
-              : "Connection check failed.";
-    return {
-      ok: false,
-      kind: "probe",
-      probe: { gateway: probe.gateway, rpc: probe.rpc, auth: probe.auth, ok: false },
-      message: probeSummary,
-    };
+    return interpretProbeError(details);
   }
 
   if (details?.fieldErrors) {
@@ -200,6 +180,38 @@ function interpretApiError(error: unknown): ConnectPrivateChannelResult {
   }
 
   return { ok: false, kind: "server", message: displayMessage };
+}
+
+type ConnectionProbeDetails = {
+  gateway: ConnectionProbeResult["gateway"];
+  rpc: ConnectionProbeResult["rpc"];
+  auth: ConnectionProbeResult["auth"];
+};
+
+function summarizeProbeFailure(probe: ConnectionProbeDetails): string {
+  if (probe.auth.ok === false) {
+    return `Auth failed: ${probe.auth.error}`;
+  }
+  if (probe.rpc.ok === false) {
+    return `Chain RPC failed: ${probe.rpc.error}`;
+  }
+  if (probe.gateway.status === "degraded") {
+    return `Gateway degraded: ${probe.gateway.reason}`;
+  }
+  if (probe.gateway.status === "unreachable") {
+    return `Gateway unreachable: ${probe.gateway.error}`;
+  }
+  return "Connection check failed.";
+}
+
+function interpretProbeError(details: ErrorDetails): ConnectPrivateChannelResult {
+  const probe = details as ConnectionProbeDetails;
+  return {
+    ok: false,
+    kind: "probe",
+    probe: { gateway: probe.gateway, rpc: probe.rpc, auth: probe.auth, ok: false },
+    message: summarizeProbeFailure(probe),
+  };
 }
 
 interface ErrorDetails {

@@ -120,10 +120,7 @@ async function main() {
 
   console.log(`→ Fetching Clerk user for ${email}`);
   const users = asArray<ClerkUser>(
-    await clerkGet<unknown>(
-      `/v1/users?email_address=${encodeURIComponent(email)}`,
-      clerkSecret
-    )
+    await clerkGet<unknown>(`/v1/users?email_address=${encodeURIComponent(email)}`, clerkSecret)
   );
   const user = users[0];
   if (!user) {
@@ -133,10 +130,7 @@ async function main() {
 
   console.log("→ Fetching Clerk organization memberships");
   const memberships = asArray<ClerkMembership>(
-    await clerkGet<unknown>(
-      `/v1/users/${user.id}/organization_memberships`,
-      clerkSecret
-    )
+    await clerkGet<unknown>(`/v1/users/${user.id}/organization_memberships`, clerkSecret)
   );
   const membership = memberships[0];
   if (!membership) {

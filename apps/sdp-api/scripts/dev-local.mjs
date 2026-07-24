@@ -105,7 +105,7 @@ function run(command, args, options = {}) {
 }
 
 /**
-* Local cron TRIGGER (not a reimplementation of cron).
+ * Local cron TRIGGER (not a reimplementation of cron).
  *
  * We do run in workerd, and workerd/wrangler does expose the Worker's `scheduled()`
  * handler in local dev — that's what `--test-scheduled` mounts at `/__scheduled`,
