@@ -55,6 +55,8 @@ export interface ListPrivateChannelEventsParams {
 export interface ListProjectPrivateChannelEventsParams {
   organizationId: string;
   projectId: string;
+  /** When present, restrict results to these channels; an empty list returns no rows. */
+  channelIds?: string[];
   family?: PrivateChannelEventFamily;
   type?: string;
   /** Capped at 100 by callers. */

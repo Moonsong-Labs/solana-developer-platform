@@ -1,3 +1,4 @@
+import type { PrivateChannelMembershipRole } from "@sdp/types";
 import type { AppDb } from "@/db";
 import {
   type AddMembershipInput,
@@ -45,6 +46,7 @@ function mapMembershipWithChannelRow(
     id: row.id as string,
     channel_id: row.channel_id as string,
     private_channel_user_id: row.private_channel_user_id as string,
+    role: row.role as PrivateChannelMembershipRole,
     added_by: (row.added_by ?? null) as string | null,
     added_at: row.added_at as string,
     channel_name: row.channel_name as string,
@@ -226,8 +228,8 @@ export function createPostgresPrivateChannelUserRepository(
       const row = await db
         .prepare(
           `INSERT INTO private_channel_memberships (
-               id, channel_id, private_channel_user_id, added_by
-             ) VALUES (?, ?, ?, ?)
+               id, channel_id, private_channel_user_id, role, added_by
+             ) VALUES (?, ?, ?, ?, ?)
           ON CONFLICT (channel_id, private_channel_user_id) DO UPDATE
              SET added_at = private_channel_memberships.added_at
           RETURNING *`
@@ -236,6 +238,7 @@ export function createPostgresPrivateChannelUserRepository(
           generatePrivateChannelMembershipId(),
           input.channelId,
           input.privateChannelUserId,
+          input.role,
           input.addedBy
         )
         .first<Record<string, unknown>>();
@@ -244,6 +247,31 @@ export function createPostgresPrivateChannelUserRepository(
         id: row.id as string,
         channel_id: row.channel_id as string,
         private_channel_user_id: row.private_channel_user_id as string,
+        role: row.role as PrivateChannelMembershipRole,
+        added_by: (row.added_by ?? null) as string | null,
+        added_at: row.added_at as string,
+      };
+    },
+
+    async updateMembershipRole(channelId, privateChannelUserId, role) {
+      const row = await db
+        .prepare(
+          `UPDATE private_channel_memberships
+              SET role = ?
+            WHERE channel_id = ?
+              AND private_channel_user_id = ?
+          RETURNING *`
+        )
+        .bind(role, channelId, privateChannelUserId)
+        .first<Record<string, unknown>>();
+      if (!row) {
+        return null;
+      }
+      return {
+        id: row.id as string,
+        channel_id: row.channel_id as string,
+        private_channel_user_id: row.private_channel_user_id as string,
+        role: row.role as PrivateChannelMembershipRole,
         added_by: (row.added_by ?? null) as string | null,
         added_at: row.added_at as string,
       };

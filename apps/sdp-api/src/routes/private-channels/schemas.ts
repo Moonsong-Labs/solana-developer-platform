@@ -1,5 +1,9 @@
 import { privateChannelInstanceInputSchema } from "@sdp/private-channels";
-import { PRIVATE_CHANNEL_EVENT_FAMILY_VALUES } from "@sdp/types";
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILY_VALUES,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
+} from "@sdp/types";
 import { z } from "zod";
 
 // `confirmReactivate` is a client acknowledgement that we're about to overwrite
@@ -90,4 +94,12 @@ export const inviteMemberBodySchema = z.object({
 /** Body for `POST /channels/:channelId/memberships`. */
 export const addMembershipBodySchema = z.object({
   privateChannelUserId: z.string().min(1),
+  role: z
+    .enum(PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES)
+    .default(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER),
+});
+
+/** Body for `PATCH /channels/:channelId/memberships/:privateChannelUserId`. */
+export const updateMembershipRoleBodySchema = z.object({
+  role: z.enum(PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES),
 });

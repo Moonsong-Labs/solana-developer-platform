@@ -12,6 +12,7 @@ import { createChannelAction, deleteChannelAction } from "./actions";
 
 interface Props {
   initialChannels: PrivateChannelDto[];
+  canManage: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -19,7 +20,7 @@ function formatDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 
-export function ChannelsManager({ initialChannels }: Props) {
+export function ChannelsManager({ initialChannels, canManage }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isCreating, startCreate] = useTransition();
@@ -60,37 +61,39 @@ export function ChannelsManager({ initialChannels }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="channel-name">New channel</Label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              id="channel-name"
-              placeholder="Channel name (e.g. Treasury)"
-              value={name}
-              maxLength={64}
-              disabled={isCreating}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-              }}
-            />
-            <Input
-              placeholder="Description (optional)"
-              value={description}
-              disabled={isCreating}
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-              }}
-            />
-            <Button onClick={handleCreate} disabled={isCreating || !name.trim()}>
-              {isCreating && !deletingId ? <Loader2Icon className="animate-spin" /> : null}
-              Add
-            </Button>
+      {canManage ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="channel-name">New channel</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="channel-name"
+                placeholder="Channel name (e.g. Treasury)"
+                value={name}
+                maxLength={64}
+                disabled={isCreating}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                }}
+              />
+              <Input
+                placeholder="Description (optional)"
+                value={description}
+                disabled={isCreating}
+                onChange={(e) => setDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                }}
+              />
+              <Button onClick={handleCreate} disabled={isCreating || !name.trim()}>
+                {isCreating && !deletingId ? <Loader2Icon className="animate-spin" /> : null}
+                Add
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {channels.length === 0 ? (
         <p className="text-sm text-text-medium">No channels yet.</p>
@@ -110,22 +113,24 @@ export function ChannelsManager({ initialChannels }: Props) {
                   Created {formatDate(channel.createdAt)}
                 </span>
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Delete ${channel.name}`}
-                disabled={channel.isDefault || isCreating}
-                title={
-                  channel.isDefault ? "The default channel cannot be deleted" : "Delete channel"
-                }
-                onClick={() => handleDelete(channel)}
-              >
-                {deletingId === channel.id ? (
-                  <Loader2Icon className="animate-spin" />
-                ) : (
-                  <Trash2Icon />
-                )}
-              </Button>
+              {canManage ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Delete ${channel.name}`}
+                  disabled={channel.isDefault || isCreating}
+                  title={
+                    channel.isDefault ? "The default channel cannot be deleted" : "Delete channel"
+                  }
+                  onClick={() => handleDelete(channel)}
+                >
+                  {deletingId === channel.id ? (
+                    <Loader2Icon className="animate-spin" />
+                  ) : (
+                    <Trash2Icon />
+                  )}
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>

@@ -4,11 +4,17 @@ import type {
   PrivateChannelDto,
   PrivateChannelUserDto,
 } from "@sdp/types";
+import { hasPermission, PRIVATE_CHANNEL_MEMBERSHIP_ROLES } from "@sdp/types";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchPrivateChannels, fetchPrivateChannelUsers } from "@/lib/private-channels";
+import { resolveDashboardAccess } from "@/lib/dashboard-access";
+import {
+  fetchMyPrivateChannelUser,
+  fetchPrivateChannels,
+  fetchPrivateChannelUsers,
+} from "@/lib/private-channels";
 import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { PROJECT_COOKIE_NAME } from "@/lib/project-cookie";
 import { createSdpApiClient } from "@/lib/sdp-api";
@@ -32,33 +38,44 @@ async function loadProjectMembers(projectId: string | undefined): Promise<Projec
 async function loadPrivateChannelData(): Promise<{
   users: PrivateChannelUserDto[];
   channels: PrivateChannelDto[];
+  currentUser: PrivateChannelUserDto | null;
 }> {
   try {
     const client = await createSdpApiClient();
-    const [users, channels] = await Promise.all([
+    const [users, channels, currentUser] = await Promise.all([
       fetchPrivateChannelUsers(client),
       fetchPrivateChannels(client),
+      fetchMyPrivateChannelUser(client),
     ]);
-    return { users, channels };
+    return { users, channels, currentUser };
   } catch {
-    return { users: [], channels: [] };
+    return { users: [], channels: [], currentUser: null };
   }
 }
 
 export default async function PrivateChannelsMembersPage() {
   if (!isPrivateChannelsDashboardEnabled()) notFound();
 
-  const { userId, orgId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
   if (!userId) redirect(await getAuthEntryPath());
   if (!orgId) redirect("/dashboard");
 
   const cookieStore = await cookies();
   const projectId = cookieStore.get(PROJECT_COOKIE_NAME)?.value;
 
-  const [projectMembers, { users, channels }] = await Promise.all([
+  const [projectMembers, { users, channels, currentUser }] = await Promise.all([
     loadProjectMembers(projectId),
     loadPrivateChannelData(),
   ]);
+  const canManageWorkspace = hasPermission(
+    resolveDashboardAccess(orgRole).permissions,
+    "projects:admin"
+  );
+  const manageableChannelIds = canManageWorkspace
+    ? channels.map((channel) => channel.id)
+    : (currentUser?.channels
+        .filter((channel) => channel.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN)
+        .map((channel) => channel.id) ?? []);
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -75,6 +92,9 @@ export default async function PrivateChannelsMembersPage() {
             members={users}
             channels={channels}
             eligibleProjectMembers={projectMembers}
+            canManageWorkspace={canManageWorkspace}
+            manageableChannelIds={manageableChannelIds}
+            currentPrivateChannelUserId={currentUser?.id ?? null}
           />
         </CardContent>
       </Card>

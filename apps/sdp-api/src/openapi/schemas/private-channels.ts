@@ -3,6 +3,7 @@ import {
   PRIVATE_CHANNEL_EVENT_STATUS_VALUES,
   PRIVATE_CHANNEL_EVENT_TYPE_VALUES,
   PRIVATE_CHANNEL_EVENT_TYPES,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES,
 } from "@sdp/types";
 import { solanaAddressSchema, z } from "./base";
 
@@ -174,6 +175,32 @@ export const privateChannelIdParamSchema = z.object({
       description: "Private channel id.",
       example: "pch_9f1c...",
     }),
+});
+
+export const privateChannelMembershipRoleSchema = z.enum(PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES);
+
+export const privateChannelMembershipSchema = z.object({
+  id: z.string().openapi({ example: "pcm_9f1c..." }),
+  channelId: z.string().openapi({ example: "pch_9f1c..." }),
+  privateChannelUserId: z.string().openapi({ example: "pcu_9f1c..." }),
+  role: privateChannelMembershipRoleSchema,
+  addedBy: z.string().nullable(),
+  addedAt: z.string(),
+});
+
+export const privateChannelMembershipParamsSchema = z.object({
+  channelId: z
+    .string()
+    .min(1)
+    .openapi({ param: { name: "channelId", in: "path" } }),
+  privateChannelUserId: z
+    .string()
+    .min(1)
+    .openapi({ param: { name: "privateChannelUserId", in: "path" } }),
+});
+
+export const updatePrivateChannelMembershipRoleBodySchema = z.object({
+  role: privateChannelMembershipRoleSchema,
 });
 
 export const privateChannelBalanceQuerySchema = z.object({

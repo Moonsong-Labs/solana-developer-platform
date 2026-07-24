@@ -19,6 +19,8 @@ import {
   privateChannelInstanceInputSchema,
   privateChannelInstanceSchema,
   privateChannelListSchema,
+  privateChannelMembershipParamsSchema,
+  privateChannelMembershipSchema,
   privateChannelOverviewSchema,
   privateChannelProbeBodySchema,
   privateChannelProbeResultSchema,
@@ -30,6 +32,7 @@ import {
   privateChannelWithdrawalListSchema,
   privateChannelWithdrawalSchema,
   successResponseSchema,
+  updatePrivateChannelMembershipRoleBodySchema,
   z,
 } from "../schemas";
 import { errorResponses, jsonContent, projectScopeHeaders } from "./helpers";
@@ -434,6 +437,31 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     responses: {
       204: { description: "Deleted" },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 409, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "patch",
+    path: "/v1/private-channels/channels/{channelId}/memberships/{privateChannelUserId}",
+    tags: [TAG],
+    summary: "Update a channel membership role",
+    operationId: "updatePrivateChannelMembershipRole",
+    description:
+      "Changes an existing channel membership between admin and member. Requires project-admin or channel-admin access.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      params: privateChannelMembershipParamsSchema,
+      body: { content: jsonContent(updatePrivateChannelMembershipRoleBodySchema) },
+    },
+    responses: {
+      200: {
+        description: "Updated membership",
+        content: jsonContent(
+          successResponseSchema(z.object({ membership: privateChannelMembershipSchema }))
+        ),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
     },
   });
 

@@ -1,8 +1,10 @@
 "use client";
 
-import type {
+import {
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
   ListProjectMembersResponse,
   PrivateChannelDto,
+  type PrivateChannelMembershipRole,
   PrivateChannelUserDto,
 } from "@sdp/types";
 import { Loader2Icon, PlusIcon, XIcon } from "lucide-react";
@@ -30,6 +32,7 @@ import {
   deleteMemberAction,
   inviteMemberAction,
   removeFromChannelAction,
+  updateChannelRoleAction,
 } from "./actions";
 
 type ProjectMember = ListProjectMembersResponse["members"][number];
@@ -38,9 +41,19 @@ interface Props {
   members: PrivateChannelUserDto[];
   channels: PrivateChannelDto[];
   eligibleProjectMembers: ProjectMember[];
+  canManageWorkspace: boolean;
+  manageableChannelIds: string[];
+  currentPrivateChannelUserId: string | null;
 }
 
-export function MembersTable({ members, channels, eligibleProjectMembers }: Props) {
+export function MembersTable({
+  members,
+  channels,
+  eligibleProjectMembers,
+  canManageWorkspace,
+  manageableChannelIds,
+  currentPrivateChannelUserId,
+}: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PrivateChannelUserDto | null>(null);
 
@@ -56,9 +69,11 @@ export function MembersTable({ members, channels, eligibleProjectMembers }: Prop
         <p className="text-sm text-text-medium">
           {members.length} member{members.length === 1 ? "" : "s"} invited to this workspace.
         </p>
-        <Button onClick={() => setInviteOpen(true)} disabled={eligibleForInvite.length === 0}>
-          Invite member
-        </Button>
+        {canManageWorkspace ? (
+          <Button onClick={() => setInviteOpen(true)} disabled={eligibleForInvite.length === 0}>
+            Invite member
+          </Button>
+        ) : null}
       </div>
 
       {members.length === 0 ? (
@@ -82,20 +97,25 @@ export function MembersTable({ members, channels, eligibleProjectMembers }: Prop
                 key={m.id}
                 member={m}
                 allChannels={channels}
-                onDelete={() => setDeleteTarget(m)}
+                manageableChannelIds={manageableChannelIds}
+                canSelfLeave={m.id === currentPrivateChannelUserId}
+                onDelete={canManageWorkspace ? () => setDeleteTarget(m) : undefined}
               />
             ))}
           </TableBody>
         </Table>
       )}
 
-      <InviteDialog
-        isOpen={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        candidates={eligibleForInvite}
-      />
-
-      <DeleteMemberDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
+      {canManageWorkspace ? (
+        <>
+          <InviteDialog
+            isOpen={inviteOpen}
+            onClose={() => setInviteOpen(false)}
+            candidates={eligibleForInvite}
+          />
+          <DeleteMemberDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -103,15 +123,23 @@ export function MembersTable({ members, channels, eligibleProjectMembers }: Prop
 function MemberRow({
   member,
   allChannels,
+  manageableChannelIds,
+  canSelfLeave,
   onDelete,
 }: {
   member: PrivateChannelUserDto;
   allChannels: PrivateChannelDto[];
-  onDelete: () => void;
+  manageableChannelIds: string[];
+  canSelfLeave: boolean;
+  onDelete?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [addRole, setAddRole] = useState<PrivateChannelMembershipRole>(
+    PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER
+  );
+  const manageable = new Set(manageableChannelIds);
   const inChannelIds = new Set(member.channels.map((c) => c.id));
-  const notInChannels = allChannels.filter((c) => !inChannelIds.has(c.id));
+  const notInChannels = allChannels.filter((c) => !inChannelIds.has(c.id) && manageable.has(c.id));
 
   const removeFromChannel = (channelId: string) => {
     startTransition(async () => {
@@ -122,7 +150,14 @@ function MemberRow({
 
   const addToChannel = (channelId: string) => {
     startTransition(async () => {
-      const res = await addToChannelAction(channelId, member.id);
+      const res = await addToChannelAction(channelId, member.id, addRole);
+      if (!res.ok) toast.error(res.message);
+    });
+  };
+
+  const updateRole = (channelId: string, role: PrivateChannelMembershipRole) => {
+    startTransition(async () => {
+      const res = await updateChannelRoleAction(channelId, member.id, role);
       if (!res.ok) toast.error(res.message);
     });
   };
@@ -142,18 +177,31 @@ function MemberRow({
             <ChannelChip
               key={c.id}
               label={c.name + (c.isDefault ? " (default)" : "")}
-              onRemove={pending ? undefined : () => removeFromChannel(c.id)}
+              role={c.role}
+              onRoleChange={
+                pending || !manageable.has(c.id) ? undefined : (role) => updateRole(c.id, role)
+              }
+              onRemove={
+                pending || (!manageable.has(c.id) && !canSelfLeave)
+                  ? undefined
+                  : () => removeFromChannel(c.id)
+              }
             />
           ))}
           {notInChannels.length > 0 ? (
-            <AddToChannelMenu channels={notInChannels} disabled={pending} onPick={addToChannel} />
+            <>
+              <RoleSelect value={addRole} onChange={setAddRole} disabled={pending} />
+              <AddToChannelMenu channels={notInChannels} disabled={pending} onPick={addToChannel} />
+            </>
           ) : null}
         </div>
       </TableCell>
       <TableCell className="text-right">
-        <Button type="button" variant="ghost" size="sm" onClick={onDelete} disabled={pending}>
-          Delete
-        </Button>
+        {onDelete ? (
+          <Button type="button" variant="ghost" size="sm" onClick={onDelete} disabled={pending}>
+            Delete
+          </Button>
+        ) : null}
       </TableCell>
     </TableRow>
   );
@@ -180,10 +228,25 @@ function WalletCountBadge({ count }: { count: number }) {
   );
 }
 
-function ChannelChip({ label, onRemove }: { label: string; onRemove?: () => void }) {
+function ChannelChip({
+  label,
+  role,
+  onRoleChange,
+  onRemove,
+}: {
+  label: string;
+  role: PrivateChannelMembershipRole;
+  onRoleChange?: (role: PrivateChannelMembershipRole) => void;
+  onRemove?: () => void;
+}) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-border-extra-light px-2 py-0.5 text-xs text-text-extra-high">
       {label}
+      {onRoleChange ? (
+        <RoleSelect value={role} onChange={onRoleChange} />
+      ) : (
+        <span className="text-text-medium">{role}</span>
+      )}
       {onRemove ? (
         <button
           type="button"
@@ -195,6 +258,29 @@ function ChannelChip({ label, onRemove }: { label: string; onRemove?: () => void
         </button>
       ) : null}
     </span>
+  );
+}
+
+function RoleSelect({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: PrivateChannelMembershipRole;
+  onChange: (role: PrivateChannelMembershipRole) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      aria-label="Channel role"
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value as PrivateChannelMembershipRole)}
+      className="rounded border border-border-light bg-white px-1 py-0.5 text-xs"
+    >
+      <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER}>member</option>
+      <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN}>admin</option>
+    </select>
   );
 }
 

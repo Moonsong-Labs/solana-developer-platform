@@ -97,6 +97,21 @@ function authHeaders() {
   };
 }
 
+async function nonAdminAuthHeaders() {
+  const raw = "sk_test_private_channels_non_admin";
+  const keyHash = await hashString(raw, env.API_KEY_PEPPER);
+  await seedCachedApiKey(env, keyHash, {
+    ...TEST_CACHED_API_KEY,
+    id: "key_pc_non_admin",
+    role: "api_developer",
+    permissions: ["payments:read", "payments:write"],
+  });
+  return {
+    Authorization: `Bearer ${raw}`,
+    "Content-Type": "application/json",
+  };
+}
+
 function successProbe() {
   return {
     ok: true,
@@ -133,6 +148,36 @@ describe("Private Channels routes", () => {
     env.PRIVATE_CHANNELS_ENABLED = undefined;
     const res = await app.request("/v1/private-channels/instance", { headers: authHeaders() }, env);
     expect(res.status).toBe(403);
+  });
+
+  it("requires projects:admin for workspace mutations", async () => {
+    const headers = await nonAdminAuthHeaders();
+    const requests = [
+      app.request(
+        "/v1/private-channels/instance",
+        { method: "POST", headers, body: JSON.stringify(SANDBOX_DEFAULTS) },
+        env
+      ),
+      app.request("/v1/private-channels/instance", { method: "DELETE", headers }, env),
+      app.request("/v1/private-channels/instance/disconnect", { method: "POST", headers }, env),
+      app.request(
+        "/v1/private-channels/channels",
+        { method: "POST", headers, body: JSON.stringify({ name: "Ops" }) },
+        env
+      ),
+      app.request("/v1/private-channels/channels/pch_test", { method: "DELETE", headers }, env),
+      app.request(
+        "/v1/private-channels/users",
+        { method: "POST", headers, body: JSON.stringify({ userId: TEST_USER.id }) },
+        env
+      ),
+      app.request("/v1/private-channels/users/pcu_test", { method: "DELETE", headers }, env),
+    ];
+
+    const responses = await Promise.all(requests);
+    expect(responses.map((response) => response.status)).toEqual([
+      403, 403, 403, 403, 403, 403, 403,
+    ]);
   });
 
   it("GET /instance returns { instance: null } when no row exists", async () => {

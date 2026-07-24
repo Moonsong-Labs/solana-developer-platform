@@ -1,12 +1,13 @@
 "use server";
 
-import type { PrivateChannelUserDto } from "@sdp/types";
+import type { PrivateChannelMembershipRole, PrivateChannelUserDto } from "@sdp/types";
 import { revalidatePath } from "next/cache";
 import {
   addChannelMembership as addChannelMembershipCall,
   deletePrivateChannelUser as deletePrivateChannelUserCall,
   invitePrivateChannelUser as inviteCall,
   removeChannelMembership as removeChannelMembershipCall,
+  updateChannelMembershipRole as updateChannelMembershipRoleCall,
 } from "@/lib/private-channels";
 import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
 
@@ -40,11 +41,27 @@ export async function deleteMemberAction(id: string): Promise<ActionResult> {
 
 export async function addToChannelAction(
   channelId: string,
-  privateChannelUserId: string
+  privateChannelUserId: string,
+  role: PrivateChannelMembershipRole
 ): Promise<ActionResult> {
   try {
     const client = await createSdpApiClient();
-    await addChannelMembershipCall(client, channelId, privateChannelUserId);
+    await addChannelMembershipCall(client, channelId, privateChannelUserId, role);
+    revalidatePath(MEMBERS_PATH);
+    return { ok: true, value: undefined };
+  } catch (error) {
+    return { ok: false, message: extractSdpApiErrorMessage(error) };
+  }
+}
+
+export async function updateChannelRoleAction(
+  channelId: string,
+  privateChannelUserId: string,
+  role: PrivateChannelMembershipRole
+): Promise<ActionResult> {
+  try {
+    const client = await createSdpApiClient();
+    await updateChannelMembershipRoleCall(client, channelId, privateChannelUserId, role);
     revalidatePath(MEMBERS_PATH);
     return { ok: true, value: undefined };
   } catch (error) {

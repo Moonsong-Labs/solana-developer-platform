@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
-import type { PrivateChannelInstance } from "@sdp/types";
+import { hasPermission, type PrivateChannelInstance } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthEntryPath } from "@/lib/auth-entry";
+import { resolveDashboardAccess } from "@/lib/dashboard-access";
 import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { PrivateChannelsConnectForm } from "./private-channels-connect-form";
@@ -26,7 +27,7 @@ export default async function PrivateChannelsPage() {
     notFound();
   }
 
-  const { userId, orgId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
   if (!userId) {
     redirect(await getAuthEntryPath());
   }
@@ -35,6 +36,7 @@ export default async function PrivateChannelsPage() {
   }
 
   const initialInstance = await fetchInitialInstance();
+  const canManage = hasPermission(resolveDashboardAccess(orgRole).permissions, "projects:admin");
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -44,7 +46,7 @@ export default async function PrivateChannelsPage() {
           <CardDescription>Point SDP at a Solana Private Channels instance.</CardDescription>
         </CardHeader>
         <CardContent>
-          <PrivateChannelsConnectForm initialInstance={initialInstance} />
+          <PrivateChannelsConnectForm initialInstance={initialInstance} canManage={canManage} />
         </CardContent>
       </Card>
     </div>

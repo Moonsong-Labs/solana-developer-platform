@@ -288,4 +288,25 @@ describe("PrivateChannelEventRepository (postgres)", () => {
     });
     expect(other.rows).toHaveLength(0);
   });
+
+  it("filters the project feed to allowed channel ids", async () => {
+    await repo.insert(baseEvent({ id: "pce_allowed" }));
+    await repo.insert(baseEvent({ id: "pce_other", channelId: "pch_other" }));
+    await repo.insert(
+      baseEvent({
+        id: "pce_instance",
+        channelId: null,
+        type: PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED,
+      })
+    );
+
+    const { rows } = await repo.listByProject({
+      organizationId: TEST_ORG.id,
+      projectId: TEST_PROJECT_ID,
+      channelIds: [TEST_CHANNEL_ID],
+      limit: 50,
+    } as Parameters<PrivateChannelEventRepository["listByProject"]>[0]);
+
+    expect(rows.map((row) => row.id)).toEqual(["pce_allowed"]);
+  });
 });

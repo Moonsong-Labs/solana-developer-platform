@@ -1,9 +1,11 @@
 import {
   PRIVATE_CHANNEL_EVENT_TYPES,
   type PrivateChannelMembershipChannelDto,
+  type PrivateChannelMembershipDto,
   type PrivateChannelUserDto,
 } from "@sdp/types";
 import type {
+  PrivateChannelMembershipRow,
   PrivateChannelMembershipWithChannelRow,
   PrivateChannelUserWithIdentityRow,
 } from "@/db/repositories";
@@ -12,6 +14,7 @@ import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { sendInviteEmail } from "@/lib/spc-invite-email";
 import { inviteMember, mapPrivateChannelError } from "@/services/private-channels";
+import { requireChannelManage } from "../authorization";
 import type { AppContext } from "../context";
 import {
   getPrivateChannelInstanceRepository,
@@ -20,7 +23,11 @@ import {
   getProjectUserRepository,
 } from "../context";
 import { emitMember } from "../helpers";
-import { addMembershipBodySchema, inviteMemberBodySchema } from "../schemas";
+import {
+  addMembershipBodySchema,
+  inviteMemberBodySchema,
+  updateMembershipRoleBodySchema,
+} from "../schemas";
 
 function toDto(
   row: PrivateChannelUserWithIdentityRow,
@@ -30,6 +37,7 @@ function toDto(
     id: m.channel_id,
     name: m.channel_name,
     isDefault: m.channel_is_default,
+    role: m.role,
   }));
   return {
     id: row.id,
@@ -39,6 +47,17 @@ function toDto(
     verifiedWalletCount: row.verified_wallet_count,
     invitedAt: row.invited_at,
     channels,
+  };
+}
+
+function toMembershipDto(row: PrivateChannelMembershipRow): PrivateChannelMembershipDto {
+  return {
+    id: row.id,
+    channelId: row.channel_id,
+    privateChannelUserId: row.private_channel_user_id,
+    role: row.role,
+    addedBy: row.added_by,
+    addedAt: row.added_at,
   };
 }
 
@@ -221,6 +240,7 @@ export const addChannelMembership = async (c: AppContext) => {
     channelId,
   });
   if (!channel) throw notFound("Channel");
+  await requireChannelManage(c, channelId);
 
   const alreadyMember = (await repo.listMembershipsForUser(user.id)).some(
     (m) => m.channel_id === channelId
@@ -230,6 +250,7 @@ export const addChannelMembership = async (c: AppContext) => {
     channelId,
     privateChannelUserId: user.id,
     addedBy: auth.userId ?? null,
+    role: parsed.data.role,
   });
 
   // Only emit on a genuine add (membership insert is idempotent).
@@ -248,12 +269,13 @@ export const addChannelMembership = async (c: AppContext) => {
           privateChannelUserId: user.id,
           targetUserId: user.user_id,
           membershipId: membership.id,
+          role: membership.role,
         },
       }
     );
   }
 
-  return success(c, { membership });
+  return success(c, { membership: toMembershipDto(membership) });
 };
 
 export const removeChannelMembership = async (c: AppContext) => {
@@ -278,6 +300,11 @@ export const removeChannelMembership = async (c: AppContext) => {
   });
   if (!channel) throw notFound("Channel");
 
+  // Members may leave by deleting their own row; changing anyone else requires admin.
+  if (user.user_id !== auth.userId) {
+    await requireChannelManage(c, channelId);
+  }
+
   const removed = await repo.removeMembership(channelId, userId);
   if (!removed) throw notFound("Membership");
 
@@ -299,4 +326,76 @@ export const removeChannelMembership = async (c: AppContext) => {
   );
 
   return success(c, { removed: true });
+};
+
+export const updateChannelMembershipRole = async (c: AppContext) => {
+  const auth = getAuth(c);
+  const projectId = requireProjectId(c);
+  const channelId = c.req.param("channelId");
+  const privateChannelUserId = c.req.param("privateChannelUserId");
+  if (!channelId || !privateChannelUserId) {
+    throw badRequest("channelId and privateChannelUserId are required");
+  }
+
+  const parsed = updateMembershipRoleBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw badRequest("Invalid membership role payload");
+  }
+
+  const scope = { organizationId: auth.organizationId, projectId };
+  const repo = getPrivateChannelUserRepository(c);
+  const user = await repo.getById(scope, privateChannelUserId);
+  if (!user) {
+    throw notFound("Private channel user");
+  }
+
+  const channel = await getPrivateChannelRepository(c).findInProject({
+    ...scope,
+    channelId,
+  });
+  if (!channel) {
+    throw notFound("Channel");
+  }
+  await requireChannelManage(c, channelId);
+
+  const current = (await repo.listMembershipsForUser(user.id)).find(
+    (membership) => membership.channel_id === channelId
+  );
+  if (!current) {
+    throw notFound("Membership");
+  }
+  // Keep role updates idempotent and avoid duplicate MEMBER_ROLE_CHANGED events.
+  if (current.role === parsed.data.role) {
+    return success(c, { membership: toMembershipDto(current) });
+  }
+
+  const membership = await repo.updateMembershipRole(
+    channelId,
+    privateChannelUserId,
+    parsed.data.role
+  );
+  if (!membership) {
+    throw notFound("Membership");
+  }
+
+  await emitMember(
+    c,
+    {
+      organizationId: channel.organization_id,
+      projectId: channel.project_id,
+      instanceId: channel.instance_id,
+    },
+    PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ROLE_CHANGED,
+    {
+      channelId,
+      payload: {
+        privateChannelUserId: user.id,
+        targetUserId: user.user_id,
+        oldRole: current.role,
+        newRole: membership.role,
+      },
+    }
+  );
+
+  return success(c, { membership: toMembershipDto(membership) });
 };

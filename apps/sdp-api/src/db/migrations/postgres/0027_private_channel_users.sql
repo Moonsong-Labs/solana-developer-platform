@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS private_channel_memberships (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL,
     private_channel_user_id TEXT NOT NULL,
+    -- Channel-local authority; wallet verification remains a separate money-movement gate.
+    role TEXT NOT NULL DEFAULT 'member',
 
     added_by TEXT,
     added_at TEXT NOT NULL DEFAULT sdp_iso_now(),
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS private_channel_memberships (
     FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE CASCADE,
     FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL,
 
+    CHECK (role IN ('admin', 'member')),
     UNIQUE (channel_id, private_channel_user_id)
 );
 

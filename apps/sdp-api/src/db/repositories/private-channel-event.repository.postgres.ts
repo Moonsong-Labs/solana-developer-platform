@@ -115,6 +115,16 @@ export function createPostgresPrivateChannelEventRepository(
       const clauses = ["organization_id = ?", "project_id = ?"];
       const binds: (string | number)[] = [params.organizationId, params.projectId];
 
+      // Supplying channel ids is the member view: it also excludes channel_id NULL
+      // instance lifecycle events, which remain visible only in the full admin feed.
+      if (params.channelIds) {
+        if (params.channelIds.length === 0) {
+          clauses.push("FALSE");
+        } else {
+          clauses.push(`channel_id IN (${params.channelIds.map(() => "?").join(", ")})`);
+          binds.push(...params.channelIds);
+        }
+      }
       if (params.family) {
         clauses.push("family = ?");
         binds.push(params.family);

@@ -1,10 +1,15 @@
 import type { PrivateChannelEventDto, PrivateChannelEventFamily } from "@sdp/types";
 import type { PrivateChannelEventRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
-import { badRequest, notFound } from "@/lib/errors";
+import { badRequest, forbidden, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
+import { isAdminTier, resolveChannelRole } from "../authorization";
 import type { AppContext } from "../context";
-import { getPrivateChannelEventRepository, getPrivateChannelRepository } from "../context";
+import {
+  getPrivateChannelEventRepository,
+  getPrivateChannelRepository,
+  getPrivateChannelUserRepository,
+} from "../context";
 import { requireActiveInstance } from "../helpers";
 import { privateChannelEventsQuerySchema } from "../schemas";
 
@@ -92,6 +97,9 @@ export async function listChannelEvents(c: AppContext) {
   if (!channel) {
     throw notFound("Channel");
   }
+  if ((await resolveChannelRole(c, channelId)) === null) {
+    throw forbidden("Channel membership is required");
+  }
 
   const { family, type, limit, cursor } = parseEventsQuery(c);
   const { rows, hasMore } = await getPrivateChannelEventRepository(c).listByChannel({
@@ -111,13 +119,29 @@ export async function listChannelEvents(c: AppContext) {
  * GET /events — project-scoped activity feed.
  */
 export async function listProjectEvents(c: AppContext) {
-  const { organizationId } = getAuth(c);
+  const auth = getAuth(c);
+  const { organizationId } = auth;
   const projectId = requireProjectId(c);
+  // undefined means the full admin feed; [] deliberately means no visible channels.
+  let channelIds: string[] | undefined;
+  if (!isAdminTier(c)) {
+    channelIds = [];
+    if (auth.userId) {
+      const userRepo = getPrivateChannelUserRepository(c);
+      const user = await userRepo.findByProjectAndUser({ organizationId, projectId }, auth.userId);
+      if (user) {
+        channelIds = (await userRepo.listMembershipsForUser(user.id)).map(
+          (membership) => membership.channel_id
+        );
+      }
+    }
+  }
 
   const { family, type, limit, cursor } = parseEventsQuery(c);
   const { rows, hasMore } = await getPrivateChannelEventRepository(c).listByProject({
     organizationId,
     projectId,
+    channelIds,
     family,
     type,
     limit,

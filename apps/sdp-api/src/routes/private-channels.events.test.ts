@@ -1,10 +1,11 @@
 import * as privateChannelsPkg from "@sdp/private-channels";
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
 import {
+  type CachedApiKey,
   PRIVATE_CHANNEL_EVENT_FAMILIES,
   PRIVATE_CHANNEL_EVENT_STATUSES,
   PRIVATE_CHANNEL_EVENT_TYPES,
-  type CachedApiKey,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
   type PrivateChannelDto,
   type PrivateChannelEventListEnvelope,
 } from "@sdp/types";
@@ -117,6 +118,65 @@ function authHeaders() {
   return { Authorization: `Bearer ${TEST_API_KEY.raw}`, "Content-Type": "application/json" };
 }
 
+async function nonAdminAuthHeaders() {
+  const raw = "sk_test_pc_events_non_admin";
+  const keyHash = await hashString(raw, env.API_KEY_PEPPER);
+  await seedCachedApiKey(env, keyHash, {
+    ...TEST_CACHED_API_KEY,
+    id: "key_pce_non_admin",
+    role: "api_developer",
+    permissions: ["payments:read"],
+  });
+  return { Authorization: `Bearer ${raw}`, "Content-Type": "application/json" };
+}
+
+async function memberSession(channelId: string, role: "admin" | "member" = "member") {
+  const sessionId = "ses_pce_member";
+  const privateChannelUserId = "pcu_pce_member";
+  const db = getDb(env);
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO organization_members (id, organization_id, user_id, role, status)
+         VALUES ('om_pce_member', ?, ?, 'member', 'active')`
+      )
+      .bind(TEST_ORG.id, TEST_USER.id),
+    db
+      .prepare(
+        `INSERT INTO project_members (id, project_id, user_id, role)
+         VALUES ('pm_pce_member', ?, ?, 'developer')`
+      )
+      .bind(TEST_PROJECT.id, TEST_USER.id),
+    db
+      .prepare(
+        `INSERT INTO sessions (id, user_id, organization_id, auth_method, expires_at)
+         VALUES (?, ?, ?, 'magic_link', ?)`
+      )
+      .bind(sessionId, TEST_USER.id, TEST_ORG.id, "2099-01-01T00:00:00.000Z"),
+    db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(privateChannelUserId, TEST_ORG.id, TEST_PROJECT.id, TEST_USER.id),
+    db
+      .prepare(
+        `INSERT INTO private_channel_memberships
+           (id, channel_id, private_channel_user_id, role)
+         VALUES ('pcm_pce_member', ?, ?, ?)`
+      )
+      .bind(channelId, privateChannelUserId, role),
+  ]);
+  return {
+    privateChannelUserId,
+    headers: {
+      Cookie: `sdp_session=${sessionId}`,
+      "x-project-id": TEST_PROJECT.id,
+      "Content-Type": "application/json",
+    },
+  };
+}
+
 async function connectInstance(): Promise<void> {
   probeConnectionMock.mockResolvedValueOnce(successProbe());
   const res = await app.request(
@@ -154,6 +214,7 @@ describe("Private Channels — event routes", () => {
     probeConnectionMock.mockReset();
     overviewMock.mockReset();
     await seedTestDatabase(env);
+    await getDb(env).prepare("DELETE FROM private_channel_events").run();
     await seedAuth();
   });
 
@@ -175,7 +236,9 @@ describe("Private Channels — event routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
     expect(
-      body.data.events.some((e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED)
+      body.data.events.some(
+        (e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED
+      )
     ).toBe(true);
   });
 
@@ -357,7 +420,190 @@ describe("Private Channels — event routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: PrivateChannelEventListEnvelope };
     expect(
-      body.data.events.some((e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED)
+      body.data.events.some(
+        (e) => e.type === PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_INSTANCE_CONNECTED
+      )
     ).toBe(true);
+  });
+
+  it("assigns and updates a channel membership role with an activity event", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const db = getDb(env);
+    const targetUserId = "usr_role_target";
+    const privateChannelUserId = "pcu_role_target";
+    await db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind(targetUserId, "role-target@example.com")
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(privateChannelUserId, TEST_ORG.id, TEST_PROJECT.id, targetUserId)
+      .run();
+
+    const add = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          privateChannelUserId,
+          role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+        }),
+      },
+      env
+    );
+    expect(add.status).toBe(200);
+
+    const update = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER }),
+      },
+      env
+    );
+    expect(update.status).toBe(200);
+
+    const membership = await db
+      .prepare(
+        `SELECT role FROM private_channel_memberships
+         WHERE channel_id = ? AND private_channel_user_id = ?`
+      )
+      .bind(channelId, privateChannelUserId)
+      .first<{ role: string }>();
+    expect(membership?.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER);
+
+    const events = await app.request(
+      `/v1/private-channels/channels/${channelId}/events?type=${PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ROLE_CHANGED}`,
+      { headers: authHeaders() },
+      env
+    );
+    const body = (await events.json()) as { data: PrivateChannelEventListEnvelope };
+    expect(body.data.events).toHaveLength(1);
+    expect(body.data.events[0]?.payload).toMatchObject({
+      privateChannelUserId,
+      oldRole: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+      newRole: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+    });
+  });
+
+  it("hides project and channel events from a non-admin API key", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const headers = await nonAdminAuthHeaders();
+
+    const projectFeed = await app.request("/v1/private-channels/events", { headers }, env);
+    expect(projectFeed.status).toBe(200);
+    const projectBody = (await projectFeed.json()) as { data: PrivateChannelEventListEnvelope };
+    expect(projectBody.data.events).toEqual([]);
+
+    const channelFeed = await app.request(
+      `/v1/private-channels/channels/${channelId}/events`,
+      { headers },
+      env
+    );
+    expect(channelFeed.status).toBe(403);
+  });
+
+  it("shows a member only events from their channels", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const createOther = await app.request(
+      "/v1/private-channels/channels",
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ name: "Other" }),
+      },
+      env
+    );
+    const other = (await createOther.json()) as { data: PrivateChannelDto };
+    const { headers } = await memberSession(channelId);
+
+    const projectFeed = await app.request("/v1/private-channels/events", { headers }, env);
+    expect(projectFeed.status).toBe(200);
+    const projectBody = (await projectFeed.json()) as { data: PrivateChannelEventListEnvelope };
+    expect(projectBody.data.events.length).toBeGreaterThan(0);
+    expect(projectBody.data.events.every((event) => event.channelId === channelId)).toBe(true);
+
+    const ownFeed = await app.request(
+      `/v1/private-channels/channels/${channelId}/events`,
+      { headers },
+      env
+    );
+    expect(ownFeed.status).toBe(200);
+
+    const otherFeed = await app.request(
+      `/v1/private-channels/channels/${other.data.id}/events`,
+      { headers },
+      env
+    );
+    expect(otherFeed.status).toBe(403);
+  });
+
+  it("lets a channel admin change another member's role", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers } = await memberSession(channelId, "admin");
+    const db = getDb(env);
+    await db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind("usr_admin_target", "admin-target@example.com")
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES ('pcu_admin_target', ?, ?, 'usr_admin_target')`
+      )
+      .bind(TEST_ORG.id, TEST_PROJECT.id)
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_memberships
+           (id, channel_id, private_channel_user_id, role)
+         VALUES ('pcm_admin_target', ?, 'pcu_admin_target', 'member')`
+      )
+      .bind(channelId)
+      .run();
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/pcu_admin_target`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN }),
+      },
+      env
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("blocks a member from changing roles but allows self-leave", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers, privateChannelUserId } = await memberSession(channelId);
+
+    const update = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN }),
+      },
+      env
+    );
+    expect(update.status).toBe(403);
+
+    const leave = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      { method: "DELETE", headers },
+      env
+    );
+    expect(leave.status).toBe(200);
   });
 });

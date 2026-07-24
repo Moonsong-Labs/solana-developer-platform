@@ -219,6 +219,19 @@ export interface PrivateChannelVerifiedWalletDto {
   verifiedAt: string;
 }
 
+export const PRIVATE_CHANNEL_MEMBERSHIP_ROLES = {
+  ADMIN: "admin",
+  MEMBER: "member",
+} as const;
+
+export type PrivateChannelMembershipRole =
+  (typeof PRIVATE_CHANNEL_MEMBERSHIP_ROLES)[keyof typeof PRIVATE_CHANNEL_MEMBERSHIP_ROLES];
+
+export const PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES = [
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+] as const satisfies readonly PrivateChannelMembershipRole[];
+
 /** An SDP user invited to the SPC workspace, joined with `users` for display. */
 export interface PrivateChannelUserDto {
   id: string;
@@ -236,6 +249,16 @@ export interface PrivateChannelMembershipChannelDto {
   id: string;
   name: string;
   isDefault: boolean;
+  role: PrivateChannelMembershipRole;
+}
+
+export interface PrivateChannelMembershipDto {
+  id: string;
+  channelId: string;
+  privateChannelUserId: string;
+  role: PrivateChannelMembershipRole;
+  addedBy: string | null;
+  addedAt: string;
 }
 
 /** Invite an existing SDP project user to the SPC workspace. */
@@ -246,6 +269,7 @@ export interface InvitePrivateChannelUserRequest {
 /** Request body for adding a user to a channel. */
 export interface AddPrivateChannelMembershipRequest {
   privateChannelUserId: string;
+  role?: PrivateChannelMembershipRole;
 }
 
 // --- Private Channel Events ---------------------------------------------

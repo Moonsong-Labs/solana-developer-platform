@@ -34,6 +34,7 @@ import {
   listVerifiedWallets,
   probePrivateChannelConnection,
   removeChannelMembership,
+  updateChannelMembershipRole,
   verifyWallet,
 } from "./handlers";
 
@@ -67,11 +68,19 @@ privateChannels.post("/probe", requirePermissions("payments:read"), probePrivate
 // --- /instance ------------------------------------------------------------
 const instance = new Hono<{ Bindings: Env }>();
 instance.get("/", requirePermissions("payments:read"), getPrivateChannelInstance);
-instance.post("/", requirePermissions("payments:write"), connectPrivateChannelInstance);
-instance.delete("/", requirePermissions("payments:write"), deletePrivateChannelInstance);
+instance.post(
+  "/",
+  requirePermissions("payments:write", "projects:admin"),
+  connectPrivateChannelInstance
+);
+instance.delete(
+  "/",
+  requirePermissions("payments:write", "projects:admin"),
+  deletePrivateChannelInstance
+);
 instance.post(
   "/disconnect",
-  requirePermissions("payments:write"),
+  requirePermissions("payments:write", "projects:admin"),
   disconnectPrivateChannelInstance
 );
 instance.get("/overview", requirePermissions("payments:read"), getPrivateChannelOverview);
@@ -138,10 +147,18 @@ privateChannels.get("/events", requirePermissions("payments:read"), listProjectE
 // --- /channels ------------------------------------------------------------
 // Logical channels: instance-scoped metadata, enforced entirely by SDP.
 privateChannels.get("/channels", requirePermissions("payments:read"), listChannels);
-privateChannels.post("/channels", requirePermissions("payments:write"), createChannel);
+privateChannels.post(
+  "/channels",
+  requirePermissions("payments:write", "projects:admin"),
+  createChannel
+);
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
 privateChannels.get("/channels/:id/events", requirePermissions("payments:read"), listChannelEvents);
-privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
+privateChannels.delete(
+  "/channels/:id",
+  requirePermissions("payments:write", "projects:admin"),
+  deleteChannel
+);
 
 // --- /wallets -------------------------------------------------------------
 // Wallet verification: the gate for money-movement. Verifying signs an SPC auth
@@ -171,11 +188,20 @@ privateChannels.delete(
   requirePermissions("payments:write"),
   removeChannelMembership
 );
+privateChannels.patch(
+  "/channels/:channelId/memberships/:privateChannelUserId",
+  requirePermissions("payments:write"),
+  updateChannelMembershipRole
+);
 
 // --- /users ---------------------------------------------------------------
 // Workspace-level invites: one row per SDP user with SPC credentials.
 privateChannels.get("/users", requirePermissions("payments:read"), listPrivateChannelUsers);
-privateChannels.post("/users", requirePermissions("payments:write"), invitePrivateChannelUser);
+privateChannels.post(
+  "/users",
+  requirePermissions("payments:write", "projects:admin"),
+  invitePrivateChannelUser
+);
 // /users/me must come before /users/:id so `me` isn't matched as a param.
 privateChannels.get(
   "/users/me",
@@ -189,7 +215,7 @@ privateChannels.get(
 );
 privateChannels.delete(
   "/users/:privateChannelUserId",
-  requirePermissions("payments:write"),
+  requirePermissions("payments:write", "projects:admin"),
   deletePrivateChannelUser
 );
 

@@ -9,6 +9,8 @@ import type {
   PrivateChannelInstance,
   PrivateChannelInstanceEnvelope,
   PrivateChannelInstanceOverview,
+  PrivateChannelMembershipDto,
+  PrivateChannelMembershipRole,
   PrivateChannelUserDto,
   PrivateChannelVerifiedWalletDto,
   PrivateChannelWithdrawal,
@@ -179,6 +181,16 @@ export async function fetchPrivateChannelUsers(
   return users;
 }
 
+/** The caller's Private Channels workspace identity, or null when not invited. */
+export async function fetchMyPrivateChannelUser(
+  client: SdpApiClient
+): Promise<PrivateChannelUserDto | null> {
+  const { user } = await client.fetch<{ user: PrivateChannelUserDto | null }>(
+    "/v1/private-channels/users/me"
+  );
+  return user;
+}
+
 /**
  * Invite an SDP project user to the SPC workspace. Returns the created user
  * DTO plus the invite URL (email is scaffolded — the admin can copy it).
@@ -207,11 +219,25 @@ export function deletePrivateChannelUser(
 export function addChannelMembership(
   client: SdpApiClient,
   channelId: string,
-  privateChannelUserId: string
-): Promise<unknown> {
+  privateChannelUserId: string,
+  role: PrivateChannelMembershipRole
+): Promise<{ membership: PrivateChannelMembershipDto }> {
   return client.fetch(
     `/v1/private-channels/channels/${encodeURIComponent(channelId)}/memberships`,
-    { method: "POST", body: JSON.stringify({ privateChannelUserId }) }
+    { method: "POST", body: JSON.stringify({ privateChannelUserId, role }) }
+  );
+}
+
+/** Change a channel membership between admin and member. */
+export function updateChannelMembershipRole(
+  client: SdpApiClient,
+  channelId: string,
+  privateChannelUserId: string,
+  role: PrivateChannelMembershipRole
+): Promise<{ membership: PrivateChannelMembershipDto }> {
+  return client.fetch(
+    `/v1/private-channels/channels/${encodeURIComponent(channelId)}/memberships/${encodeURIComponent(privateChannelUserId)}`,
+    { method: "PATCH", body: JSON.stringify({ role }) }
   );
 }
 

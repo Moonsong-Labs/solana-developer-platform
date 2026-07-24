@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
-import type { PrivateChannelDto } from "@sdp/types";
+import { hasPermission, type PrivateChannelDto } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthEntryPath } from "@/lib/auth-entry";
+import { resolveDashboardAccess } from "@/lib/dashboard-access";
 import { fetchPrivateChannelInstance, fetchPrivateChannels } from "@/lib/private-channels";
 import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
@@ -22,11 +23,12 @@ export default async function PrivateChannelsChannelsPage() {
     notFound();
   }
 
-  const { userId, orgId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
   if (!userId) redirect(await getAuthEntryPath());
   if (!orgId) redirect("/dashboard");
 
   const channels = await loadChannels();
+  const canManage = hasPermission(resolveDashboardAccess(orgRole).permissions, "projects:admin");
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -39,7 +41,7 @@ export default async function PrivateChannelsChannelsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ChannelsManager initialChannels={channels} />
+          <ChannelsManager initialChannels={channels} canManage={canManage} />
         </CardContent>
       </Card>
     </div>

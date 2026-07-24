@@ -21,6 +21,7 @@ export {
   invitePrivateChannelUser,
   listPrivateChannelUsers,
   removeChannelMembership,
+  updateChannelMembershipRole,
 } from "./handlers/members";
 export { getPrivateChannelOverview } from "./handlers/overview";
 export { probePrivateChannelConnection } from "./handlers/probe";

@@ -3,6 +3,7 @@
 //   - `private_channel_memberships`  (channel × user junction)
 // Rows FK to `users(id)`; SDP-native user identity stays in the `users` table.
 
+import type { PrivateChannelMembershipRole } from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelUserId(): string {
@@ -41,6 +42,7 @@ export interface PrivateChannelMembershipRow {
   id: string;
   channel_id: string;
   private_channel_user_id: string;
+  role: PrivateChannelMembershipRole;
   added_by: string | null;
   added_at: string;
 }
@@ -69,6 +71,7 @@ export interface AddMembershipInput {
   channelId: string;
   privateChannelUserId: string;
   addedBy: string | null;
+  role: PrivateChannelMembershipRole;
 }
 
 export interface PrivateChannelUserRepositoryContext {
@@ -109,6 +112,13 @@ export interface PrivateChannelUserRepository {
 
   /** Insert-if-not-exists. Returns the row (existing or newly created). */
   addMembership(input: AddMembershipInput): Promise<PrivateChannelMembershipRow>;
+
+  /** Change an existing channel membership's role. */
+  updateMembershipRole(
+    channelId: string,
+    privateChannelUserId: string,
+    role: PrivateChannelMembershipRole
+  ): Promise<PrivateChannelMembershipRow | null>;
 
   /** Remove a user from a channel. Returns true if a row was deleted. */
   removeMembership(channelId: string, privateChannelUserId: string): Promise<boolean>;

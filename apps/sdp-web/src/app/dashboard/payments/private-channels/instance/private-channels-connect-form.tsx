@@ -27,6 +27,7 @@ type FormValues = PrivateChannelInstanceInput;
 
 interface Props {
   initialInstance: PrivateChannelInstance | null;
+  canManage: boolean;
 }
 
 const GATEWAY_DOT: Record<"ready" | "degraded" | "unreachable", string> = {
@@ -53,7 +54,7 @@ function toValues(instance: PrivateChannelInstance | null): FormValues {
   };
 }
 
-export function PrivateChannelsConnectForm({ initialInstance }: Props) {
+export function PrivateChannelsConnectForm({ initialInstance, canManage }: Props) {
   const [instance, setInstance] = useState<PrivateChannelInstance | null>(initialInstance);
   const [values, setValues] = useState<FormValues>(() => toValues(initialInstance));
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -70,13 +71,14 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
   const [showDelete, setShowDelete] = useState(false);
 
   const isLocked = instance?.isActive === true;
+  const controlsLocked = isLocked || !canManage;
   const busy = isTesting || isConnecting || isDisconnecting || isDeleting;
 
   const parsed = useMemo(() => privateChannelInstanceInputSchema.safeParse(values), [values]);
   const isValid = parsed.success;
 
   const update = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
-    if (isLocked) return;
+    if (controlsLocked) return;
     setValues((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
     // Any edit invalidates the last probe result.
@@ -173,7 +175,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         placeholder="http://gateway.example:8899"
         value={values.gatewayUrl}
         error={errors.gatewayUrl}
-        disabled={isLocked}
+        disabled={controlsLocked}
         onChange={(v) => update("gatewayUrl", v)}
         status={gatewayStatus(gatewayResult)}
       />
@@ -184,7 +186,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         placeholder="https://devnet.helius-rpc.com/?api-key=…"
         value={values.chainRpcUrl}
         error={errors.chainRpcUrl}
-        disabled={isLocked}
+        disabled={controlsLocked}
         onChange={(v) => update("chainRpcUrl", v)}
         status={rpcStatus(rpcResult)}
       />
@@ -195,7 +197,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
           label="Escrow program ID"
           value={values.escrowProgramId}
           error={errors.escrowProgramId}
-          disabled={isLocked}
+          disabled={controlsLocked}
           onChange={(v) => update("escrowProgramId", v)}
         />
         <TextField
@@ -203,7 +205,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
           label="Withdraw program ID"
           value={values.withdrawProgramId}
           error={errors.withdrawProgramId}
-          disabled={isLocked}
+          disabled={controlsLocked}
           onChange={(v) => update("withdrawProgramId", v)}
         />
       </div>
@@ -213,7 +215,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         label="Escrow instance address"
         value={values.escrowInstanceAddr}
         error={errors.escrowInstanceAddr}
-        disabled={isLocked}
+        disabled={controlsLocked}
         onChange={(v) => update("escrowInstanceAddr", v)}
       />
 
@@ -227,7 +229,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
             type="checkbox"
             checked={values.useAuth}
             onChange={(e) => update("useAuth", e.currentTarget.checked)}
-            disabled={isLocked}
+            disabled={controlsLocked}
             className="h-4 w-4"
           />
           Use auth
@@ -239,36 +241,38 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
             placeholder="http://auth.example:8903"
             value={values.authUrl}
             error={errors.authUrl}
-            disabled={isLocked}
+            disabled={controlsLocked}
             onChange={(v) => update("authUrl", v)}
           />
         ) : null}
       </div>
 
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={runTest} disabled={busy || isLocked}>
-          {isTesting ? "Testing…" : "Test connection"}
-        </Button>
-        {isLocked ? (
-          <>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => setShowDelete(true)}
-              disabled={busy}
-            >
-              Delete
-            </Button>
-            <Button type="button" onClick={runDisconnect} disabled={busy}>
-              {isDisconnecting ? "Disconnecting…" : "Disconnect"}
-            </Button>
-          </>
-        ) : (
-          <Button type="button" onClick={() => runConnect(false)} disabled={!isValid || busy}>
-            {isConnecting ? "Connecting…" : "Connect"}
+      {canManage ? (
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={runTest} disabled={busy || isLocked}>
+            {isTesting ? "Testing…" : "Test connection"}
           </Button>
-        )}
-      </div>
+          {isLocked ? (
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setShowDelete(true)}
+                disabled={busy}
+              >
+                Delete
+              </Button>
+              <Button type="button" onClick={runDisconnect} disabled={busy}>
+                {isDisconnecting ? "Disconnecting…" : "Disconnect"}
+              </Button>
+            </>
+          ) : (
+            <Button type="button" onClick={() => runConnect(false)} disabled={!isValid || busy}>
+              {isConnecting ? "Connecting…" : "Connect"}
+            </Button>
+          )}
+        </div>
+      ) : null}
 
       <ReactivateConfirmationDialog
         prompt={reactivatePrompt}
