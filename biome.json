@@ -143,7 +143,9 @@
       "!**/pnpm-lock.yaml",
       "!**/.source",
       "!**/packages/sdp-spc-escrow/src/generated",
-      "!**/packages/sdp-spc-withdraw/src/generated"
+      "!**/packages/sdp-spc-withdraw/src/generated",
+      "!**/packages/sdp-spc-escrow/idl",
+      "!**/packages/sdp-spc-withdraw/idl"
     ]
   },
   "vcs": {

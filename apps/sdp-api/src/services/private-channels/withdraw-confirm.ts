@@ -14,7 +14,6 @@
  *  - confirmed → `burn_confirmed` (authoritative: the user's channel balance is gone).
  */
 
-import { createChannelGatewayRpc } from "@sdp/private-channels";
 import * as solanaRpc from "@sdp/rpc/solana";
 import type { Signature } from "@solana/kit";
 import type {
@@ -22,7 +21,7 @@ import type {
   PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
 import type { Env } from "@/types/env";
-import { gatewayAuthOptions } from "./auth/gateway-auth";
+import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 
 /**
  * Confirm a broadcast burn on the gateway (channel chain) and persist the outcome:
@@ -37,19 +36,18 @@ export async function confirmAndPersistWithdrawal(
     withdrawalId: string;
     gatewayUrl: string;
     signature: Signature;
-    /** SPC bearer token — the gateway JWT-gates signature reads. */
-    authToken: string;
+    /** SPC auth context — the gateway JWT-gates signature reads. */
+    gatewayAuth: SpcAuthContext;
   }
 ): Promise<PrivateChannelWithdrawalRow | null> {
   try {
-    const gatewayRpc = createChannelGatewayRpc(
+    const confirmation = await withGatewayRpc(
       env,
       input.gatewayUrl,
-      gatewayAuthOptions(input.authToken)
+      input.gatewayAuth,
+      (gatewayRpc) =>
+        solanaRpc.confirmTransaction(gatewayRpc, input.signature, { commitment: "confirmed" })
     );
-    const confirmation = await solanaRpc.confirmTransaction(gatewayRpc, input.signature, {
-      commitment: "confirmed",
-    });
     if (confirmation.err) {
       return repo.updateWithdrawal({
         id: input.withdrawalId,

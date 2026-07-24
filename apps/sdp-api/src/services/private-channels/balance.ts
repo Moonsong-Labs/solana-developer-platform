@@ -12,11 +12,11 @@
  * is config-source-agnostic.
  */
 
-import { createChannelGatewayRpc, getChannelTokenBalance } from "@sdp/private-channels";
+import { getChannelTokenBalance } from "@sdp/private-channels";
 import { assertValidAddress } from "@sdp/solana/address";
 import type { PrivateChannelBalance, PrivateChannelInstance } from "@sdp/types";
 import type { Env } from "@/types/env";
-import { gatewayAuthOptions } from "./auth/gateway-auth";
+import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
 
 /** The instance fields the balance read needs: gateway URL + a cluster hint. */
@@ -25,8 +25,8 @@ type BalanceInstance = Pick<PrivateChannelInstance, "gatewayUrl" | "chainRpcUrl"
 /**
  * Read an owner's channel token balance through the gateway → wire DTO.
  *
- * `authToken` is the SPC-issued bearer token for gateway reads (see
- * `./auth/gateway-auth`). Required — the gateway JWT-gates balance reads.
+ * `auth` is the SPC auth context for gateway reads (see `./auth/gateway-auth`).
+ * Required — the gateway JWT-gates balance reads.
  */
 export async function getChannelBalance(
   env: Env,
@@ -34,15 +34,16 @@ export async function getChannelBalance(
     instance,
     owner,
     mint,
-    authToken,
-  }: { instance: BalanceInstance; owner: string; mint?: string; authToken: string }
+    auth,
+  }: { instance: BalanceInstance; owner: string; mint?: string; auth: SpcAuthContext }
 ): Promise<PrivateChannelBalance> {
   const cluster = inferCluster(instance.chainRpcUrl);
   const ownerAddress = assertValidAddress(owner, "owner");
   const mintAddress = assertValidAddress(mint ?? defaultChannelMint(cluster), "mint");
 
-  const rpc = createChannelGatewayRpc(env, instance.gatewayUrl, gatewayAuthOptions(authToken));
-  const { tokenAccount, balance } = await getChannelTokenBalance(rpc, ownerAddress, mintAddress);
+  const { tokenAccount, balance } = await withGatewayRpc(env, instance.gatewayUrl, auth, (rpc) =>
+    getChannelTokenBalance(rpc, ownerAddress, mintAddress)
+  );
 
   // A missing token account is a zero balance; fall back to the mint's known
   // decimals so the DTO stays accurate even before the owner is first credited.

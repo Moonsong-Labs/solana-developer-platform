@@ -6,6 +6,7 @@ import type { ApiKeyContext } from "@/lib/auth";
 import { SigningError } from "@/services/ports";
 import * as solana from "@/services/solana";
 import type { Env } from "@/types/env";
+import * as gatewayAuth from "./auth/gateway-auth";
 import * as spcSession from "./auth/spc-session";
 import { deletePrivateChannelWallet, verifyPrivateChannelWallet } from "./wallets";
 
@@ -45,6 +46,7 @@ let verifiedRepo: {
   deleteByUserInstanceAndPubkey: ReturnType<typeof vi.fn>;
   listByUserAndInstance: ReturnType<typeof vi.fn>;
 };
+let signMessages: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   verifiedRepo = {
@@ -65,6 +67,7 @@ beforeEach(() => {
     deleteWallet: vi.fn().mockResolvedValue(undefined),
     login: vi.fn(),
   };
+  signMessages = vi.fn().mockResolvedValue([{ [PUBKEY]: new Uint8Array(64) }]);
 
   vi.spyOn(repositories, "createPrivateChannelInstanceRepository").mockReturnValue({
     getActiveByProject: vi.fn().mockResolvedValue(instance),
@@ -79,7 +82,7 @@ beforeEach(() => {
   vi.spyOn(spcSession, "getSpcSession").mockResolvedValue({ token: "jwt", username: "u" });
   vi.spyOn(solana, "createOrgSigner").mockResolvedValue({
     address: PUBKEY,
-    signMessages: vi.fn().mockResolvedValue([{ [PUBKEY]: new Uint8Array(64) }]),
+    signMessages,
   } as never);
 });
 
@@ -99,13 +102,56 @@ describe("verifyPrivateChannelWallet", () => {
     expect(row.pubkey).toBe(PUBKEY);
   });
 
-  it("rethrows a non-CONFLICT SPC error and does not upsert", async () => {
+  it("retries once on UNAUTHORIZED then propagates a persistent 401 without upserting", async () => {
     client.verifyWallet.mockRejectedValue(new PrivateChannelError("UNAUTHORIZED", "bad token"));
 
     await expect(verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID)).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+    expect(client.challengeWallet).toHaveBeenCalledTimes(2);
     expect(verifiedRepo.upsert).not.toHaveBeenCalled();
+  });
+
+  it("on UNAUTHORIZED restarts challenge→sign→verify with a fresh nonce", async () => {
+    vi.mocked(spcSession.getSpcSession)
+      .mockResolvedValueOnce({ token: "stale", username: "u" })
+      .mockResolvedValueOnce({ token: "fresh", username: "u" });
+
+    client.challengeWallet
+      .mockResolvedValueOnce({ message: "sign A", nonce: "nA", expires_at: "l" })
+      .mockResolvedValueOnce({ message: "sign B", nonce: "nB", expires_at: "l" });
+    client.verifyWallet
+      .mockRejectedValueOnce(new PrivateChannelError("UNAUTHORIZED", "stale jwt"))
+      .mockResolvedValueOnce({ pubkey: PUBKEY, created_at: "x" });
+
+    await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
+
+    expect(client.challengeWallet).toHaveBeenCalledTimes(2);
+    expect(client.challengeWallet).toHaveBeenNthCalledWith(1, "stale");
+    expect(client.challengeWallet).toHaveBeenNthCalledWith(2, "fresh");
+    expect(client.verifyWallet).toHaveBeenNthCalledWith(
+      2,
+      "fresh",
+      expect.objectContaining({ nonce: "nB" })
+    );
+    expect(solana.createOrgSigner).toHaveBeenCalledTimes(1);
+    expect(signMessages).toHaveBeenCalledTimes(2);
+    expect(verifiedRepo.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the session through the shared cached handle layer", async () => {
+    const openSpy = vi.spyOn(gatewayAuth, "openSpcAuthContext");
+
+    await verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID);
+
+    expect(openSpy).toHaveBeenCalledWith(env, "org_1", "pci_1", pcUser, expect.anything());
+    expect(spcSession.getSpcSession).toHaveBeenCalledWith(
+      env,
+      "org_1",
+      pcUser,
+      expect.anything(),
+      expect.objectContaining({ instanceId: "pci_1", forceRefresh: false })
+    );
   });
 
   it("upserts the mirror scoped to the acting member and active instance", async () => {
@@ -138,6 +184,17 @@ describe("verifyPrivateChannelWallet", () => {
     ).rejects.toBeInstanceOf(SigningError);
     expect(client.challengeWallet).not.toHaveBeenCalled();
   });
+
+  it("does not refresh when signing fails inside the retry unit", async () => {
+    signMessages.mockRejectedValueOnce(new Error("sign boom"));
+
+    await expect(verifyPrivateChannelWallet(env, auth, "prj_1", WALLET_ID)).rejects.toMatchObject({
+      code: "SIGNING_FAILED",
+    });
+    expect(spcSession.getSpcSession).toHaveBeenCalledTimes(1);
+    expect(client.challengeWallet).toHaveBeenCalledTimes(1);
+    expect(client.verifyWallet).not.toHaveBeenCalled();
+  });
 });
 
 describe("deletePrivateChannelWallet", () => {
@@ -157,7 +214,22 @@ describe("deletePrivateChannelWallet", () => {
     expect(deleted).toBe(true);
   });
 
-  it("rethrows a real SPC failure and does not remove the mirror row", async () => {
+  it("on UNAUTHORIZED refreshes once and retries delete", async () => {
+    vi.mocked(spcSession.getSpcSession)
+      .mockResolvedValueOnce({ token: "stale", username: "u" })
+      .mockResolvedValueOnce({ token: "fresh", username: "u" });
+    client.deleteWallet
+      .mockRejectedValueOnce(new PrivateChannelError("UNAUTHORIZED", "stale jwt"))
+      .mockResolvedValueOnce(undefined);
+
+    const { deleted } = await deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY);
+
+    expect(client.deleteWallet).toHaveBeenNthCalledWith(1, "stale", PUBKEY);
+    expect(client.deleteWallet).toHaveBeenNthCalledWith(2, "fresh", PUBKEY);
+    expect(deleted).toBe(true);
+  });
+
+  it("rethrows an SPC failure and does not remove the mirror row", async () => {
     client.deleteWallet.mockRejectedValue(new PrivateChannelError("AUTH_UNAVAILABLE", "down"));
 
     await expect(deletePrivateChannelWallet(env, auth, "prj_1", PUBKEY)).rejects.toMatchObject({
