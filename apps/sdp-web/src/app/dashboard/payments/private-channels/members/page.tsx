@@ -7,9 +7,9 @@ import type {
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { fetchPrivateChannels, fetchPrivateChannelUsers } from "@/lib/private-channels";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { PROJECT_COOKIE_NAME } from "@/lib/project-cookie";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { MembersTable } from "./members-table";
@@ -46,7 +46,7 @@ async function loadPrivateChannelData(): Promise<{
 }
 
 export default async function PrivateChannelsMembersPage() {
-  if (!isPrivateChannelsDashboardEnabled()) notFound();
+  if (!(await privateChannels())) notFound();
 
   const { userId, orgId } = await auth();
   if (!userId) redirect(await getAuthEntryPath());

@@ -1,6 +1,7 @@
 type RuntimeFlagEnvironment = {
   assetProfilesEnabled?: string;
   nodeEnvironment?: string;
+  privateChannelsEnabled?: string;
   sdpEnvironment?: string;
   vercelEnvironment?: string;
 };
@@ -35,4 +36,17 @@ export function getAssetProfilesDefault({
 
   const node = normalize(nodeEnvironment);
   return node === "development" || node === "test";
+}
+
+export function getPrivateChannelsDefault({
+  privateChannelsEnabled,
+}: Pick<RuntimeFlagEnvironment, "privateChannelsEnabled">): boolean {
+  // Private Channels is opt-in everywhere, including local development: it
+  // needs a reachable SPC instance to be useful. The dashboard reads the same
+  // PRIVATE_CHANNELS_ENABLED the API gates its routes on, so the nav can never
+  // offer a surface the API will 403 — which means this must accept exactly the
+  // values the API's isTruthyFlag does (apps/sdp-api/src/lib/feature-flags.ts),
+  // not just "true", or the two sides would disagree on e.g. "1".
+  const value = normalize(privateChannelsEnabled);
+  return value !== undefined && ["1", "true", "yes", "on"].includes(value);
 }

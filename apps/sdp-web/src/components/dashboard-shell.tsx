@@ -87,7 +87,6 @@ import {
   type OrganizationOnboardingStatus,
   shouldRedirectToOrganizationOnboarding,
 } from "@/lib/onboarding-route-guard";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { cn } from "@/lib/utils";
 
 type SubNavItem = {
@@ -115,7 +114,10 @@ const PAYMENTS_SUBNAV_IDS = {
   mobile: "payments-subnav-mobile",
 } as const;
 
-function getPaymentsActions(t: ReturnType<typeof useTranslations>): SubNavItem[] {
+function getPaymentsActions(
+  t: ReturnType<typeof useTranslations>,
+  privateChannelsEnabled: boolean
+): SubNavItem[] {
   return [
     {
       label: t("Shared.dashboardShell.transactions"),
@@ -138,7 +140,7 @@ function getPaymentsActions(t: ReturnType<typeof useTranslations>): SubNavItem[]
       label: t("Shared.dashboardShell.recurring"),
       href: DASHBOARD_PAYMENTS_SUBNAV_HREFS.recurring,
     },
-    ...(isPrivateChannelsDashboardEnabled()
+    ...(privateChannelsEnabled
       ? [
           {
             label: t("Shared.dashboardShell.privateChannels"),
@@ -151,7 +153,11 @@ function getPaymentsActions(t: ReturnType<typeof useTranslations>): SubNavItem[]
 
 function getNavSections(
   t: ReturnType<typeof useTranslations>,
-  options: { canReadApprovals: boolean; pendingApprovalCount: number | null }
+  options: {
+    canReadApprovals: boolean;
+    pendingApprovalCount: number | null;
+    privateChannelsEnabled: boolean;
+  }
 ): NavSection[] {
   return [
     {
@@ -181,7 +187,7 @@ function getNavSections(
           label: t("Shared.dashboardShell.payments"),
           href: DASHBOARD_SIDE_NAV_HREFS.payments,
           icon: ArrowLeftRightIcon,
-          children: getPaymentsActions(t),
+          children: getPaymentsActions(t, options.privateChannelsEnabled),
         },
         {
           label: t("Shared.dashboardShell.apiKeys"),
@@ -576,7 +582,8 @@ function getIssuanceRoutePageConfig(
 function getDashboardPageConfig(
   pathname: string,
   t: ReturnType<typeof useTranslations>,
-  assetProfilesEnabled: boolean
+  assetProfilesEnabled: boolean,
+  privateChannelsEnabled: boolean
 ): DashboardPageConfig {
   const accessControlPageConfig = getAccessControlPageConfig(pathname, t);
   if (accessControlPageConfig) return accessControlPageConfig;
@@ -684,7 +691,9 @@ function getDashboardPageConfig(
     };
   }
   if (pathname.startsWith("/dashboard/payments/")) {
-    const action = getPaymentsActions(t).find((item) => pathname.startsWith(item.href));
+    const action = getPaymentsActions(t, privateChannelsEnabled).find((item) =>
+      pathname.startsWith(item.href)
+    );
     const centeredTitle = action
       ? action.label
       : pathname.endsWith("/receive")
@@ -1086,10 +1095,12 @@ export function DashboardShell({
   assetProfilesEnabled,
   children,
   onboardingStatus,
+  privateChannelsEnabled,
 }: {
   assetProfilesEnabled: boolean;
   children: ReactNode;
   onboardingStatus: OrganizationOnboardingStatus | null;
+  privateChannelsEnabled: boolean;
 }) {
   const t = useTranslations();
   const { isLoaded, isSignedIn, orgId } = useAuth();
@@ -1119,10 +1130,16 @@ export function DashboardShell({
     Boolean(pendingNavigationPathname) || isProjectSwitching || isOrganizationSwitching;
   const sidebarExpandedWidth = 296;
   const sidebarCollapsedWidth = 64;
-  const pageConfig = getDashboardPageConfig(shellPathname, t, assetProfilesEnabled);
+  const pageConfig = getDashboardPageConfig(
+    shellPathname,
+    t,
+    assetProfilesEnabled,
+    privateChannelsEnabled
+  );
   const navSections = getNavSections(t, {
     canReadApprovals: dashboardAccess.capabilities.canReadApprovals,
     pendingApprovalCount,
+    privateChannelsEnabled,
   });
   const bottomNavItems: NavItem[] = [
     {

@@ -7,13 +7,13 @@ import type {
 } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import {
   fetchCustodyWallets,
   fetchPrivateChannelOverview,
   fetchVerifiedWallets,
 } from "@/lib/private-channels";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { InstanceOverviewCard } from "./instance-overview-card";
 import { VerifiedWalletsSection } from "./verified-wallets-section";
@@ -51,7 +51,7 @@ async function loadWallets(): Promise<{
 }
 
 export default async function PrivateChannelsOverviewPage() {
-  if (!isPrivateChannelsDashboardEnabled()) {
+  if (!(await privateChannels())) {
     notFound();
   }
 

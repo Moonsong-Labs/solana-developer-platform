@@ -1,7 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { vercelAdapter } from "@flags-sdk/vercel";
 import { dedupe, flag } from "flags/next";
-import { getAssetProfilesDefault, getHomepageOpenSignupDefault } from "@/lib/feature-flag-defaults";
+import {
+  getAssetProfilesDefault,
+  getHomepageOpenSignupDefault,
+  getPrivateChannelsDefault,
+} from "@/lib/feature-flag-defaults";
 
 type DashboardFlagEntities = {
   user?: {
@@ -67,5 +71,20 @@ export const assetProfiles = flag<boolean, DashboardFlagEntities>({
   options: [
     { value: false, label: "Legacy issuance" },
     { value: true, label: "Asset Profiles" },
+  ],
+});
+
+export const privateChannels = flag<boolean, DashboardFlagEntities>({
+  key: "private-channels",
+  adapter: vercelAdapter(),
+  identify: identifyDashboardEntities,
+  defaultValue: getPrivateChannelsDefault({
+    privateChannelsEnabled: process.env.PRIVATE_CHANNELS_ENABLED,
+  }),
+  description:
+    "Show the Private Channels payments workspace (instance, channels, members, deposits, withdrawals).",
+  options: [
+    { value: false, label: "Hidden" },
+    { value: true, label: "Enabled" },
   ],
 });
