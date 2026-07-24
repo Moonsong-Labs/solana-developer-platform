@@ -4,6 +4,8 @@ import {
   Activity,
   Anchor,
   Banknote,
+  Building2,
+  Calendar,
   Check,
   ChevronDown,
   CircleCheck,
@@ -12,6 +14,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  Gauge,
   Globe,
   Hash,
   Image,
@@ -20,18 +23,24 @@ import {
   Lock,
   type LucideIcon,
   MapPin,
+  Percent,
+  PieChart,
+  Radio,
+  Scale,
   ShieldCheck,
   Tag,
   Target,
+  TrendingUp,
   User,
   Wallet,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/i18n/provider";
 import { useCopy } from "@/lib/use-copy";
 import { cn } from "@/lib/utils";
-import { getAssetTypeLabel, getCategoryLabel } from "./asset-taxonomy";
+import { getAssetTypeLabel, getCategoryLabelKey } from "./asset-taxonomy";
 import {
   buildPublicMetadata,
   getDefaultPublicFields,
@@ -61,12 +70,11 @@ type PreviewSurface = "wallet" | "explorer" | "token";
 
 const SURFACES: readonly {
   id: PreviewSurface;
-  label: string;
   Icon: LucideIcon;
 }[] = [
-  { id: "token", label: "Token", Icon: FileText },
-  { id: "explorer", label: "Explorer", Icon: Globe },
-  { id: "wallet", label: "Wallet", Icon: Wallet },
+  { id: "token", Icon: FileText },
+  { id: "explorer", Icon: Globe },
+  { id: "wallet", Icon: Wallet },
 ];
 
 interface PreviewProps {
@@ -117,11 +125,23 @@ const FIELD_ICONS: Record<string, LucideIcon> = {
   backingtype: ShieldCheck,
   reserveasset: Banknote,
   reservecustodian: Wallet,
+  collateralizationratio: Gauge,
+  oracleprovider: Radio,
+  mincollateralratio: Scale,
   custodian: Wallet,
   website: Globe,
   jurisdiction: MapPin,
   offeringtype: Tag,
+  shareclass: TrendingUp,
+  couponrate: Percent,
+  maturitydate: Calendar,
+  seniority: Layers,
+  fundstrategy: PieChart,
+  managementfee: Percent,
+  netassetvalue: Coins,
   underlyingasset: Coins,
+  propertytype: Building2,
+  propertylocation: MapPin,
 };
 
 // Resilient fallbacks for keys not in the exact map (e.g. future fields),
@@ -159,8 +179,8 @@ function iconFor(labelOrPath?: string): LucideIcon {
 function ClassificationChip({ label, path }: { label: string; path: string }) {
   const Icon = iconFor(path);
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.02)] px-2 py-0.5 text-xs text-[rgba(28,28,29,0.7)]">
-      <Icon className="h-3.5 w-3.5 shrink-0 text-[rgba(28,28,29,0.5)]" />
+    <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-fill-subtle px-2 py-0.5 text-xs text-secondary">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-tertiary" />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -189,11 +209,13 @@ export function PublicInfoPreview({
   mintAddress?: string | null;
   explorerHref?: string | null;
 }) {
+  const t = useTranslations();
   const [showOptional, setShowOptional] = useState(false);
   const [surface, setSurface] = useState<PreviewSurface>("token");
   const [jsonOpen, setJsonOpen] = useState(false);
-  const categoryLabel = getCategoryLabel(draft.assetCategory);
-  const typeLabel = getAssetTypeLabel(draft.assetCategory, draft.assetType);
+  const categoryLabelKey = getCategoryLabelKey(draft.assetCategory);
+  const categoryLabel = categoryLabelKey ? t(categoryLabelKey) : null;
+  const typeLabel = getAssetTypeLabel(draft.assetCategory, draft.assetType, t);
   const publicMetadata = buildPublicMetadata(draft);
 
   // Core identity + classification: inherent to the token / served from the
@@ -201,25 +223,45 @@ export function PublicInfoPreview({
   const alwaysPublic: StaticField[] = [
     {
       key: "name",
-      label: "Name",
-      value: draft.name.trim() || "Untitled asset",
+      label: t("DashboardIssuance.publicInfo.name"),
+      value: draft.name.trim() || t("DashboardIssuance.publicInfo.untitledAsset"),
     },
-    draft.symbol.trim() ? { key: "symbol", label: "Symbol", value: draft.symbol.trim() } : null,
+    draft.symbol.trim()
+      ? {
+          key: "symbol",
+          label: t("DashboardIssuance.publicInfo.symbol"),
+          value: draft.symbol.trim(),
+        }
+      : null,
     draft.description.trim()
       ? {
           key: "description",
-          label: "Description",
+          label: t("DashboardIssuance.publicInfo.description"),
           value: draft.description.trim(),
         }
       : null,
-    { key: "decimals", label: "Decimals", value: draft.decimals.trim() || "—" },
-    categoryLabel ? { key: "category", label: "Category", value: categoryLabel } : null,
-    typeLabel ? { key: "type", label: "Asset type", value: typeLabel } : null,
-    draft.imageUrl.trim() ? { key: "logo", label: "Logo", value: fileName(draft.imageUrl) } : null,
+    {
+      key: "decimals",
+      label: t("DashboardIssuance.publicInfo.decimals"),
+      value: draft.decimals.trim() || t("DashboardIssuance.publicInfo.notProvided"),
+    },
+    categoryLabel
+      ? { key: "category", label: t("DashboardIssuance.publicInfo.category"), value: categoryLabel }
+      : null,
+    typeLabel
+      ? { key: "type", label: t("DashboardIssuance.publicInfo.assetType"), value: typeLabel }
+      : null,
+    draft.imageUrl.trim()
+      ? {
+          key: "logo",
+          label: t("DashboardIssuance.publicInfo.logo"),
+          value: fileName(draft.imageUrl),
+        }
+      : null,
   ].filter((field): field is StaticField => Boolean(field));
 
   // Optional asset.* fields whose public/private state the issuer controls.
-  const candidates = getPublicFieldCandidates(draft);
+  const candidates = getPublicFieldCandidates(draft, t);
   const enabledCandidates = candidates.filter((candidate) => candidate.enabled);
   const defaultPaths = new Set(
     draft.assetCategory && draft.assetType
@@ -239,15 +281,31 @@ export function PublicInfoPreview({
   // field, so hiding a field also removes it from the preview.
   const facts: Fact[] = [
     ...(draft.symbol.trim()
-      ? [{ label: "Symbol", value: draft.symbol.trim(), path: "symbol" }]
+      ? [
+          {
+            label: t("DashboardIssuance.publicInfo.symbol"),
+            value: draft.symbol.trim(),
+            path: "symbol",
+          },
+        ]
       : []),
     {
-      label: "Decimals",
-      value: draft.decimals.trim() || "—",
+      label: t("DashboardIssuance.publicInfo.decimals"),
+      value: draft.decimals.trim() || t("DashboardIssuance.publicInfo.notProvided"),
       path: "decimals",
     },
-    ...(categoryLabel ? [{ label: "Category", value: categoryLabel, path: "category" }] : []),
-    ...(typeLabel ? [{ label: "Asset type", value: typeLabel, path: "type" }] : []),
+    ...(categoryLabel
+      ? [
+          {
+            label: t("DashboardIssuance.publicInfo.category"),
+            value: categoryLabel,
+            path: "category",
+          },
+        ]
+      : []),
+    ...(typeLabel
+      ? [{ label: t("DashboardIssuance.publicInfo.assetType"), value: typeLabel, path: "type" }]
+      : []),
     ...enabledCandidates.map((candidate) => ({
       label: candidate.label,
       value: candidate.value,
@@ -273,9 +331,11 @@ export function PublicInfoPreview({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-xl font-medium text-[#1c1c1d]">Public token information</h3>
-          <p className="mt-0.5 text-sm text-[rgba(28,28,29,0.58)]">
-            This is how your asset will appear to wallets, explorers, and the public.
+          <h3 className="text-xl font-medium text-primary">
+            {t("DashboardIssuance.publicInfo.publicTokenInformation")}
+          </h3>
+          <p className="mt-0.5 text-sm text-tertiary">
+            {t("DashboardIssuance.publicInfo.publicTokenInfoHelp")}
           </p>
         </div>
         <MetadataJsonToggle open={jsonOpen} onToggle={() => setJsonOpen((prev) => !prev)} />
@@ -285,26 +345,28 @@ export function PublicInfoPreview({
         {/* Checklist — public coverage + what's public, with interactive toggles. */}
         <div>
           <div className="mb-2 flex h-8 items-center justify-between gap-3">
-            <p className="text-sm font-medium text-[#1c1c1d]">Included in public view</p>
-            <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.02)] px-2 py-0.5 text-xs font-medium text-[rgba(28,28,29,0.6)]">
-              {publicCount} public
+            <p className="text-sm font-medium text-primary">
+              {t("DashboardIssuance.publicInfo.includedInPublicView")}
+            </p>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-fill-subtle px-2 py-0.5 text-xs font-medium text-tertiary">
+              {t("DashboardIssuance.publicInfo.publicCount", { count: publicCount })}
             </span>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.1)] bg-white">
+          <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
             {/* Coverage meter sits inside the card so its top edge aligns with the preview card. */}
-            <div className="border-b border-[rgba(28,28,29,0.08)] px-4 py-3">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[rgba(28,28,29,0.08)]">
+            <div className="border-b border-border-subtle px-4 py-3">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-fill">
                 <div
-                  className="h-full rounded-full bg-[#0f0f10] transition-[width]"
+                  className="h-full rounded-full bg-primary transition-[width]"
                   style={{ width: `${coveragePct}%` }}
                 />
               </div>
-              <p className="mt-1.5 text-xs text-[rgba(28,28,29,0.5)]">
-                {publicCount} of {totalCount} fields public
+              <p className="mt-1.5 text-xs text-tertiary">
+                {t("DashboardIssuance.publicInfo.publicCoverage", { publicCount, totalCount })}
               </p>
             </div>
-            <div className="divide-y divide-[rgba(28,28,29,0.06)]">
+            <div className="divide-y divide-border-subtle">
               {alwaysPublic.map((field) => (
                 <FieldRow key={field.key} label={field.label} value={field.value} checked locked />
               ))}
@@ -322,31 +384,33 @@ export function PublicInfoPreview({
           </div>
 
           {optionalInteractive.length > 0 ? (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.1)] bg-white">
+            <div className="mt-3 overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
               <button
                 type="button"
                 onClick={() => setShowOptional((value) => !value)}
                 aria-expanded={showOptional}
-                className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[rgba(28,28,29,0.03)] focus-visible:bg-[rgba(28,28,29,0.04)] focus-visible:outline-none"
+                className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-fill-subtle focus-visible:bg-fill-subtle focus-visible:outline-none"
               >
                 <div className="flex items-start gap-2">
-                  <Lock className="mt-0.5 h-4 w-4 shrink-0 text-[rgba(28,28,29,0.5)]" />
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0 text-tertiary" />
                   <div>
-                    <p className="text-sm font-medium text-[#1c1c1d]">Not included by default</p>
-                    <p className="text-sm text-[rgba(28,28,29,0.55)]">
-                      These fields stay private unless you choose to include them.
+                    <p className="text-sm font-medium text-primary">
+                      {t("DashboardIssuance.publicInfo.notIncludedByDefault")}
+                    </p>
+                    <p className="text-sm text-tertiary">
+                      {t("DashboardIssuance.publicInfo.notIncludedHelp")}
                     </p>
                   </div>
                 </div>
                 <ChevronDown
                   className={cn(
-                    "h-4 w-4 shrink-0 text-[rgba(28,28,29,0.5)] transition-transform",
+                    "h-4 w-4 shrink-0 text-tertiary transition-transform",
                     showOptional && "rotate-180"
                   )}
                 />
               </button>
               {showOptional ? (
-                <div className="divide-y divide-[rgba(28,28,29,0.06)] border-t border-[rgba(28,28,29,0.08)]">
+                <div className="divide-y divide-border-subtle border-t border-border-subtle">
                   {optionalInteractive.map((candidate) => (
                     <FieldRow
                       key={candidate.path}
@@ -369,10 +433,12 @@ export function PublicInfoPreview({
             viewer sits under this column when toggled open. */}
         <div>
           <div className="mb-2 flex h-8 items-center justify-between gap-3">
-            <p className="text-sm font-medium text-[#1c1c1d]">Preview</p>
+            <p className="text-sm font-medium text-primary">
+              {t("DashboardIssuance.publicInfo.preview")}
+            </p>
             <SurfaceSwitch value={surface} onChange={setSurface} />
           </div>
-          <div className="rounded-2xl border border-[rgba(28,28,29,0.1)] bg-white p-5">
+          <div className="rounded-2xl border border-border-default bg-surface-raised p-5">
             {surface === "wallet" ? <WalletPreview {...previewProps} /> : null}
             {surface === "explorer" ? <ExplorerPreview {...previewProps} /> : null}
             {surface === "token" ? <TokenPreview {...previewProps} /> : null}
@@ -400,9 +466,10 @@ function SurfaceSwitch({
   value: PreviewSurface;
   onChange: (next: PreviewSurface) => void;
 }) {
+  const t = useTranslations();
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-full border border-[rgba(28,28,29,0.1)] bg-[rgba(28,28,29,0.03)] p-0.5">
-      {SURFACES.map(({ id, label, Icon }) => {
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-border-default bg-fill-subtle p-0.5">
+      {SURFACES.map(({ id, Icon }) => {
         const active = id === value;
         return (
           <button
@@ -413,12 +480,12 @@ function SurfaceSwitch({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
               active
-                ? "border-[rgba(28,28,29,0.08)] bg-white text-[#1c1c1d]"
-                : "border-transparent text-[rgba(28,28,29,0.55)] hover:text-[#1c1c1d]"
+                ? "border-border-subtle bg-surface-raised text-primary"
+                : "border-transparent text-tertiary hover:text-primary"
             )}
           >
             <Icon className="h-3.5 w-3.5" />
-            {label}
+            {t(`DashboardIssuance.publicInfo.${id}`)}
           </button>
         );
       })}
@@ -439,21 +506,21 @@ function AssetAvatar({
   symbol: string;
   size?: "sm" | "md";
 }) {
+  const t = useTranslations();
   const dim = size === "sm" ? "h-10 w-10" : "h-14 w-14";
   const initial = symbol.slice(0, 1).toUpperCase() || "?";
 
   if (imageUrl.trim()) {
     return (
       <div className={cn("relative shrink-0", dim)}>
-        <span className="absolute -inset-0.5 rounded-full bg-[rgba(28,28,29,0.02)]" aria-hidden />
+        <span className="absolute -inset-0.5 rounded-full bg-fill-subtle" aria-hidden />
         {/* biome-ignore lint/performance/noImgElement: user-supplied external logo URL; next/image can't be configured for arbitrary hosts here. */}
         <img
           src={imageUrl}
-          alt={`${name || "Asset"} logo`}
-          className={cn(
-            "relative rounded-full border border-[rgba(28,28,29,0.1)] object-cover",
-            dim
-          )}
+          alt={t("DashboardIssuance.publicInfo.assetLogo", {
+            name: name || t("DashboardIssuance.publicInfo.asset"),
+          })}
+          className={cn("relative rounded-full border border-border-default object-cover", dim)}
         />
       </div>
     );
@@ -461,10 +528,10 @@ function AssetAvatar({
 
   return (
     <div className="relative shrink-0">
-      <span className="absolute -inset-0.5 rounded-full bg-[rgba(28,28,29,0.02)]" aria-hidden />
+      <span className="absolute -inset-0.5 rounded-full bg-fill-subtle" aria-hidden />
       <div
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full border border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.05)] font-semibold text-[#1c1c1d]",
+          "flex shrink-0 items-center justify-center rounded-full border border-border-default bg-fill-subtle font-semibold text-primary",
           dim,
           size === "sm" ? "text-base" : "text-xl"
         )}
@@ -482,20 +549,21 @@ function IdentityHeader({
   categoryLabel,
   typeLabel,
 }: Pick<PreviewProps, "draft" | "categoryLabel" | "typeLabel">) {
+  const t = useTranslations();
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
-        <h4 className="text-lg leading-tight font-semibold tracking-tight text-[#1c1c1d]">
-          {draft.name.trim() || "Untitled asset"}
+        <h4 className="text-lg leading-tight font-semibold tracking-tight text-primary">
+          {draft.name.trim() || t("DashboardIssuance.publicInfo.untitledAsset")}
         </h4>
         {draft.symbol.trim() ? (
-          <span className="rounded-full border border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.03)] px-2 py-0.5 text-xs font-medium text-[rgba(28,28,29,0.7)]">
+          <span className="rounded-full border border-border-default bg-fill-subtle px-2 py-0.5 text-xs font-medium text-secondary">
             {draft.symbol.trim()}
           </span>
         ) : null}
-        <span className="ml-1 flex items-center gap-1 rounded-full border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.03)] px-2 py-0.5 text-xs font-medium text-[rgba(28,28,29,0.6)]">
-          <CircleCheck className="h-3 w-3 text-[rgba(28,28,29,0.5)]" />
-          Preview
+        <span className="ml-1 flex items-center gap-1 rounded-full border border-border-subtle bg-fill-subtle px-2 py-0.5 text-xs font-medium text-tertiary">
+          <CircleCheck className="h-3 w-3 text-tertiary" />
+          {t("DashboardIssuance.publicInfo.preview")}
         </span>
       </div>
 
@@ -518,18 +586,27 @@ function AddressRow({
   mintAddress: string;
   explorerHref?: string | null;
 }) {
+  const t = useTranslations();
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-[rgba(28,28,29,0.1)] bg-[rgba(28,28,29,0.02)] px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border-default bg-fill-subtle px-3 py-2.5">
       <div className="min-w-0">
-        <p className="text-xs text-[rgba(28,28,29,0.5)]">Mint address</p>
-        <p className="mt-0.5 truncate text-sm font-medium text-[#1c1c1d]">
+        <p className="text-xs text-tertiary">{t("DashboardIssuance.publicInfo.mintAddress")}</p>
+        <p className="mt-0.5 truncate text-sm font-medium text-primary">
           {shortAddress(mintAddress)}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <CopyIconButton value={mintAddress} label="Copy mint address" />
+        <CopyIconButton
+          value={mintAddress}
+          label={t("DashboardIssuance.publicInfo.copyMintAddress")}
+        />
         {explorerHref ? (
-          <Button asChild variant="ghost" size="icon-xs" aria-label="View on explorer">
+          <Button
+            asChild
+            variant="ghost"
+            size="icon-xs"
+            aria-label={t("DashboardIssuance.publicInfo.viewOnExplorer")}
+          >
             <a href={explorerHref} target="_blank" rel="noreferrer">
               <ExternalLink />
             </a>
@@ -542,6 +619,7 @@ function AddressRow({
 
 // Copy affordance mirroring the payments CopyButton pattern.
 function CopyIconButton({ value, label }: { value: string; label: string }) {
+  const t = useTranslations();
   const { copy, copied } = useCopy(1200);
   return (
     <Button
@@ -551,10 +629,10 @@ function CopyIconButton({ value, label }: { value: string; label: string }) {
       aria-label={label}
       onClick={() => {
         void copy(value);
-        toast.success("Copied", { position: "bottom-right" });
+        toast.success(t("DashboardIssuance.publicInfo.copied"), { position: "bottom-right" });
       }}
     >
-      {copied ? <Check className="text-status-success-text" /> : <Copy />}
+      {copied ? <Check className="text-success" /> : <Copy />}
     </Button>
   );
 }
@@ -569,6 +647,7 @@ function TokenPreview({
   mintAddress,
   explorerHref,
 }: PreviewProps) {
+  const t = useTranslations();
   return (
     <div>
       <div className="flex items-start gap-4">
@@ -579,23 +658,23 @@ function TokenPreview({
       <p
         className={cn(
           "mt-3 text-sm leading-relaxed",
-          draft.description.trim() ? "text-[rgba(28,28,29,0.62)]" : "text-[rgba(28,28,29,0.4)]"
+          draft.description.trim() ? "text-secondary" : "text-muted"
         )}
       >
-        {draft.description.trim() || "No public description"}
+        {draft.description.trim() || t("DashboardIssuance.publicInfo.noPublicDescription")}
       </p>
 
-      <dl className="mt-4 space-y-2 border-t border-[rgba(28,28,29,0.08)] pt-4">
+      <dl className="mt-4 space-y-2 border-t border-border-subtle pt-4">
         {facts.map((fact) => {
           const Icon = iconFor(fact.path);
           return (
             <div key={fact.label} className="flex items-center gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(28,28,29,0.05)] text-[rgba(28,28,29,0.5)] [&_svg]:size-4">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-fill-subtle text-tertiary [&_svg]:size-4">
                 <Icon />
               </span>
               <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
-                <dt className="shrink-0 text-sm text-[rgba(28,28,29,0.55)]">{fact.label}</dt>
-                <dd className="min-w-0 text-right text-sm font-medium text-[#1c1c1d]">
+                <dt className="shrink-0 text-sm text-tertiary">{fact.label}</dt>
+                <dd className="min-w-0 text-right text-sm font-medium text-primary">
                   {fact.href ? (
                     <a
                       href={fact.href}
@@ -617,7 +696,7 @@ function TokenPreview({
       </dl>
 
       {mintAddress ? (
-        <div className="mt-4 border-t border-[rgba(28,28,29,0.08)] pt-4">
+        <div className="mt-4 border-t border-border-subtle pt-4">
           <AddressRow mintAddress={mintAddress} explorerHref={explorerHref} />
         </div>
       ) : null}
@@ -628,20 +707,27 @@ function TokenPreview({
 // Wallet surface — a compact token-list row: logo + name / classification on the
 // left, symbol + decimals on the right.
 function WalletPreview({ draft, categoryLabel, typeLabel }: PreviewProps) {
+  const t = useTranslations();
   const secondary = [draft.symbol.trim(), categoryLabel || typeLabel].filter(Boolean).join(" · ");
   return (
     <div className="flex items-center gap-3">
       <AssetAvatar imageUrl={draft.imageUrl} name={draft.name} symbol={draft.symbol} size="sm" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-[#1c1c1d]">
-          {draft.name.trim() || "Untitled asset"}
+        <p className="truncate text-sm font-medium text-primary">
+          {draft.name.trim() || t("DashboardIssuance.publicInfo.untitledAsset")}
         </p>
-        <p className="mt-0.5 truncate text-xs text-[rgba(28,28,29,0.5)]">{secondary || "—"}</p>
+        <p className="mt-0.5 truncate text-xs text-tertiary">
+          {secondary || t("DashboardIssuance.publicInfo.notProvided")}
+        </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-medium text-[#1c1c1d]">{draft.symbol.trim() || "—"}</p>
-        <p className="mt-0.5 text-xs text-[rgba(28,28,29,0.5)]">
-          {draft.decimals.trim() || "—"} decimals
+        <p className="text-sm font-medium text-primary">
+          {draft.symbol.trim() || t("DashboardIssuance.publicInfo.notProvided")}
+        </p>
+        <p className="mt-0.5 text-xs text-tertiary">
+          {t("DashboardIssuance.publicInfo.decimalsValue", {
+            count: draft.decimals.trim() || t("DashboardIssuance.publicInfo.notProvided"),
+          })}
         </p>
       </div>
     </div>
@@ -675,7 +761,7 @@ function ExplorerPreview({
       <div
         className={cn(
           "mt-4 flex flex-wrap gap-2",
-          mintAddress && "border-t border-[rgba(28,28,29,0.08)] pt-4"
+          mintAddress && "border-t border-border-subtle pt-4"
         )}
       >
         {facts.map((fact) => {
@@ -683,11 +769,11 @@ function ExplorerPreview({
           return (
             <span
               key={fact.label}
-              className="inline-flex min-w-0 items-center gap-1.5 rounded-lg border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.02)] px-2.5 py-1.5"
+              className="inline-flex min-w-0 items-center gap-1.5 rounded-lg border border-border-subtle bg-fill-subtle px-2.5 py-1.5"
             >
-              <Icon className="h-3.5 w-3.5 shrink-0 text-[rgba(28,28,29,0.45)]" />
-              <span className="text-xs text-[rgba(28,28,29,0.55)]">{fact.label}</span>
-              <span className="max-w-[12rem] truncate text-xs font-medium text-[#1c1c1d]">
+              <Icon className="h-3.5 w-3.5 shrink-0 text-muted" />
+              <span className="text-xs text-tertiary">{fact.label}</span>
+              <span className="max-w-[12rem] truncate text-xs font-medium text-primary">
                 {fact.value}
               </span>
             </span>
@@ -716,21 +802,20 @@ function FieldRow({
   locked?: boolean;
   disabled?: boolean;
 }) {
+  const t = useTranslations();
   const hasToggle = Boolean(onToggle) && !locked;
 
   const body = (
     <>
       <RoundCheck checked={checked} interactive={hasToggle && !disabled} disabled={disabled} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-[#1c1c1d]">{label}</p>
-        {value ? (
-          <p className="mt-0.5 break-words text-sm text-[rgba(28,28,29,0.55)]">{value}</p>
-        ) : null}
+        <p className="text-sm font-medium text-primary">{label}</p>
+        {value ? <p className="mt-0.5 wrap-anywhere text-sm text-tertiary">{value}</p> : null}
       </div>
       {locked ? (
         <span
-          title="Always public — can't be hidden"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[rgba(28,28,29,0.08)] text-[rgba(28,28,29,0.55)]"
+          title={t("DashboardIssuance.publicInfo.alwaysPublic")}
+          className="flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-full bg-fill text-tertiary"
         >
           <Lock className="h-3.5 w-3.5" />
         </span>
@@ -740,9 +825,7 @@ function FieldRow({
 
   if (!hasToggle) {
     return (
-      <div
-        className={cn("flex items-start gap-3 px-4 py-3", locked && "bg-[rgba(28,28,29,0.025)]")}
-      >
+      <div className={cn("flex items-center gap-3 px-4 py-3", locked && "bg-fill-subtle")}>
         {body}
       </div>
     );
@@ -753,14 +836,18 @@ function FieldRow({
       type="button"
       aria-pressed={checked}
       aria-disabled={disabled}
-      aria-label={checked ? "Public — hide this field" : "Hidden — show this field publicly"}
+      aria-label={t(
+        checked
+          ? "DashboardIssuance.publicInfo.hidePublicField"
+          : "DashboardIssuance.publicInfo.showPublicField"
+      )}
       onClick={onToggle}
       disabled={disabled}
       className={cn(
-        "group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors",
+        "group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors",
         disabled
           ? "cursor-default"
-          : "cursor-pointer hover:bg-[rgba(28,28,29,0.03)] focus-visible:bg-[rgba(28,28,29,0.04)] focus-visible:outline-none"
+          : "cursor-pointer hover:bg-fill-subtle focus-visible:bg-fill-subtle focus-visible:outline-none"
       )}
     >
       {body}
@@ -784,13 +871,11 @@ function RoundCheck({
     <span
       aria-hidden="true"
       className={cn(
-        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
         checked
-          ? "border-[#0f0f10] bg-[#0f0f10] text-white"
-          : "border-[rgba(28,28,29,0.28)] bg-white text-transparent",
-        interactive &&
-          !checked &&
-          "group-hover:border-[#0f0f10] group-hover:bg-[rgba(28,28,29,0.06)]",
+          ? "border-primary bg-primary text-on-primary"
+          : "border-border-strong bg-surface-raised text-transparent",
+        interactive && !checked && "group-hover:border-primary group-hover:bg-fill",
         disabled && "opacity-60"
       )}
     >

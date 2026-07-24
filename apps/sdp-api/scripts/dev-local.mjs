@@ -1,16 +1,16 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { API_LOCAL_ENV_KEYS } from "../../../scripts/secret-keys.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, "..");
-const wranglerBin = path.join(
+const tsxBin = path.join(
   appDir,
   "node_modules",
   ".bin",
-  process.platform === "win32" ? "wrangler.cmd" : "wrangler"
+  process.platform === "win32" ? "tsx.cmd" : "tsx"
 );
 
 function loadLocalEnvFile(filePath) {
@@ -18,10 +18,8 @@ function loadLocalEnvFile(filePath) {
     return {};
   }
 
-  const content = fs.readFileSync(filePath, "utf8");
   const values = {};
-
-  for (const line of content.split("\n")) {
+  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) {
       continue;
@@ -32,45 +30,82 @@ function loadLocalEnvFile(filePath) {
       continue;
     }
 
-    values[key] = rest.join("=");
+    const raw = rest.join("=");
+    const quoted = raw.match(/^(['"])(.*)\1$/);
+    values[key] = quoted ? quoted[2] : raw;
   }
 
   return values;
 }
 
-function collectWranglerVars(source) {
-  return API_LOCAL_ENV_KEYS.flatMap((key) => {
-    const value = source[key];
-    if (typeof value !== "string" || value.length === 0) {
-      return [];
-    }
-
-    return ["--var", `${key}:${value.replace(/\r\n/g, "\n")}`];
-  });
-}
-
-const localEnvPath = path.resolve(appDir, ".dev.vars");
+const localEnvPath = path.resolve(appDir, ".env.local");
 const localEnv = loadLocalEnvFile(localEnvPath);
-const persistTo = process.env.SDP_API_LOCAL_PERSIST_PATH ?? ".wrangler/state";
-const port = process.env.SDP_API_PORT ?? "8787";
-const shouldResetLocalState = process.env.SDP_API_RESET_LOCAL_STATE === "1";
-const isDopplerRun = Boolean(
-  process.env.DOPPLER_CONFIG || process.env.DOPPLER_ENVIRONMENT || process.env.DOPPLER_TOKEN
-);
-const localDatabaseUrl = new URL("postgresql://127.0.0.1:5432/sdp");
-localDatabaseUrl.username = "sdp";
-localDatabaseUrl.password = "sdp";
+const port = localEnv.SDP_API_PORT ?? process.env.SDP_API_PORT ?? "8787";
 const databaseUrl =
-  process.env.DATABASE_URL ?? localEnv.DATABASE_URL ?? localDatabaseUrl.toString();
-const wranglerVarArgs = isDopplerRun ? collectWranglerVars(process.env) : [];
+  // biome-ignore lint/security/noSecrets: Local Docker Postgres fallback.
+  localEnv.DATABASE_URL ?? process.env.DATABASE_URL ?? "postgresql://sdp:sdp@127.0.0.1:5432/sdp";
+const redisUrl = localEnv.REDIS_URL ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+const shouldResetLocalState =
+  (localEnv.SDP_API_RESET_LOCAL_STATE ?? process.env.SDP_API_RESET_LOCAL_STATE) === "1";
 let activeChild = null;
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     if (activeChild && !activeChild.killed) {
       activeChild.kill(signal);
+      return;
     }
+    process.exit(1);
   });
+}
+
+async function waitForService(label, rawUrl, defaultPort, startHint) {
+  const parsed = new URL(rawUrl);
+  const portNumber = parsed.port === "" ? defaultPort : Number(parsed.port);
+  const startedAt = Date.now();
+  const deadline = startedAt + 60_000;
+  let lastLogAt = 0;
+
+  while (true) {
+    const connected = await new Promise((resolve) => {
+      const socket = net.connect({ host: parsed.hostname, port: portNumber, timeout: 1_000 });
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once("error", () => resolve(false));
+      socket.once("timeout", () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+
+    if (connected) {
+      if (lastLogAt > 0) {
+        console.log(`${label} is up.`);
+      }
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastLogAt >= 10_000) {
+      const elapsed = Math.round((now - startedAt) / 1000);
+      console.log(
+        lastLogAt === 0
+          ? `Waiting for ${label} at ${parsed.hostname}:${portNumber} — ${startHint}...`
+          : `Still waiting for ${label} at ${parsed.hostname}:${portNumber} (${elapsed}s)...`
+      );
+      lastLogAt = now;
+    }
+
+    if (now > deadline) {
+      throw new Error(
+        `${label} did not become reachable at ${parsed.hostname}:${portNumber} within 60s. ${startHint}.`
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
 }
 
 function run(command, args, options = {}) {
@@ -79,8 +114,8 @@ function run(command, args, options = {}) {
       cwd: appDir,
       stdio: "inherit",
       env: {
-        ...localEnv,
         ...process.env,
+        ...localEnv,
         ...options.env,
       },
     });
@@ -93,94 +128,90 @@ function run(command, args, options = {}) {
         reject(new Error(`Command terminated by signal ${signal}`));
         return;
       }
-
       if (code !== 0) {
         reject(new Error(`Command failed with exit code ${code ?? 1}`));
         return;
       }
-
       resolve();
     });
   });
 }
 
-/**
- * Local cron TRIGGER (not a reimplementation of cron).
- *
- * We do run in workerd, and workerd/wrangler does expose the Worker's `scheduled()`
- * handler in local dev — that's what `--test-scheduled` mounts at `/__scheduled`,
- * and it's exactly what this hits. What local dev has no equivalent of is the
- * SCHEDULER: `wrangler dev` never fires `scheduled()` on the `wrangler.toml` `crons`
- * entry by itself, so without something poking that endpoint the reconcilers simply
- * never run locally (deposits sit at `confirmed` forever). This ticker supplies only
- * the missing timer, on the same cadence; the execution path is workerd's own.
- *
- * Production is untouched — Cloudflare fires the real `crons` schedule there.
- * Opt out with `SDP_API_DISABLE_CRON_TICKER=1`; tune with `SDP_API_CRON_TICK_MS`.
- * Returns a stop() to clear the timer.
- */
-function startCronTicker() {
-  const intervalMs = Number(process.env.SDP_API_CRON_TICK_MS ?? 60000);
-  if (
-    process.env.SDP_API_DISABLE_CRON_TICKER === "1" ||
-    !Number.isFinite(intervalMs) ||
-    intervalMs <= 0
-  ) {
-    return () => {};
-  }
-
-  const url = `http://127.0.0.1:${port}/__scheduled?cron=${encodeURIComponent("* * * * *")}`;
-  const timer = setInterval(() => {
-    // wrangler may still be starting up; a failed fetch is fine — retry next tick.
-    fetch(url).catch(() => {});
-  }, intervalMs);
-  // Don't let the ticker alone keep the process alive.
-  timer.unref?.();
-
-  console.log(`[dev] cron ticker: firing scheduled() every ${intervalMs} ms via /__scheduled`);
-  return () => clearInterval(timer);
-}
-
-// `--test-scheduled` exposes the `/__scheduled` route so the Worker's `scheduled()`
-// handler (the cron reconcilers) can be invoked in local dev, which otherwise does
-// not fire cron triggers on a timer.
-const devArgs = [
-  "dev",
-  "--local",
-  "--test-scheduled",
-  `--persist-to=${persistTo}`,
-  "--port",
-  port,
-  ...wranglerVarArgs,
-];
-
-try {
-  if (isDopplerRun && fs.existsSync(localEnvPath)) {
+async function resetLocalRedisState(url) {
+  const parsed = new URL(url);
+  const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+  if (!loopbackHosts.has(parsed.hostname)) {
     throw new Error(
-      "Legacy apps/sdp-api/.dev.vars detected while running under Doppler. Remove or rename it so Wrangler can inject Doppler-backed bindings with `--var`."
+      "SDP_API_RESET_LOCAL_STATE=1 is restricted to loopback Redis instances to protect shared data."
     );
   }
 
-  if (shouldResetLocalState) {
-    fs.rmSync(path.resolve(appDir, persistTo), { recursive: true, force: true });
+  const { default: Redis } = await import("ioredis");
+  const client = new Redis(url, { maxRetriesPerRequest: 1 });
+  try {
+    for (const prefix of ["apiKeys", "rateLimits", "cache", "sessions"]) {
+      let cursor = "0";
+      do {
+        const [nextCursor, keys] = await client.scan(cursor, "MATCH", `${prefix}:*`, "COUNT", 100);
+        if (keys.length > 0) {
+          await client.unlink(...keys);
+        }
+        cursor = nextCursor;
+      } while (cursor !== "0");
+    }
+  } finally {
+    await client.quit();
   }
+}
+
+function describeEnvSource() {
+  const hasLocalEnv = fs.existsSync(localEnvPath);
+  const isDopplerRun = Boolean(
+    process.env.DOPPLER_CONFIG || process.env.DOPPLER_ENVIRONMENT || process.env.DOPPLER_TOKEN
+  );
+  if (isDopplerRun) {
+    const config = process.env.DOPPLER_CONFIG ?? "unknown";
+    return hasLocalEnv ? `Doppler (${config}) with .env.local overrides` : `Doppler (${config})`;
+  }
+  if (hasLocalEnv) {
+    return ".env.local";
+  }
+  return "local defaults — copy apps/sdp-api/.env.local.example to apps/sdp-api/.env.local for provider configuration";
+}
+
+try {
+  console.log(`Environment: ${describeEnvSource()}`);
+  await Promise.all([
+    waitForService(
+      "Postgres",
+      databaseUrl,
+      5432,
+      "under `pnpm dev`, the local infrastructure task starts it; otherwise run `pnpm db:postgres:up`"
+    ),
+    waitForService(
+      "Redis",
+      redisUrl,
+      6379,
+      "under `pnpm dev`, the local infrastructure task starts it; otherwise run `pnpm db:redis:up`"
+    ),
+  ]);
+
+  if (shouldResetLocalState) {
+    await resetLocalRedisState(redisUrl);
+  }
+
   await run("node", ["scripts/migrate-postgres.mjs"], {
+    env: { DATABASE_URL: databaseUrl },
+  });
+  await run(tsxBin, ["watch", "--clear-screen=false", "src/server.ts"], {
     env: {
+      ENVIRONMENT: localEnv.ENVIRONMENT ?? process.env.ENVIRONMENT ?? "development",
+      API_VERSION: localEnv.API_VERSION ?? process.env.API_VERSION ?? "local",
       DATABASE_URL: databaseUrl,
+      REDIS_URL: redisUrl,
+      PORT: port,
     },
   });
-  const stopCronTicker = startCronTicker();
-  try {
-    await run(wranglerBin, devArgs, {
-      env: {
-        DATABASE_URL: databaseUrl,
-        CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: databaseUrl,
-        CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
-      },
-    });
-  } finally {
-    stopCronTicker();
-  }
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown local dev startup error";
   console.error(message);

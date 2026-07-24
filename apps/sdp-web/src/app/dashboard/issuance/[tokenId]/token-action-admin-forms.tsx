@@ -1,9 +1,33 @@
 "use client";
 
 import type { PaymentsDashboardWallet, TokenAllowlistEntry } from "@sdp/types";
-import { type ComponentProps, type Dispatch, type SetStateAction, useId } from "react";
+import {
+  Flame,
+  HandCoins,
+  Inbox,
+  Info,
+  Pause,
+  Play,
+  Plus,
+  Search,
+  Snowflake,
+  Sun,
+  Trash2,
+  UserCog,
+} from "lucide-react";
+import {
+  type ComponentProps,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectItem } from "@/components/ui/select";
+import { useTranslations } from "@/i18n/provider";
 import { TokenActionCard } from "./token-action-card";
 import { TokenDisabledActionTooltip } from "./token-disabled-action-tooltip";
 import type {
@@ -17,13 +41,14 @@ import type {
   SeizeValidationErrors,
 } from "./token-management-workspace.types";
 import {
+  getTokenAmountFieldDescription,
   NON_WHITESPACE_PATTERN,
   SOLANA_ADDRESS_PATTERN,
-  TOKEN_AMOUNT_FIELD_DESCRIPTION,
 } from "./token-management-workspace.utils";
 import { TokenSignerSelect } from "./token-signer-select";
 import { TokenValidationMessage } from "./token-validation-message";
 import { TokenWalletAddressField } from "./token-wallet-address-field";
+import { useInlineValidationMessage } from "./use-inline-validation-message";
 
 interface TokenActionAdminFormsProps {
   activeAction: AdminAction | null;
@@ -54,6 +79,9 @@ interface TokenActionAdminFormsProps {
   forceBurnValidationErrors: ForceBurnValidationErrors;
   forceBurnValidationReason: string | null;
   submitAlignment?: "start" | "end";
+  // Forwarded to TokenActionCard; also gates the per-button icons (see there).
+  variant?: "card" | "flat" | "bare";
+  hideAllowlistTitle?: boolean;
   tokenStatus: "pending" | "active" | "paused" | "revoked";
   onSignerWalletIdChange: (value: string) => void;
   onSeize: () => void;
@@ -95,6 +123,8 @@ export function TokenActionAdminForms({
   forceBurnValidationErrors,
   forceBurnValidationReason,
   submitAlignment = "start",
+  variant = "card",
+  hideAllowlistTitle = false,
   tokenStatus,
   onSignerWalletIdChange,
   onSeize,
@@ -105,12 +135,43 @@ export function TokenActionAdminForms({
   onAddAllowlist,
   onRemoveAllowlist,
 }: TokenActionAdminFormsProps) {
+  const t = useTranslations();
+  // Non-card surfaces prefix each action button with an icon; the legacy card
+  // keeps them icon-free. One map so the form tree isn't duplicated to toggle icons.
+  const icon: Partial<
+    Record<
+      | "seize"
+      | "forceBurn"
+      | "authority"
+      | "pause"
+      | "unpause"
+      | "freeze"
+      | "unfreeze"
+      | "addEntry"
+      | "removeEntry",
+      ReactNode
+    >
+  > =
+    variant !== "card"
+      ? {
+          seize: <HandCoins />,
+          forceBurn: <Flame />,
+          authority: <UserCog />,
+          pause: <Pause />,
+          unpause: <Play />,
+          freeze: <Snowflake />,
+          unfreeze: <Sun />,
+          addEntry: <Plus />,
+          removeEntry: <Trash2 />,
+        }
+      : {};
   return (
     <>
       {activeAction === "seize" ? (
         <TokenActionCard
-          title="Force Transfer"
-          description="Administrative seizure transfer between accounts."
+          variant={variant}
+          title={t("DashboardIssuance.compliance.forceTransfer")}
+          description={t("DashboardIssuance.forms.forceTransferDescription")}
         >
           <form
             className="space-y-4"
@@ -126,13 +187,14 @@ export function TokenActionAdminForms({
               onSignerWalletIdChange={onSignerWalletIdChange}
             />
             <TokenWalletAddressField
-              label="Source"
+              label={t("DashboardIssuance.forms.source")}
               value={seizeForm.source}
               walletOptions={walletOptions}
               required
+              hideFilterHint={variant !== "card"}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
-              placeholder="Source wallet or token account"
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
+              placeholder={t("DashboardIssuance.forms.sourceWalletPlaceholder")}
               error={seizeValidationErrors.source}
               onChange={(value) =>
                 setSeizeForm((previous) => ({
@@ -142,13 +204,14 @@ export function TokenActionAdminForms({
               }
             />
             <TokenWalletAddressField
-              label="Destination"
+              label={t("DashboardIssuance.forms.destination")}
               value={seizeForm.destination}
               walletOptions={walletOptions}
               required
+              hideFilterHint={variant !== "card"}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
-              placeholder="Destination wallet or token account"
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
+              placeholder={t("DashboardIssuance.forms.destinationPlaceholder")}
               error={seizeValidationErrors.destination}
               onChange={(value) =>
                 setSeizeForm((previous) => ({
@@ -158,8 +221,8 @@ export function TokenActionAdminForms({
               }
             />
             <ActionField
-              label="Amount"
-              description={TOKEN_AMOUNT_FIELD_DESCRIPTION}
+              label={t("DashboardIssuance.forms.amount")}
+              description={getTokenAmountFieldDescription(t)}
               type="number"
               inputMode="decimal"
               min="0.000000001"
@@ -175,7 +238,7 @@ export function TokenActionAdminForms({
               }
             />
             <ActionField
-              label="Memo"
+              label={t("DashboardIssuance.forms.memo")}
               value={seizeForm.memo}
               onChange={(value) =>
                 setSeizeForm((previous) => ({
@@ -192,11 +255,12 @@ export function TokenActionAdminForms({
             >
               <Button
                 type="submit"
+                iconLeft={icon.seize}
                 disabled={
                   isPending || Boolean(signerUnavailableReason) || Boolean(seizeValidationReason)
                 }
               >
-                Force transfer
+                {t("DashboardIssuance.compliance.forceTransfer")}
               </Button>
             </div>
           </form>
@@ -205,8 +269,9 @@ export function TokenActionAdminForms({
 
       {activeAction === "force-burn" ? (
         <TokenActionCard
-          title="Force Burn"
-          description="Administrative forced burn from source account."
+          variant={variant}
+          title={t("DashboardIssuance.compliance.forceBurn")}
+          description={t("DashboardIssuance.forms.forceBurnDescription")}
         >
           <form
             className="space-y-4"
@@ -222,13 +287,14 @@ export function TokenActionAdminForms({
               onSignerWalletIdChange={onSignerWalletIdChange}
             />
             <TokenWalletAddressField
-              label="Source"
+              label={t("DashboardIssuance.forms.source")}
               value={forceBurnForm.source}
               walletOptions={walletOptions}
               required
+              hideFilterHint={variant !== "card"}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
-              placeholder="Source wallet or token account"
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
+              placeholder={t("DashboardIssuance.forms.sourceWalletPlaceholder")}
               error={forceBurnValidationErrors.source}
               onChange={(value) =>
                 setForceBurnForm((previous) => ({
@@ -238,8 +304,8 @@ export function TokenActionAdminForms({
               }
             />
             <ActionField
-              label="Amount"
-              description={TOKEN_AMOUNT_FIELD_DESCRIPTION}
+              label={t("DashboardIssuance.forms.amount")}
+              description={getTokenAmountFieldDescription(t)}
               type="number"
               inputMode="decimal"
               min="0.000000001"
@@ -255,7 +321,7 @@ export function TokenActionAdminForms({
               }
             />
             <ActionField
-              label="Memo"
+              label={t("DashboardIssuance.forms.memo")}
               value={forceBurnForm.memo}
               onChange={(value) =>
                 setForceBurnForm((previous) => ({
@@ -272,13 +338,14 @@ export function TokenActionAdminForms({
             >
               <Button
                 type="submit"
+                iconLeft={icon.forceBurn}
                 disabled={
                   isPending ||
                   Boolean(signerUnavailableReason) ||
                   Boolean(forceBurnValidationReason)
                 }
               >
-                Force burn
+                {t("DashboardIssuance.compliance.forceBurn")}
               </Button>
             </div>
           </form>
@@ -286,7 +353,11 @@ export function TokenActionAdminForms({
       ) : null}
 
       {activeAction === "authority" ? (
-        <TokenActionCard title="Update Authority" description="Rotate or remove token authorities.">
+        <TokenActionCard
+          variant={variant}
+          title={t("DashboardIssuance.forms.updateAuthority")}
+          description={t("DashboardIssuance.forms.updateAuthorityDescription")}
+        >
           <form
             className="space-y-4"
             onSubmit={(event) => {
@@ -295,7 +366,7 @@ export function TokenActionAdminForms({
             }}
           >
             <ActionSelect
-              label="Role"
+              label={t("DashboardIssuance.forms.role")}
               value={authorityForm.role}
               onChange={(value) =>
                 setAuthorityForm((previous) => ({
@@ -304,17 +375,20 @@ export function TokenActionAdminForms({
                 }))
               }
               options={[
-                { label: "mint", value: "mint" },
-                { label: "freeze", value: "freeze" },
-                { label: "permanentDelegate", value: "permanentDelegate" },
-                { label: "metadata", value: "metadata" },
+                { label: t("DashboardIssuance.forms.mintAuthority"), value: "mint" },
+                { label: t("DashboardIssuance.forms.freezeAuthority"), value: "freeze" },
+                {
+                  label: t("DashboardIssuance.forms.permanentDelegate"),
+                  value: "permanentDelegate",
+                },
+                { label: t("DashboardIssuance.forms.metadataAuthority"), value: "metadata" },
               ]}
             />
             <ActionField
-              label="Current Authority (optional)"
+              label={t("DashboardIssuance.forms.currentAuthorityOptional")}
               value={authorityForm.currentAuthority}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
               onChange={(value) =>
                 setAuthorityForm((previous) => ({
                   ...previous,
@@ -323,10 +397,10 @@ export function TokenActionAdminForms({
               }
             />
             <ActionField
-              label="New Authority (empty to remove)"
+              label={t("DashboardIssuance.forms.newAuthorityEmptyToRemove")}
               value={authorityForm.newAuthority}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
               onChange={(value) =>
                 setAuthorityForm((previous) => ({
                   ...previous,
@@ -340,8 +414,8 @@ export function TokenActionAdminForms({
                 submitAlignment === "end" ? "justify-end" : "",
               ].join(" ")}
             >
-              <Button type="submit" disabled={isPending}>
-                Update authority
+              <Button type="submit" iconLeft={icon.authority} disabled={isPending}>
+                {t("DashboardIssuance.management.updateAuthority")}
               </Button>
             </div>
           </form>
@@ -349,7 +423,11 @@ export function TokenActionAdminForms({
       ) : null}
 
       {activeAction === "pause" ? (
-        <TokenActionCard title="Pause Controls" description="Pause or resume token-wide transfers.">
+        <TokenActionCard
+          variant={variant}
+          title={t("DashboardIssuance.forms.pauseControls")}
+          description={t("DashboardIssuance.forms.pauseControlsDescription")}
+        >
           <div className="space-y-4">
             <TokenSignerSelect
               signerWallets={signerWallets}
@@ -357,32 +435,41 @@ export function TokenActionAdminForms({
               signerUnavailableReason={signerUnavailableReason}
               onSignerWalletIdChange={onSignerWalletIdChange}
             />
-            <div className="flex flex-wrap gap-2">
+            <div
+              className={[
+                "flex flex-wrap gap-2",
+                submitAlignment === "end" ? "justify-end" : "",
+              ].join(" ")}
+            >
               <TokenDisabledActionTooltip
-                reason={tokenStatus === "paused" ? "Token is already paused." : null}
+                reason={
+                  tokenStatus === "paused" ? t("DashboardIssuance.forms.alreadyPaused") : null
+                }
               >
                 <Button
                   type="button"
                   variant="outline"
+                  iconLeft={icon.pause}
                   onClick={() => onPause(true)}
                   disabled={
                     isPending || tokenStatus === "paused" || Boolean(signerUnavailableReason)
                   }
                 >
-                  Pause token
+                  {t("DashboardIssuance.management.pauseToken")}
                 </Button>
               </TokenDisabledActionTooltip>
               <TokenDisabledActionTooltip
-                reason={tokenStatus === "active" ? "Token is not paused." : null}
+                reason={tokenStatus === "active" ? t("DashboardIssuance.forms.notPaused") : null}
               >
                 <Button
                   type="button"
+                  iconLeft={icon.unpause}
                   onClick={() => onPause(false)}
                   disabled={
                     isPending || tokenStatus === "active" || Boolean(signerUnavailableReason)
                   }
                 >
-                  Unpause token
+                  {t("DashboardIssuance.management.unpauseToken")}
                 </Button>
               </TokenDisabledActionTooltip>
             </div>
@@ -392,8 +479,9 @@ export function TokenActionAdminForms({
 
       {activeAction === "freeze" ? (
         <TokenActionCard
-          title="Freeze Controls"
-          description="Freeze or thaw a wallet's token holdings for this mint."
+          variant={variant}
+          title={t("DashboardIssuance.forms.freezeControls")}
+          description={t("DashboardIssuance.forms.freezeControlsDescription")}
         >
           <form
             className="space-y-4"
@@ -411,12 +499,12 @@ export function TokenActionAdminForms({
               onSignerWalletIdChange={onSignerWalletIdChange}
             />
             <ActionField
-              label="Wallet Address"
+              label={t("DashboardIssuance.forms.walletAddress")}
               value={freezeForm.accountAddress}
               required
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter the wallet address. SDP will derive the associated token account for this mint automatically."
-              placeholder="Wallet address that holds this token"
+              title={t("DashboardIssuance.forms.enterWalletAddress")}
+              placeholder={t("DashboardIssuance.forms.walletAddressPlaceholder")}
               onChange={(value) =>
                 setFreezeForm((previous) => ({
                   ...previous,
@@ -424,15 +512,19 @@ export function TokenActionAdminForms({
                 }))
               }
             />
-            <p className="text-sm leading-6 text-[rgba(28,28,29,0.64)]">
-              Enter the wallet address that holds this token. SDP derives the associated token
-              account automatically for this mint.
-            </p>
-            {freezeHint ? (
-              <p className="text-sm leading-6 text-[rgba(28,28,29,0.64)]">{freezeHint}</p>
-            ) : null}
+            <div className="flex items-start gap-2.5 rounded-xl border border-border-subtle bg-fill-subtle p-3">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-tertiary" aria-hidden />
+              <div className="space-y-2">
+                <p className="text-sm leading-5 text-secondary">
+                  {t("DashboardIssuance.forms.walletAddressInstruction")}
+                </p>
+                {freezeHint ? (
+                  <p className="text-sm leading-5 text-secondary">{freezeHint}</p>
+                ) : null}
+              </div>
+            </div>
             <ActionField
-              label="Reason (freeze only)"
+              label={t("DashboardIssuance.forms.freezeReason")}
               value={freezeForm.reason}
               onChange={(value) =>
                 setFreezeForm((previous) => ({
@@ -451,16 +543,18 @@ export function TokenActionAdminForms({
                 type="submit"
                 variant="outline"
                 value="freeze"
+                iconLeft={icon.freeze}
                 disabled={isPending || Boolean(signerUnavailableReason)}
               >
-                Freeze account
+                {t("DashboardIssuance.management.freezeAccount")}
               </Button>
               <Button
                 type="submit"
                 value="unfreeze"
+                iconLeft={icon.unfreeze}
                 disabled={isPending || Boolean(signerUnavailableReason)}
               >
-                Unfreeze account
+                {t("DashboardIssuance.management.unfreezeAccount")}
               </Button>
             </div>
           </form>
@@ -469,9 +563,12 @@ export function TokenActionAdminForms({
 
       {activeAction === "allowlist" && controlListLabel ? (
         <TokenActionCard
-          title={controlListLabel}
+          variant={variant}
+          title={hideAllowlistTitle ? undefined : controlListLabel}
           description={
-            controlListDescription ?? "Manage the approved destination addresses for this token."
+            hideAllowlistTitle
+              ? undefined
+              : (controlListDescription ?? t("DashboardIssuance.forms.controlListDescription"))
           }
         >
           <form
@@ -482,11 +579,11 @@ export function TokenActionAdminForms({
             }}
           >
             <ActionField
-              label="Address"
+              label={t("DashboardIssuance.forms.address")}
               value={allowlistForm.address}
               required
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
               onChange={(value) =>
                 setAllowlistForm((previous) => ({
                   ...previous,
@@ -495,10 +592,10 @@ export function TokenActionAdminForms({
               }
             />
             <ActionField
-              label="Label"
+              label={t("DashboardIssuance.forms.label")}
               value={allowlistForm.label}
               pattern={NON_WHITESPACE_PATTERN}
-              title="Enter a label or leave this blank."
+              title={t("DashboardIssuance.forms.enterLabel")}
               onChange={(value) =>
                 setAllowlistForm((previous) => ({
                   ...previous,
@@ -512,45 +609,140 @@ export function TokenActionAdminForms({
                 submitAlignment === "end" ? "justify-end" : "",
               ].join(" ")}
             >
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" iconLeft={icon.addEntry} disabled={isPending}>
                 {controlListAddActionLabel}
               </Button>
             </div>
 
             {allowlistError ? (
               <TokenValidationMessage message={allowlistError} reserveSpace={false} />
-            ) : allowlistEntries.length === 0 ? (
-              <p className="text-sm text-[rgba(28,28,29,0.68)]">{controlListEmptyState}</p>
-            ) : (
-              <div className="space-y-2">
-                {allowlistEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-[rgba(28,28,29,0.12)] px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-mono text-xs text-[#1c1c1d]">{entry.address}</p>
-                      <p className="text-xs text-[rgba(28,28,29,0.62)]">
-                        {entry.label ?? "No label"}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onRemoveAllowlist(entry.id)}
-                      disabled={isPending}
-                    >
-                      Remove entry
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
+            ) : null}
+
+            <ControlListEntries
+              entries={allowlistEntries}
+              emptyState={controlListEmptyState}
+              searchPlaceholder={t("DashboardIssuance.controlLists.searchPlaceholder", {
+                label: controlListLabel,
+              })}
+              removeIcon={icon.removeEntry}
+              isPending={isPending}
+              onRemove={onRemoveAllowlist}
+            />
           </form>
         </TokenActionCard>
       ) : null}
     </>
+  );
+}
+
+// Search + label-filter + list for a control list; filtering is client-side over
+// the loaded entries.
+function ControlListEntries({
+  entries,
+  emptyState,
+  searchPlaceholder,
+  removeIcon,
+  isPending,
+  onRemove,
+}: {
+  entries: TokenAllowlistEntry[];
+  emptyState: string;
+  searchPlaceholder: string;
+  removeIcon: ReactNode;
+  isPending: boolean;
+  onRemove: (entryId: string) => void;
+}) {
+  const t = useTranslations();
+  const [query, setQuery] = useState("");
+  const [labelFilter, setLabelFilter] = useState("all");
+
+  // Distinct labels on the loaded entries feed the "All labels" dropdown.
+  const labels = useMemo(() => {
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (entry.label) {
+        seen.add(entry.label);
+      }
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+
+  // Fall back to "all" if the selected label vanished (its last entry was removed).
+  const activeLabel = labelFilter !== "all" && labels.includes(labelFilter) ? labelFilter : "all";
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return entries.filter((entry) => {
+      if (activeLabel !== "all" && entry.label !== activeLabel) {
+        return false;
+      }
+      if (!needle) {
+        return true;
+      }
+      return `${entry.address} ${entry.label ?? ""}`.toLowerCase().includes(needle);
+    });
+  }, [entries, query, activeLabel]);
+
+  return (
+    <div className="space-y-3 border-t border-border-subtle pt-4">
+      <div className="flex items-center gap-2">
+        <Input
+          className="min-w-0 flex-1"
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder={searchPlaceholder}
+          iconLeft={<Search />}
+        />
+        <Select
+          className="w-44 shrink-0"
+          value={activeLabel}
+          onValueChange={(value) => setLabelFilter(value ?? "all")}
+          ariaLabel={t("DashboardIssuance.controlLists.filterByLabel")}
+        >
+          <SelectItem value="all">{t("DashboardIssuance.controlLists.allLabels")}</SelectItem>
+          {labels.map((label) => (
+            <SelectItem key={label} value={label}>
+              {label}
+            </SelectItem>
+          ))}
+        </Select>
+      </div>
+
+      {filtered.length > 0 ? (
+        <div className="space-y-2">
+          {filtered.map((entry) => (
+            <div
+              key={entry.id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-border-default px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-mono text-xs text-primary">{entry.address}</p>
+                <p className="text-xs text-secondary">
+                  {entry.label ?? t("DashboardIssuance.forms.noLabel")}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                iconLeft={removeIcon}
+                onClick={() => onRemove(entry.id)}
+                disabled={isPending}
+              >
+                {t("DashboardIssuance.forms.removeEntry")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 py-8 text-center">
+          <Inbox className="h-6 w-6 text-tertiary" />
+          <p className="text-sm text-secondary">
+            {entries.length === 0 ? emptyState : t("DashboardIssuance.controlLists.noMatches")}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -584,18 +776,19 @@ function ActionField({
   error?: string | null;
 }) {
   const fieldId = useId();
+  const errorId = useId();
+  const { message: nativeError, onInvalid, revalidate } = useInlineValidationMessage(label);
+  const hasError = Boolean(error) || nativeError !== null;
 
   return (
     <div className="space-y-2">
       <label
         htmlFor={fieldId}
-        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-[rgba(28,28,29,0.68)]"
+        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-secondary"
       >
         {label}
       </label>
-      {description ? (
-        <p className="text-[13px] leading-5 text-[rgba(28,28,29,0.62)]">{description}</p>
-      ) : null}
+      {description ? <p className="text-[13px] leading-5 text-secondary">{description}</p> : null}
       <Input
         id={fieldId}
         type={type}
@@ -607,11 +800,16 @@ function ActionField({
         step={step}
         placeholder={placeholder}
         inputMode={inputMode}
-        aria-invalid={Boolean(error)}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        className="h-11 rounded-[12px] border-[rgba(28,28,29,0.12)] bg-white px-4 shadow-none"
+        aria-invalid={hasError}
+        aria-describedby={hasError ? errorId : undefined}
+        onInvalid={onInvalid}
+        onChange={(event) => {
+          onChange(event.currentTarget.value);
+          revalidate(event.currentTarget);
+        }}
+        className="h-11 rounded-[12px] border-border-default bg-surface-raised px-4 shadow-none"
       />
-      <TokenValidationMessage message={error ?? null} />
+      <TokenValidationMessage id={errorId} message={error ?? nativeError} />
     </div>
   );
 }
@@ -633,7 +831,7 @@ function ActionSelect({
     <div className="space-y-2">
       <label
         htmlFor={fieldId}
-        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-[rgba(28,28,29,0.68)]"
+        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-secondary"
       >
         {label}
       </label>
@@ -641,7 +839,7 @@ function ActionSelect({
         id={fieldId}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
-        className="h-11 w-full rounded-[12px] border border-[rgba(28,28,29,0.12)] bg-white px-4 text-sm text-[#1c1c1d] shadow-none outline-none transition-[box-shadow,border-color] focus:border-[rgba(28,28,29,0.28)] focus:ring-2 focus:ring-[rgba(28,28,29,0.12)]"
+        className="h-11 w-full rounded-[12px] border border-border-default bg-surface-raised px-4 text-sm text-primary shadow-none outline-none transition-[box-shadow,border-color] focus:border-border-strong focus:ring-2 focus:ring-border-default"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

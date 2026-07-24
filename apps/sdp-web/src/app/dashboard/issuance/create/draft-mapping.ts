@@ -1,8 +1,103 @@
-import { type AssetCategory, getAssetTypeRegistryEntry, type IssuanceMetadata } from "@sdp/types";
+import {
+  ADVANCED_SETTINGS,
+  AUTHORITY_VALUED_SETTINGS,
+  findIncompatibleExtensionPair,
+  getRecommendedSettings,
+  isSettingAllowed,
+  pruneIncompatibleSettings,
+  resolveSettingsToExtensions,
+  type SettingKey,
+} from "@sdp/issuance/capabilities";
+import {
+  type AdvancedSetting,
+  type AssetCategory,
+  getAssetTypeRegistryEntry,
+  type IssuanceMetadata,
+  type TokenExtensionsConfig,
+  type TokenTemplate,
+} from "@sdp/types";
+import type { MessageKey, TranslationValues } from "@/i18n/messages";
 import { detailFieldOptionLabel } from "./asset-details-config";
-import { CAPACITY_KEYS, type DraftState, isValidDecimals } from "./issuance-draft-wizard.types";
+import {
+  type AdvancedSettingsDraft,
+  CAPACITY_KEYS,
+  type DraftState,
+  isValidDecimals,
+} from "./issuance-draft-wizard.types";
+
+// Recommended advanced settings for an asset type, pre-filled with each
+// parametric setting's default param values. Applied when a type is chosen (the
+// "recommended options are pre-selected" behaviour), mirroring
+// getRecommendedCapacities / getDefaultPublicFields.
+export function getRecommendedAdvancedSettings(
+  category: AssetCategory,
+  type: string
+): AdvancedSettingsDraft {
+  const result: AdvancedSettingsDraft = {};
+  for (const key of getRecommendedSettings(category, type)) {
+    const setting: AdvancedSetting = ADVANCED_SETTINGS[key];
+    const params: Record<string, string> = {};
+    for (const param of setting.params ?? []) {
+      if (param.defaultValue !== undefined) {
+        params[param.key] = String(param.defaultValue);
+      }
+    }
+    result[key] = Object.keys(params).length > 0 ? { params } : {};
+  }
+  return result;
+}
+
+// Re-validate a persisted advanced-settings selection against the current rules.
+// Drops settings the asset type no longer allows and any that would form an
+// incompatible extension pair (keeping the earlier one). Runs on hydration so a
+// stale localStorage draft can't restore a combination the editor would never
+// let you build — e.g. two conflicting extensions both left checked.
+export function sanitizeAdvancedSettings(
+  category: AssetCategory | null,
+  type: string | null,
+  advancedSettings: AdvancedSettingsDraft
+): AdvancedSettingsDraft {
+  const original = Object.keys(advancedSettings);
+  // 1. Keep only keys valid for the type (or, before a type is chosen, only
+  //    known catalog keys).
+  const allowed =
+    category && type
+      ? original.filter((key) => isSettingAllowed(category, type, key))
+      : original.filter((key) => key in ADVANCED_SETTINGS);
+  // 2. Drop conflicting settings, keeping the earlier-listed one.
+  const kept = new Set<string>(pruneIncompatibleSettings(allowed));
+  const result: AdvancedSettingsDraft = {};
+  for (const key of original) {
+    if (kept.has(key)) {
+      result[key] = advancedSettings[key];
+    }
+  }
+  return result;
+}
+
+// Convert the draft's advanced-settings selection into the persisted
+// issuance_metadata.settings.selected shape, dropping empty param strings.
+function buildSelectedSettings(
+  advancedSettings: AdvancedSettingsDraft
+): Record<string, { params?: Record<string, string> }> {
+  const selected: Record<string, { params?: Record<string, string> }> = {};
+  for (const [key, selection] of Object.entries(advancedSettings)) {
+    const params: Record<string, string> = {};
+    for (const [paramKey, paramValue] of Object.entries(selection.params ?? {})) {
+      if (paramValue.trim() !== "") {
+        params[paramKey] = paramValue.trim();
+      }
+    }
+    selected[key] = Object.keys(params).length > 0 ? { params } : {};
+  }
+  return selected;
+}
 
 const SYMBOL_RE = /^[A-Za-z0-9.]{1,10}$/;
+// Mirrors the API's `description: z.string().max(500)` (create/updateTokenSchema)
+// so an over-long value is caught inline, not on a late 400.
+export const ASSET_DESCRIPTION_MAX_LENGTH = 500;
+type Translate = (key: MessageKey, values?: TranslationValues) => string;
 
 // Asset category -> deploy-time Token-2022 template (token creation still needs
 // a template; asset type describes the product, not the token config).
@@ -58,6 +153,40 @@ export function buildTokenInput(draft: DraftState): TokenInput {
   };
 }
 
+// A best-effort preview of what the draft's advanced settings compile to at deploy
+// time — the resolver output (base template, decimals, allowlist, and the resolved
+// Token-2022 extension config). Authorities are deliberately omitted: mint/freeze/
+// delegate are assigned server-side from the signing wallet's custody at deploy, so
+// the client can't show the real on-chain values (the resolver omits an authority
+// rather than emit a bricking placeholder). Returns null before a category/type is
+// chosen — nothing to resolve yet.
+export interface DeployConfigPreview {
+  template: TokenTemplate;
+  decimals: number;
+  requiresAllowlist: boolean;
+  extensions: TokenExtensionsConfig | null;
+}
+
+export function buildDeployConfigPreview(draft: DraftState): DeployConfigPreview | null {
+  if (!draft.assetCategory || !draft.assetType) {
+    return null;
+  }
+  const selected = buildSelectedSettings(
+    sanitizeAdvancedSettings(draft.assetCategory, draft.assetType, draft.advancedSettings)
+  );
+  const decimals = Number(draft.decimals);
+  const resolution = resolveSettingsToExtensions(draft.assetCategory, draft.assetType, selected, {
+    decimals: Number.isFinite(decimals) ? decimals : 0,
+    requiresAllowlist: draft.accessControl === "allowlist",
+  });
+  return {
+    template: resolution.template,
+    decimals: resolution.decimals,
+    requiresAllowlist: resolution.requiresAllowlist,
+    extensions: resolution.extensions,
+  };
+}
+
 function pruneEmpty(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -91,23 +220,55 @@ export function buildIssuanceMetadata(draft: DraftState): IssuanceMetadata {
     description: draft.description.trim(),
     website: draft.website.trim(),
     issuerName: draft.issuerName.trim(),
+    // Set from the chosen sub-type at classification time for typed stablecoins
+    // (see impliedBackingType) so it can't contradict the type; issuer-entered
+    // for a generic stablecoin. Reflected verbatim here to keep load-then-save
+    // idempotent — no value is synthesized during the metadata build.
     backingType: draft.backingType,
     pegCurrency: draft.pegCurrency,
     pegTarget: draft.pegTarget.trim(),
     reserveAsset: draft.reserveAsset.trim(),
     reserveCustodian: draft.reserveCustodian.trim(),
     redemptionEnabled: draft.redemptionEnabled ? true : undefined,
+    collateralizationRatio: draft.collateralizationRatio.trim(),
+    oracleProvider: draft.oracleProvider.trim(),
+    minCollateralRatio: draft.minCollateralRatio.trim(),
     jurisdiction: draft.jurisdiction,
     offeringType: draft.offeringType,
+    shareClass: draft.shareClass.trim(),
+    votingRights: draft.votingRights ? true : undefined,
+    couponRate: draft.couponRate.trim(),
+    maturityDate: draft.maturityDate.trim(),
+    seniority: draft.seniority,
+    fundStrategy: draft.fundStrategy,
+    managementFee: draft.managementFee.trim(),
+    netAssetValue: draft.netAssetValue.trim(),
     underlyingAsset: draft.underlyingAsset.trim(),
     custodian: draft.custodian.trim(),
+    propertyType: draft.propertyType,
+    propertyLocation: draft.propertyLocation.trim(),
     documents: draft.documents
       .filter((doc) => doc.name.trim() || doc.url.trim())
       .map((doc) => ({ type: doc.docType.trim(), name: doc.name.trim(), url: doc.url.trim() })),
   });
 
+  // Off-chain capacities: presence = enabled. Store `{ enabled: true, config? }`
+  // (not a bare `{}`) so pruneEmpty keeps an enabled-but-unconfigured policy —
+  // it drops empty objects. Disabled ⇒ undefined ⇒ pruned. readCapacities also
+  // accepts the legacy `{ key: true }` boolean encoding.
   const capacities = pruneEmpty(
-    Object.fromEntries(CAPACITY_KEYS.map((key) => [key, draft.capacities[key] ? true : undefined]))
+    Object.fromEntries(
+      CAPACITY_KEYS.map((key) => {
+        const selection = draft.capacities[key];
+        if (!selection.enabled) {
+          return [key, undefined];
+        }
+        return [
+          key,
+          selection.config ? { enabled: true, config: selection.config } : { enabled: true },
+        ];
+      })
+    )
   );
   const compliance = pruneEmpty({
     accessControl: draft.accessControl || undefined,
@@ -128,7 +289,11 @@ export function buildIssuanceMetadata(draft: DraftState): IssuanceMetadata {
   );
   const custom = pruneEmpty({ customer: Object.keys(customer).length > 0 ? customer : undefined });
 
-  const base = pruneEmpty({ asset, compliance, chain, custom });
+  const selectedSettings = buildSelectedSettings(draft.advancedSettings);
+  const settings =
+    Object.keys(selectedSettings).length > 0 ? { selected: selectedSettings } : undefined;
+
+  const base = pruneEmpty({ asset, compliance, chain, custom, settings });
   // Only persist an explicit `visibility` selection when it differs from the
   // type's registry default. When it matches, we leave `visibility` off and let
   // the server fall back to the default projection — keeping metadata minimal
@@ -210,46 +375,71 @@ export function buildPublicMetadata(draft: DraftState): IssuanceMetadata {
   return projected as IssuanceMetadata;
 }
 
-const PATH_LABELS: Record<string, string> = {
-  "asset.name": "Name",
-  "asset.description": "Description",
-  "asset.issuerName": "Issuer name",
-  "asset.pegCurrency": "Peg currency",
-  "asset.pegTarget": "Peg target",
-  "asset.backingType": "Backing type",
-  "asset.reserveAsset": "Reserve asset",
-  "asset.reserveCustodian": "Reserve custodian",
-  "asset.website": "Website",
-  "asset.jurisdiction": "Jurisdiction",
-  "asset.offeringType": "Offering type",
-  "asset.underlyingAsset": "Underlying asset",
-  "asset.custodian": "Custodian",
-  "chain.decimals": "Decimals",
+const PATH_LABEL_KEYS: Record<string, MessageKey> = {
+  "asset.name": "DashboardIssuance.forms.name",
+  "asset.description": "DashboardIssuance.forms.description",
+  "asset.issuerName": "DashboardIssuance.config.issuerName",
+  "asset.pegCurrency": "DashboardIssuance.config.currency",
+  "asset.pegTarget": "DashboardIssuance.config.pegTarget",
+  "asset.backingType": "DashboardIssuance.config.backingType",
+  "asset.reserveAsset": "DashboardIssuance.config.reserveAsset",
+  "asset.reserveCustodian": "DashboardIssuance.config.reserveCustodian",
+  "asset.collateralizationRatio": "DashboardIssuance.config.collateralizationRatio",
+  "asset.oracleProvider": "DashboardIssuance.config.oracleProvider",
+  "asset.minCollateralRatio": "DashboardIssuance.config.minCollateralRatio",
+  "asset.website": "DashboardIssuance.review.website",
+  "asset.jurisdiction": "DashboardIssuance.config.jurisdiction",
+  "asset.offeringType": "DashboardIssuance.config.offeringType",
+  "asset.shareClass": "DashboardIssuance.config.shareClass",
+  "asset.votingRights": "DashboardIssuance.config.votingRights",
+  "asset.couponRate": "DashboardIssuance.config.couponRate",
+  "asset.maturityDate": "DashboardIssuance.config.maturityDate",
+  "asset.seniority": "DashboardIssuance.config.seniority",
+  "asset.fundStrategy": "DashboardIssuance.config.fundStrategy",
+  "asset.managementFee": "DashboardIssuance.config.managementFee",
+  "asset.netAssetValue": "DashboardIssuance.config.netAssetValue",
+  "asset.underlyingAsset": "DashboardIssuance.config.underlyingAsset",
+  "asset.custodian": "DashboardIssuance.config.custodian",
+  "asset.propertyType": "DashboardIssuance.config.propertyType",
+  "asset.propertyLocation": "DashboardIssuance.config.propertyLocation",
+  "chain.decimals": "DashboardIssuance.create.decimals",
 };
 
 // The asset.* metadata fields the issuer may expose or keep private on the
 // Public information step. Token identity (name/symbol/decimals/description/logo)
 // and classification are inherently public and are NOT part of this pool.
-export const PUBLIC_FIELD_POOL: readonly { path: string; label: string }[] = [
-  { path: "asset.issuerName", label: PATH_LABELS["asset.issuerName"] },
-  { path: "asset.pegCurrency", label: PATH_LABELS["asset.pegCurrency"] },
-  { path: "asset.pegTarget", label: PATH_LABELS["asset.pegTarget"] },
-  { path: "asset.backingType", label: PATH_LABELS["asset.backingType"] },
-  { path: "asset.reserveAsset", label: PATH_LABELS["asset.reserveAsset"] },
-  { path: "asset.reserveCustodian", label: PATH_LABELS["asset.reserveCustodian"] },
-  { path: "asset.website", label: PATH_LABELS["asset.website"] },
-  { path: "asset.jurisdiction", label: PATH_LABELS["asset.jurisdiction"] },
-  { path: "asset.offeringType", label: PATH_LABELS["asset.offeringType"] },
-  { path: "asset.underlyingAsset", label: PATH_LABELS["asset.underlyingAsset"] },
-  { path: "asset.custodian", label: PATH_LABELS["asset.custodian"] },
+export const PUBLIC_FIELD_POOL: readonly { path: string; labelKey: MessageKey }[] = [
+  { path: "asset.issuerName", labelKey: PATH_LABEL_KEYS["asset.issuerName"] },
+  { path: "asset.pegCurrency", labelKey: PATH_LABEL_KEYS["asset.pegCurrency"] },
+  { path: "asset.pegTarget", labelKey: PATH_LABEL_KEYS["asset.pegTarget"] },
+  { path: "asset.backingType", labelKey: PATH_LABEL_KEYS["asset.backingType"] },
+  { path: "asset.reserveAsset", labelKey: PATH_LABEL_KEYS["asset.reserveAsset"] },
+  { path: "asset.reserveCustodian", labelKey: PATH_LABEL_KEYS["asset.reserveCustodian"] },
+  {
+    path: "asset.collateralizationRatio",
+    labelKey: PATH_LABEL_KEYS["asset.collateralizationRatio"],
+  },
+  { path: "asset.oracleProvider", labelKey: PATH_LABEL_KEYS["asset.oracleProvider"] },
+  { path: "asset.minCollateralRatio", labelKey: PATH_LABEL_KEYS["asset.minCollateralRatio"] },
+  { path: "asset.website", labelKey: PATH_LABEL_KEYS["asset.website"] },
+  { path: "asset.jurisdiction", labelKey: PATH_LABEL_KEYS["asset.jurisdiction"] },
+  { path: "asset.offeringType", labelKey: PATH_LABEL_KEYS["asset.offeringType"] },
+  { path: "asset.shareClass", labelKey: PATH_LABEL_KEYS["asset.shareClass"] },
+  { path: "asset.votingRights", labelKey: PATH_LABEL_KEYS["asset.votingRights"] },
+  { path: "asset.couponRate", labelKey: PATH_LABEL_KEYS["asset.couponRate"] },
+  { path: "asset.maturityDate", labelKey: PATH_LABEL_KEYS["asset.maturityDate"] },
+  { path: "asset.seniority", labelKey: PATH_LABEL_KEYS["asset.seniority"] },
+  { path: "asset.fundStrategy", labelKey: PATH_LABEL_KEYS["asset.fundStrategy"] },
+  { path: "asset.managementFee", labelKey: PATH_LABEL_KEYS["asset.managementFee"] },
+  { path: "asset.netAssetValue", labelKey: PATH_LABEL_KEYS["asset.netAssetValue"] },
+  { path: "asset.underlyingAsset", labelKey: PATH_LABEL_KEYS["asset.underlyingAsset"] },
+  { path: "asset.custodian", labelKey: PATH_LABEL_KEYS["asset.custodian"] },
+  { path: "asset.propertyType", labelKey: PATH_LABEL_KEYS["asset.propertyType"] },
+  { path: "asset.propertyLocation", labelKey: PATH_LABEL_KEYS["asset.propertyLocation"] },
 ];
 
-export function pathLabel(path: string): string {
-  if (PATH_LABELS[path]) {
-    return PATH_LABELS[path];
-  }
-  const last = path.split(".").pop() ?? path;
-  return last.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+export function pathLabel(path: string, t: Translate): string {
+  return t(PATH_LABEL_KEYS[path] ?? "DashboardIssuance.errors.field");
 }
 
 // The per-type default public selection (the preselect). The registry's
@@ -269,11 +459,26 @@ export interface PublicFieldCandidate {
 // The toggleable public fields that currently have a value, each with its
 // public on/off state. Drives the interactive public-info UI: identity and
 // classification are inherently public and never appear here.
-export function getPublicFieldCandidates(draft: DraftState): PublicFieldCandidate[] {
+export function getPublicFieldCandidates(draft: DraftState, t: Translate): PublicFieldCandidate[] {
   const metadata = buildIssuanceMetadata(draft);
   const enabled = new Set(draft.publicFields);
-  return PUBLIC_FIELD_POOL.flatMap(({ path, label }) => {
+  return PUBLIC_FIELD_POOL.flatMap(({ path, labelKey }) => {
     const raw = getByPath(metadata, path);
+    // Boolean toggles (e.g. voting rights) only reach here when true — a false
+    // toggle is pruned to undefined in the metadata — so show a human "Enabled"
+    // rather than the literal "true".
+    if (typeof raw === "boolean") {
+      return raw
+        ? [
+            {
+              path,
+              label: t(labelKey),
+              value: t("DashboardIssuance.review.enabled"),
+              enabled: enabled.has(path),
+            },
+          ]
+        : [];
+    }
     const rawValue = typeof raw === "string" ? raw.trim() : raw == null ? "" : String(raw);
     if (!rawValue) {
       return [];
@@ -282,8 +487,8 @@ export function getPublicFieldCandidates(draft: DraftState): PublicFieldCandidat
     // their system value (e.g. "fiat"); show the human label wherever one is
     // defined, falling back to the raw value for free-text fields.
     const key = path.split(".").pop() ?? path;
-    const value = detailFieldOptionLabel(key, rawValue) ?? rawValue;
-    return [{ path, label, value, enabled: enabled.has(path) }];
+    const value = detailFieldOptionLabel(key, rawValue, t) ?? rawValue;
+    return [{ path, label: t(labelKey), value, enabled: enabled.has(path) }];
   });
 }
 
@@ -344,36 +549,62 @@ export function getRequiredAssetDetailKeys(draft: DraftState): Set<keyof DraftSt
   return keys;
 }
 
+// An enabled setting with a required, still-empty parameter (e.g. a transfer fee
+// toggled on but no basis-points entered). Drives the Continue gate and the
+// editor's inline field errors.
+export function advancedSettingsHaveMissingParams(
+  advancedSettings: AdvancedSettingsDraft
+): boolean {
+  for (const [key, selection] of Object.entries(advancedSettings)) {
+    const setting: AdvancedSetting = ADVANCED_SETTINGS[key as SettingKey];
+    if (!setting?.params) {
+      continue;
+    }
+    for (const param of setting.params) {
+      if (param.required && !String(selection.params?.[param.key] ?? "").trim()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Per-field validation for the required Asset-details fields — empty or badly
 // formatted entries map to a user-facing message, keyed by draft field. Drives
 // the form's inline errors, the Continue gate, and the review blockers.
 export function getAssetDetailsErrors(
-  draft: DraftState
+  draft: DraftState,
+  t: Translate
 ): Partial<Record<keyof DraftState, string>> {
   const errors: Partial<Record<keyof DraftState, string>> = {};
 
   const symbol = draft.symbol.trim();
   if (!symbol) {
-    errors.symbol = "Symbol is required.";
+    errors.symbol = t("DashboardIssuance.errors.symbolRequired");
   } else if (!SYMBOL_RE.test(symbol)) {
-    errors.symbol = "Use 1–10 letters, numbers, or periods.";
+    errors.symbol = t("DashboardIssuance.errors.symbolCharacters");
   }
 
   if (!isValidDecimals(draft.decimals)) {
-    errors.decimals = "Enter a whole number between 0 and 18.";
+    errors.decimals = t("DashboardIssuance.errors.decimalsWholeNumber");
   }
 
-  if (!draft.description.trim()) {
-    errors.description = "Description is required.";
+  const description = draft.description.trim();
+  if (!description) {
+    errors.description = t("DashboardIssuance.errors.descriptionRequired");
+  } else if (description.length > ASSET_DESCRIPTION_MAX_LENGTH) {
+    errors.description = t("DashboardIssuance.errors.descriptionTooLong", {
+      max: ASSET_DESCRIPTION_MAX_LENGTH,
+    });
   }
 
   // Website and logo are optional, but must be valid URLs when provided.
   if (draft.website.trim() && !isValidUrl(draft.website)) {
-    errors.website = "Enter a valid URL (https://…).";
+    errors.website = t("DashboardIssuance.errors.validUrl");
   }
 
   if (draft.imageUrl.trim() && !isValidUrl(draft.imageUrl)) {
-    errors.imageUrl = "Enter a valid URL (https://…).";
+    errors.imageUrl = t("DashboardIssuance.errors.validUrl");
   }
 
   // Deploy-required registry fields for the selected type (e.g. issuer name,
@@ -386,24 +617,49 @@ export function getAssetDetailsErrors(
         continue;
       }
       if (!String(draft[field] ?? "").trim()) {
-        errors[field] = `${pathLabel(path)} is required.`;
+        errors[field] = t("DashboardIssuance.errors.fieldRequired", { field: pathLabel(path, t) });
       }
     }
+  }
+
+  if (advancedSettingsHaveMissingParams(draft.advancedSettings)) {
+    errors.advancedSettings = t("DashboardIssuance.errors.settingValuesRequired");
+  }
+
+  // Two enabled settings whose extensions can't coexist on one mint (e.g.
+  // interest-bearing + scaled display). The editor blocks selecting both, but a
+  // hydrated/legacy draft could still carry the pair — reject it here too.
+  const selectedExtensions = Object.keys(draft.advancedSettings).flatMap((key) => {
+    const setting: AdvancedSetting = ADVANCED_SETTINGS[key as SettingKey];
+    return setting ? [...setting.extensions] : [];
+  });
+  if (findIncompatibleExtensionPair(selectedExtensions)) {
+    errors.advancedSettings = t("DashboardIssuance.errors.settingConflict");
+  }
+
+  // Authority-valued settings (e.g. permanent delegate) bind an on-chain authority
+  // to the signing wallet at deploy, so the server rejects the create without one.
+  // Require it here so the user gets inline guidance instead of a late 400.
+  const needsSigner = Object.keys(draft.advancedSettings).some((key) =>
+    (AUTHORITY_VALUED_SETTINGS as readonly string[]).includes(key)
+  );
+  if (needsSigner && !draft.signingWalletId.trim()) {
+    errors.signingWalletId = t("DashboardIssuance.errors.signerRequiredForSettings");
   }
 
   return errors;
 }
 
 // Hard blockers that prevent creating the draft at all.
-export function getBlockers(draft: DraftState): string[] {
+export function getBlockers(draft: DraftState, t: Translate): string[] {
   const blockers: string[] = [];
   if (!draft.assetCategory || !draft.assetType) {
-    blockers.push("Choose a classification and sub asset type.");
+    blockers.push(t("DashboardIssuance.errors.classificationRequired"));
   }
   if (!draft.name.trim()) {
-    blockers.push("Asset name is required.");
+    blockers.push(t("DashboardIssuance.errors.assetNameRequired"));
   }
-  for (const message of Object.values(getAssetDetailsErrors(draft))) {
+  for (const message of Object.values(getAssetDetailsErrors(draft, t))) {
     blockers.push(message);
   }
   return blockers;

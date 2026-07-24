@@ -2,9 +2,9 @@
  * API Error Types and Handlers
  */
 
+import { redactCredentialSecrets, redactCredentialString } from "@sdp/custody";
 import type { RampProviderId } from "@sdp/types/provider-access";
 import type { CounterpartyRequirements, RampDirection } from "@sdp/types/ramp-requirements";
-import { redactCredentialSecrets, redactCredentialString } from "@/lib/redaction";
 
 export type ErrorCode =
   | "BAD_REQUEST"
@@ -47,7 +47,8 @@ export type ErrorCode =
   | "SIGNING_PENDING"
   | "PROVIDER_NOT_CONFIGURED"
   | "PROVIDER_UNAVAILABLE"
-  | "ESTIMATE_NOT_AVAILABLE";
+  | "ESTIMATE_NOT_AVAILABLE"
+  | "UNSUPPORTED_CORRIDOR";
 
 export interface ApiError {
   code: ErrorCode;
@@ -101,6 +102,7 @@ const ERROR_STATUS_CODES: Record<ErrorCode, number> = {
   PROVIDER_NOT_CONFIGURED: 503,
   PROVIDER_UNAVAILABLE: 503,
   ESTIMATE_NOT_AVAILABLE: 503,
+  UNSUPPORTED_CORRIDOR: 400,
 };
 
 const DEFAULT_ERROR_MESSAGES: Record<ErrorCode, string> = {
@@ -147,6 +149,7 @@ const DEFAULT_ERROR_MESSAGES: Record<ErrorCode, string> = {
   PROVIDER_UNAVAILABLE: "Payment provider is temporarily unavailable",
   ESTIMATE_NOT_AVAILABLE:
     "An indicative estimate is not available; the rate is known at quote time",
+  UNSUPPORTED_CORRIDOR: "Provider does not support this currency corridor",
 };
 
 export class AppError extends Error {
@@ -225,6 +228,10 @@ export function solanaRpcError(message?: string, details?: Record<string, unknow
   return new AppError("SOLANA_RPC_ERROR", message, details);
 }
 
+export function accountFrozen(message?: string, details?: Record<string, unknown>): AppError {
+  return new AppError("ACCOUNT_FROZEN", message, details);
+}
+
 export function providerNotConfigured(message?: string): AppError {
   return new AppError("PROVIDER_NOT_CONFIGURED", message);
 }
@@ -238,6 +245,18 @@ export function estimateNotAvailable(
   details?: Record<string, unknown>
 ): AppError {
   return new AppError("ESTIMATE_NOT_AVAILABLE", message, details);
+}
+
+export function unsupportedRampCorridor(
+  provider: RampProviderId,
+  direction: RampDirection,
+  details: Record<string, unknown>
+): AppError {
+  return new AppError(
+    "UNSUPPORTED_CORRIDOR",
+    `${provider} does not support this ${direction} corridor. Use the estimate endpoint to discover supported provider and currency pairs.`,
+    { ...details, provider, direction }
+  );
 }
 
 export function unsupportedCounterparty(
@@ -258,4 +277,27 @@ export function counterpartyNotProvisioned(
     `Counterparty is not provisioned for ${provider} ${direction}. Complete the counterparty requirements (POST /counterparties/:counterpartyId/requirements) before requesting a quote.`,
     { ...details, provider, direction }
   );
+}
+
+/**
+ * Resolves a promise whose expected miss is signalled by throwing a specific
+ * error class.
+ *
+ * @param promise - The in-flight operation.
+ * @param expected - The error class that represents an expected miss.
+ * @returns The result, or null when the operation threw an instance of
+ *   `expected`; any other error rethrows.
+ */
+export async function nullOnExpected<T>(
+  promise: Promise<T>,
+  expected: new (message?: string) => Error
+): Promise<T | null> {
+  try {
+    return await promise;
+  } catch (err) {
+    if (err instanceof expected) {
+      return null;
+    }
+    throw err;
+  }
 }

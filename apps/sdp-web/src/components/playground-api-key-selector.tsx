@@ -1,9 +1,10 @@
 "use client";
 
 import { KeyRound } from "lucide-react";
-import Link from "next/link";
+import { DashboardNavigationLink as Link } from "@/components/dashboard-navigation-link";
 import { Button } from "@/components/ui/button";
 import { useDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
+import { useTranslations } from "@/i18n/provider";
 
 function formatKeyIdentifier(keyPrefix: string): string {
   const trimmed = keyPrefix.trim();
@@ -27,6 +28,7 @@ function formatApiKeyLabel(name: string, keyPrefix: string): string {
 }
 
 export function PlaygroundApiKeySelector() {
+  const t = useTranslations();
   const {
     dashboardAccess,
     playgroundApiKeys,
@@ -44,7 +46,7 @@ export function PlaygroundApiKeySelector() {
 
     return (
       <Button asChild className="h-11 rounded-[14px] px-4 whitespace-nowrap">
-        <Link href="/dashboard/api-keys">Create API key</Link>
+        <Link href="/dashboard/api-keys">{t("Shared.SharedComponents.createApiKey")}</Link>
       </Button>
     );
   }
@@ -52,19 +54,19 @@ export function PlaygroundApiKeySelector() {
   return (
     <div className="w-full min-w-[260px] lg:max-w-[360px]">
       <div className="relative">
-        <div className="pointer-events-none flex h-11 w-full items-center rounded-[14px] border border-[rgba(28,28,29,0.12)] bg-white px-4 shadow-none">
+        <div className="pointer-events-none flex h-11 w-full items-center rounded-[14px] border border-border-default bg-surface-raised px-4 shadow-none">
           <span className="flex min-w-0 items-center gap-2 pr-8">
-            <KeyRound className="h-4 w-4 text-[rgba(28,28,29,0.58)]" />
-            <span className="truncate text-left text-sm font-medium text-[#1c1c1d]">
+            <KeyRound className="h-4 w-4 text-tertiary" />
+            <span className="truncate text-left text-sm font-medium text-primary">
               {selectedApiKey
                 ? formatApiKeyLabel(selectedApiKey.name, selectedApiKey.keyPrefix)
-                : "Select API key"}
+                : t("Shared.SharedComponents.selectApiKey")}
             </span>
           </span>
         </div>
 
         <select
-          aria-label="Select API key"
+          aria-label={t("Shared.SharedComponents.selectApiKey")}
           className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[14px] opacity-0"
           value={selectedPlaygroundApiKeyId ?? playgroundApiKeys[0].id}
           onChange={(event) => setSelectedPlaygroundApiKeyId(event.currentTarget.value)}
@@ -79,7 +81,7 @@ export function PlaygroundApiKeySelector() {
         <svg
           aria-hidden="true"
           viewBox="0 0 16 16"
-          className="pointer-events-none absolute top-1/2 right-4 h-4 w-4 -translate-y-1/2 text-[rgba(28,28,29,0.42)]"
+          className="pointer-events-none absolute top-1/2 right-4 h-4 w-4 -translate-y-1/2 text-muted"
           fill="none"
           stroke="currentColor"
           strokeWidth="1.75"

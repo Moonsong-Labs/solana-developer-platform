@@ -29,6 +29,11 @@
       "import": "./src/json.ts",
       "default": "./src/json.ts"
     },
+    "./recurring-payment-lifecycle": {
+      "types": "./src/recurring-payment-lifecycle.ts",
+      "import": "./src/recurring-payment-lifecycle.ts",
+      "default": "./src/recurring-payment-lifecycle.ts"
+    },
     "./fee-payment": {
       "types": "./src/fee-payment/index.ts",
       "import": "./src/fee-payment/index.ts",
@@ -158,7 +163,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260609.1",
+    "@types/node": "^25.9.2",
     "tsx": "4.22.4",
     "typescript": "^6.0.3"
   }

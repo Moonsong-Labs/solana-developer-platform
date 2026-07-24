@@ -1,6 +1,8 @@
-import { closeDatabasePools } from "@sdp/api/db";
+import { apiTestSupport } from "@sdp/api/test-support";
 import { afterAll } from "vitest";
 import { ensureIntegrationPreflight } from "./helpers/preflight";
+
+const { closeAllRedisClients, closeDatabasePools } = apiTestSupport;
 
 const globalWithSecureContext = globalThis as { isSecureContext?: boolean };
 
@@ -20,5 +22,5 @@ if (!globalWithSecureContext.isSecureContext) {
 await ensureIntegrationPreflight();
 
 afterAll(async () => {
-  await closeDatabasePools();
+  await Promise.all([closeDatabasePools(), closeAllRedisClients()]);
 });

@@ -1,13 +1,13 @@
 import * as privateChannelsPkg from "@sdp/private-channels";
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
+import { hashString } from "@sdp/payments/hash";
 import type { CachedApiKey, PrivateChannelInstanceEnvelope } from "@sdp/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
 import app from "@/index";
-import { hashString } from "@/lib/hash";
 import { env } from "@/test/helpers/env";
 import { clearTestDatabase, seedTestDatabase } from "@/test/mocks/db";
-import { clearKVNamespaces, seedCachedApiKey } from "@/test/mocks/kv";
+import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
 
 const probeConnectionMock = vi.spyOn(privateChannelsPkg, "probeConnection");
 
@@ -130,7 +130,7 @@ describe("Private Channels routes", () => {
   afterEach(async () => {
     env.PRIVATE_CHANNELS_ENABLED = originalPrivateChannelsEnabled;
     await clearTestDatabase(env);
-    await clearKVNamespaces(env);
+    await clearKVStores(env);
   });
 
   it("returns 403 when the feature flag is off", async () => {

@@ -4,6 +4,7 @@ import type { PaymentsDashboardWallet } from "@sdp/types";
 import { type ComponentProps, type Dispatch, type SetStateAction, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTranslations } from "@/i18n/provider";
 import { TokenActionCard } from "./token-action-card";
 import type {
   AdminAction,
@@ -14,13 +15,14 @@ import type {
   MintValidationErrors,
 } from "./token-management-workspace.types";
 import {
+  getTokenAmountFieldDescription,
   NON_WHITESPACE_PATTERN,
   SOLANA_ADDRESS_PATTERN,
-  TOKEN_AMOUNT_FIELD_DESCRIPTION,
 } from "./token-management-workspace.utils";
 import { TokenSignerSelect } from "./token-signer-select";
 import { TokenValidationMessage } from "./token-validation-message";
 import { TokenWalletAddressField } from "./token-wallet-address-field";
+import { useInlineValidationMessage } from "./use-inline-validation-message";
 
 interface TokenActionPrimaryFormsProps {
   activeAction: AdminAction | null;
@@ -39,6 +41,8 @@ interface TokenActionPrimaryFormsProps {
   burnValidationErrors: BurnValidationErrors;
   burnValidationReason: string | null;
   submitAlignment?: "start" | "end";
+  // Forwarded to TokenActionCard (see there for variants).
+  variant?: "card" | "flat" | "bare";
   onSignerWalletIdChange: (value: string) => void;
   onUpdateMetadata: () => void;
   onMint: () => void;
@@ -62,11 +66,13 @@ export function TokenActionPrimaryForms({
   burnValidationErrors,
   burnValidationReason,
   submitAlignment = "start",
+  variant = "card",
   onSignerWalletIdChange,
   onUpdateMetadata,
   onMint,
   onBurn,
 }: TokenActionPrimaryFormsProps) {
+  const t = useTranslations();
   // Mirrors the non-pending half of each submit button's `disabled` condition so the
   // note adjacent to the button explains why the action is unavailable (e.g. the
   // destination is denylisted) without the user having to scan the form fields.
@@ -76,7 +82,11 @@ export function TokenActionPrimaryForms({
   return (
     <>
       {activeAction === "update-metadata" ? (
-        <TokenActionCard title="Update Metadata" description="Edit token metadata.">
+        <TokenActionCard
+          variant={variant}
+          title={t("DashboardIssuance.forms.updateMetadata")}
+          description={t("DashboardIssuance.forms.updateMetadataDescription")}
+        >
           <form
             className="space-y-4"
             onSubmit={(event) => {
@@ -85,11 +95,11 @@ export function TokenActionPrimaryForms({
             }}
           >
             <ActionField
-              label="Name"
+              label={t("DashboardIssuance.forms.name")}
               value={metadataForm.name}
               required
               pattern={NON_WHITESPACE_PATTERN}
-              title="Enter a token name."
+              title={t("DashboardIssuance.forms.enterTokenName")}
               onChange={(value) =>
                 setMetadataForm((previous) => ({
                   ...previous,
@@ -98,7 +108,7 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="Description"
+              label={t("DashboardIssuance.forms.description")}
               value={metadataForm.description}
               onChange={(value) =>
                 setMetadataForm((previous) => ({
@@ -108,7 +118,7 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="URI"
+              label={t("DashboardIssuance.forms.uri")}
               type="url"
               inputMode="url"
               value={metadataForm.uri}
@@ -120,7 +130,7 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="Image URL"
+              label={t("DashboardIssuance.forms.imageUrl")}
               type="url"
               inputMode="url"
               value={metadataForm.imageUrl}
@@ -138,7 +148,7 @@ export function TokenActionPrimaryForms({
               ].join(" ")}
             >
               <Button type="submit" disabled={isPending}>
-                Save metadata
+                {t("DashboardIssuance.forms.saveMetadata")}
               </Button>
             </div>
           </form>
@@ -147,8 +157,9 @@ export function TokenActionPrimaryForms({
 
       {activeAction === "mint" ? (
         <TokenActionCard
-          title="Mint Tokens"
-          description="Mint to destination wallet/token account."
+          variant={variant}
+          title={t("DashboardIssuance.management.mintTokens")}
+          description={t("DashboardIssuance.forms.mintDescription")}
         >
           <form
             className="space-y-4"
@@ -164,13 +175,14 @@ export function TokenActionPrimaryForms({
               onSignerWalletIdChange={onSignerWalletIdChange}
             />
             <TokenWalletAddressField
-              label="Destination"
+              label={t("DashboardIssuance.forms.destination")}
               value={mintForm.destination}
               walletOptions={walletOptions}
               required
+              hideFilterHint={variant !== "card"}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
-              placeholder="Destination wallet or token account"
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
+              placeholder={t("DashboardIssuance.forms.destinationPlaceholder")}
               error={mintValidationErrors.destination}
               onChange={(value) =>
                 setMintForm((previous) => ({
@@ -180,8 +192,8 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="Amount"
-              description={TOKEN_AMOUNT_FIELD_DESCRIPTION}
+              label={t("DashboardIssuance.forms.amount")}
+              description={getTokenAmountFieldDescription(t)}
               type="number"
               inputMode="decimal"
               min="0.000000001"
@@ -197,7 +209,7 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="Memo"
+              label={t("DashboardIssuance.forms.memo")}
               value={mintForm.memo}
               onChange={(value) =>
                 setMintForm((previous) => ({
@@ -210,7 +222,7 @@ export function TokenActionPrimaryForms({
               <TokenValidationMessage
                 message={
                   !isPending && mintDisabledReason
-                    ? `Mint unavailable — ${mintDisabledReason}`
+                    ? t("DashboardIssuance.errors.mintUnavailable", { reason: mintDisabledReason })
                     : null
                 }
                 reserveSpace={false}
@@ -223,7 +235,7 @@ export function TokenActionPrimaryForms({
                 ].join(" ")}
               >
                 <Button type="submit" disabled={isPending || Boolean(mintDisabledReason)}>
-                  Mint tokens
+                  {t("DashboardIssuance.management.mintTokens")}
                 </Button>
               </div>
             </div>
@@ -232,7 +244,11 @@ export function TokenActionPrimaryForms({
       ) : null}
 
       {activeAction === "burn" ? (
-        <TokenActionCard title="Burn Tokens" description="Burn from source wallet/token account.">
+        <TokenActionCard
+          variant={variant}
+          title={t("DashboardIssuance.management.burnTokens")}
+          description={t("DashboardIssuance.forms.burnDescription")}
+        >
           <form
             className="space-y-4"
             onSubmit={(event) => {
@@ -247,13 +263,14 @@ export function TokenActionPrimaryForms({
               onSignerWalletIdChange={onSignerWalletIdChange}
             />
             <TokenWalletAddressField
-              label="Source"
+              label={t("DashboardIssuance.forms.source")}
               value={burnForm.source}
               walletOptions={walletOptions}
               required
+              hideFilterHint={variant !== "card"}
               pattern={SOLANA_ADDRESS_PATTERN}
-              title="Enter a valid Solana address."
-              placeholder="Signer wallet or its token account"
+              title={t("DashboardIssuance.forms.enterSolanaAddress")}
+              placeholder={t("DashboardIssuance.forms.sourcePlaceholder")}
               error={burnValidationErrors.source}
               onChange={(value) =>
                 setBurnForm((previous) => ({
@@ -263,8 +280,8 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="Amount"
-              description={TOKEN_AMOUNT_FIELD_DESCRIPTION}
+              label={t("DashboardIssuance.forms.amount")}
+              description={getTokenAmountFieldDescription(t)}
               type="number"
               inputMode="decimal"
               min="0.000000001"
@@ -280,7 +297,7 @@ export function TokenActionPrimaryForms({
               }
             />
             <ActionField
-              label="Memo"
+              label={t("DashboardIssuance.forms.memo")}
               value={burnForm.memo}
               onChange={(value) =>
                 setBurnForm((previous) => ({
@@ -293,7 +310,7 @@ export function TokenActionPrimaryForms({
               <TokenValidationMessage
                 message={
                   !isPending && burnDisabledReason
-                    ? `Burn unavailable — ${burnDisabledReason}`
+                    ? t("DashboardIssuance.errors.burnUnavailable", { reason: burnDisabledReason })
                     : null
                 }
                 reserveSpace={false}
@@ -306,7 +323,7 @@ export function TokenActionPrimaryForms({
                 ].join(" ")}
               >
                 <Button type="submit" disabled={isPending || Boolean(burnDisabledReason)}>
-                  Burn tokens
+                  {t("DashboardIssuance.management.burnTokens")}
                 </Button>
               </div>
             </div>
@@ -347,18 +364,19 @@ function ActionField({
   error?: string | null;
 }) {
   const fieldId = useId();
+  const errorId = useId();
+  const { message: nativeError, onInvalid, revalidate } = useInlineValidationMessage(label);
+  const hasError = Boolean(error) || nativeError !== null;
 
   return (
     <div className="space-y-2">
       <label
         htmlFor={fieldId}
-        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-[rgba(28,28,29,0.68)]"
+        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-secondary"
       >
         {label}
       </label>
-      {description ? (
-        <p className="text-[13px] leading-5 text-[rgba(28,28,29,0.62)]">{description}</p>
-      ) : null}
+      {description ? <p className="text-[13px] leading-5 text-secondary">{description}</p> : null}
       <Input
         id={fieldId}
         type={type}
@@ -370,11 +388,16 @@ function ActionField({
         step={step}
         placeholder={placeholder}
         inputMode={inputMode}
-        aria-invalid={Boolean(error)}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        className="h-11 rounded-[12px] border-[rgba(28,28,29,0.12)] bg-white px-4 shadow-none"
+        aria-invalid={hasError}
+        aria-describedby={hasError ? errorId : undefined}
+        onInvalid={onInvalid}
+        onChange={(event) => {
+          onChange(event.currentTarget.value);
+          revalidate(event.currentTarget);
+        }}
+        className="h-11 rounded-[12px] border-border-default bg-surface-raised px-4 shadow-none"
       />
-      <TokenValidationMessage message={error ?? null} />
+      <TokenValidationMessage id={errorId} message={error ?? nativeError} />
     </div>
   );
 }

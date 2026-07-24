@@ -23,7 +23,7 @@ import {
   type PrivateChannelUserRow,
 } from "@/db/repositories";
 import { forbidden } from "@/lib/errors";
-import { createKVStoreSet } from "@/runtime/factory";
+import { createKVStoreSet } from "@/runtime/kv-redis";
 import type { Env } from "@/types/env";
 import { getSpcSession } from "./spc-session";
 

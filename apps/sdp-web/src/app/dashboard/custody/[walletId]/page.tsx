@@ -1,13 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import type {
-  CustodyWalletByIdResponse,
+  CustodyWalletMetadataResponse,
   CustodyWalletTokenBalance,
   PaymentWalletPolicy,
 } from "@sdp/types";
 import { SlidersHorizontal } from "lucide-react";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import {
   formatCustodyProviderName,
   getCustodyProviderCategory,
@@ -15,19 +14,25 @@ import {
   isKnownCustodyProvider,
 } from "@/app/dashboard/custody/provider-catalog";
 import { WalletActionsMenu } from "@/app/dashboard/custody/wallet-actions-menu";
-import {
-  loadWalletActivity,
-  type WalletActivityPayload,
-} from "@/app/dashboard/custody/wallet-activity.data";
-import { WalletActivitySection } from "@/app/dashboard/custody/wallet-activity-section";
+import { WalletActivityViewport } from "@/app/dashboard/custody/wallet-activity-viewport";
 import { WalletAddressCopyButton } from "@/app/dashboard/custody/wallet-address-copy-button";
 import { WalletCategoryBadge } from "@/app/dashboard/custody/wallet-category-badge";
 import { formatPurpose, truncateMiddle } from "@/app/dashboard/custody/wallet-format-utils";
+import { WalletLabelInlineEditor } from "@/app/dashboard/custody/wallet-label-inline-editor";
 import { WalletProviderMark } from "@/app/dashboard/custody/wallet-provider-mark";
+import {
+  WalletBalanceSummarySkeleton,
+  WalletBalancesSkeleton,
+  WalletControlsSkeleton,
+} from "@/app/dashboard/wallets/wallet-route-skeletons";
+import { DashboardNavigationLink as Link } from "@/components/dashboard-navigation-link";
 import { DashboardWorkspaceOverviewPanel } from "@/components/dashboard-workspace-panel";
 import { Button } from "@/components/ui/button";
+import { getTranslations } from "@/i18n/server";
 import { getAuthEntryPath } from "@/lib/auth-entry";
+import { resolveDashboardAccess } from "@/lib/dashboard-access";
 import { createSdpApiClient, type SdpApiClient } from "@/lib/sdp-api";
+import { getWalletMetadataPath } from "@/lib/sdp-api-paths";
 import { formatDisplayLabel } from "@/lib/utils";
 import {
   formatCurrencyAmount,
@@ -62,8 +67,8 @@ interface OwnedTokenRoute {
 async function getWalletDetail(
   request: SdpApiClient["request"],
   walletId: string
-): Promise<CustodyWalletByIdResponse["wallet"]> {
-  const response = await request(`/v1/wallets/${encodeURIComponent(walletId)}`);
+): Promise<CustodyWalletMetadataResponse["wallet"]> {
+  const response = await request(getWalletMetadataPath(walletId));
   if (response.status === 404) {
     notFound();
   }
@@ -72,7 +77,7 @@ async function getWalletDetail(
     throw new Error(`SDP API request failed (${response.status}): ${body}`);
   }
 
-  const json = (await response.json()) as { data?: CustodyWalletByIdResponse };
+  const json = (await response.json()) as { data?: CustodyWalletMetadataResponse };
   const wallet = json.data?.wallet;
   if (!wallet) {
     notFound();
@@ -83,7 +88,8 @@ async function getWalletDetail(
 
 async function getWalletTrackedBalances(
   request: SdpApiClient["request"],
-  walletId: string
+  walletId: string,
+  unavailableMessage: string
 ): Promise<WalletTrackedBalancesResult> {
   try {
     const response = await request(`/v1/payments/wallets/${encodeURIComponent(walletId)}/balances`);
@@ -93,7 +99,7 @@ async function getWalletTrackedBalances(
     if (!response.ok) {
       return {
         balances: [],
-        error: "Tracked balances are unavailable right now. Showing wallet-reported balance.",
+        error: unavailableMessage,
       };
     }
 
@@ -102,14 +108,15 @@ async function getWalletTrackedBalances(
   } catch {
     return {
       balances: [],
-      error: "Tracked balances are unavailable right now. Showing wallet-reported balance.",
+      error: unavailableMessage,
     };
   }
 }
 
 async function getWalletPolicy(
   request: SdpApiClient["request"],
-  walletId: string
+  walletId: string,
+  unavailableMessage: string
 ): Promise<WalletPolicyResult> {
   try {
     const response = await request(`/v1/payments/wallets/${encodeURIComponent(walletId)}/policies`);
@@ -125,7 +132,7 @@ async function getWalletPolicy(
     if (!response.ok) {
       return {
         policy: null,
-        error: "Wallet controls are unavailable right now.",
+        error: unavailableMessage,
       };
     }
 
@@ -140,7 +147,7 @@ async function getWalletPolicy(
   } catch {
     return {
       policy: null,
-      error: "Wallet controls are unavailable right now.",
+      error: unavailableMessage,
     };
   }
 }
@@ -149,7 +156,6 @@ async function getOwnedTokenRoutes(
   request: SdpApiClient["request"]
 ): Promise<Map<string, { id: string; name: string | null }>> {
   try {
-    // biome-ignore lint/security/noSecrets: Public API path with pagination query parameters.
     const response = await request("/v1/issuance/tokens?page=1&pageSize=100");
     if (!response.ok) {
       return new Map();
@@ -174,26 +180,16 @@ async function getOwnedTokenRoutes(
   }
 }
 
-async function getWalletActivity(
-  request: SdpApiClient["request"],
-  walletId: string
-): Promise<WalletActivityPayload> {
-  const result = await loadWalletActivity(request, walletId);
-  return (
-    result.data ?? {
-      activityRows: [],
-      activityError: result.error ?? "Wallet activity is unavailable right now.",
-      activityNotice: null,
-    }
-  );
-}
-
 export default async function WalletDetailPage({
   params,
 }: {
   params: Promise<{ walletId: string }>;
 }) {
-  const { userId, orgId } = await auth();
+  const [t, { userId, orgId, orgRole }, { walletId }] = await Promise.all([
+    getTranslations(),
+    auth(),
+    params,
+  ]);
   if (!userId) {
     redirect(await getAuthEntryPath());
   }
@@ -201,17 +197,21 @@ export default async function WalletDetailPage({
     redirect("/dashboard");
   }
 
-  const { walletId } = await params;
   const resolvedWalletId = decodeURIComponent(walletId);
   const apiClient = await createSdpApiClient();
-  const [wallet, trackedBalancesResult, walletPolicyResult, ownedTokensByMint, walletActivity] =
-    await Promise.all([
-      getWalletDetail(apiClient.request, resolvedWalletId),
-      getWalletTrackedBalances(apiClient.request, resolvedWalletId),
-      getWalletPolicy(apiClient.request, resolvedWalletId),
-      getOwnedTokenRoutes(apiClient.request),
-      getWalletActivity(apiClient.request, resolvedWalletId),
-    ]);
+  const walletPromise = getWalletDetail(apiClient.request, resolvedWalletId);
+  const trackedBalancesPromise = getWalletTrackedBalances(
+    apiClient.request,
+    resolvedWalletId,
+    t("DashboardCustody.trackedBalancesUnavailable")
+  );
+  const walletPolicyPromise = getWalletPolicy(
+    apiClient.request,
+    resolvedWalletId,
+    t("DashboardCustody.walletControlsUnavailable")
+  );
+  const ownedTokensByMintPromise = getOwnedTokenRoutes(apiClient.request);
+  const wallet = await walletPromise;
 
   const provider =
     wallet.provider && isKnownCustodyProvider(wallet.provider) ? wallet.provider : null;
@@ -219,10 +219,11 @@ export default async function WalletDetailPage({
   const supportsSignerCheck = provider
     ? getCustodyProviderEntry(provider).supportsSigning
     : !wallet.provider;
-  const balances =
-    trackedBalancesResult.balances.length > 0 ? trackedBalancesResult.balances : [wallet.balance];
-  const totalBalance = resolveTotalBalance(balances);
-  const purposeLabel = formatPurpose(wallet.purpose);
+  const purposeLabel = formatPurpose(wallet.purpose, t);
+  const providerLabel = provider
+    ? formatCustodyProviderName(provider)
+    : t("DashboardCustody.unknown");
+  const canManageCustody = resolveDashboardAccess(orgRole).capabilities.canManageCustody;
 
   return (
     <DashboardWorkspaceOverviewPanel className="space-y-6">
@@ -233,116 +234,208 @@ export default async function WalletDetailPage({
           walletLabel={wallet.label}
           supportsSignerCheck={supportsSignerCheck}
           triggerMode="button"
-          triggerLabel="Actions"
+          triggerLabel={t("DashboardCustody.actions")}
           triggerClassName="w-auto"
         />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <section className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white">
+        <section className="overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
           <div className="space-y-6 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
                 {provider ? <WalletProviderMark provider={provider} /> : null}
                 <div className="space-y-2">
-                  <h2 className="text-[36px] leading-[1.02] font-medium tracking-[-0.04em] text-[#1c1c1d]">
-                    {wallet.label?.trim() || "Untitled wallet"}
-                  </h2>
-                  <p className="text-sm text-[rgba(28,28,29,0.58)]">
-                    {provider ? formatCustodyProviderName(provider) : "Wallet"}
+                  {/* biome-ignore lint/a11y/useSemanticElements: The inline editor can render a block-level input wrapper, which is invalid inside h2. */}
+                  <div
+                    role="heading"
+                    aria-level={2}
+                    aria-label={wallet.label?.trim() || t("DashboardCustody.untitledWallet")}
+                    className="max-w-full text-[36px] leading-[1.02] font-medium tracking-[-0.04em] text-primary"
+                  >
+                    <WalletLabelInlineEditor
+                      canEdit={canManageCustody}
+                      emptyLabel={t("DashboardCustody.untitledWallet")}
+                      label={wallet.label?.trim() || null}
+                      walletId={wallet.walletId}
+                    />
+                  </div>
+                  <p className="text-sm text-tertiary">
+                    {provider ? formatCustodyProviderName(provider) : t("DashboardCustody.wallet")}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {category ? <WalletCategoryBadge category={category} compact /> : null}
                 {purposeLabel ? (
-                  <span className="rounded-full bg-[rgba(28,28,29,0.08)] px-3 py-1.5 text-xs font-medium text-[#1c1c1d]">
+                  <span className="rounded-full bg-fill px-3 py-1.5 text-xs font-medium text-primary">
                     {purposeLabel}
                   </span>
                 ) : null}
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.03)]">
+            <div className="overflow-hidden rounded-2xl border border-border-subtle bg-fill-subtle">
               <WalletInfoRow
-                label="Public key"
+                label={t("DashboardCustody.publicKey")}
                 value={wallet.publicKey}
                 monospace
                 trailing={<WalletAddressCopyButton address={wallet.publicKey} />}
               />
-              <WalletInfoRow label="Wallet ID" value={wallet.walletId} monospace />
-              <WalletInfoRow label="Status" value={formatDisplayLabel(wallet.status)} />
-              {provider ? (
-                <WalletInfoRow label="Provider" value={formatCustodyProviderName(provider)} />
-              ) : null}
-              {purposeLabel ? <WalletInfoRow label="Purpose" value={purposeLabel} /> : null}
-            </div>
-          </div>
-        </section>
-
-        <section className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white">
-          <div className="space-y-6 p-6">
-            <div>
-              <p className="text-xs font-medium tracking-[0.14em] text-[rgba(28,28,29,0.48)] uppercase">
-                Total balance
-              </p>
-              <p className="mt-3 text-[38px] leading-none font-medium tracking-[-0.05em] text-[#1c1c1d]">
-                {formatCurrencyAmount(totalBalance)}
-              </p>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.03)]">
-              <WalletInfoRow label="Address" value={truncateMiddle(wallet.publicKey)} monospace />
               <WalletInfoRow
-                label="Provider"
-                value={provider ? formatCustodyProviderName(provider) : "Unknown"}
+                label={t("DashboardCustody.walletId")}
+                value={wallet.walletId}
+                monospace
               />
-              {purposeLabel ? <WalletInfoRow label="Purpose" value={purposeLabel} /> : null}
+              <WalletInfoRow
+                label={t("DashboardCustody.status")}
+                value={formatDisplayLabel(wallet.status)}
+              />
+              {provider ? (
+                <WalletInfoRow
+                  label={t("DashboardCustody.provider")}
+                  value={formatCustodyProviderName(provider)}
+                />
+              ) : null}
+              {purposeLabel ? (
+                <WalletInfoRow label={t("DashboardCustody.purpose")} value={purposeLabel} />
+              ) : null}
             </div>
           </div>
         </section>
+
+        <Suspense fallback={<WalletBalanceSummarySkeleton />}>
+          <WalletBalanceSummary
+            balancesPromise={trackedBalancesPromise}
+            providerLabel={providerLabel}
+            publicKey={wallet.publicKey}
+            purposeLabel={purposeLabel}
+            t={t}
+          />
+        </Suspense>
       </div>
 
-      <WalletControlsPanel
-        walletId={resolvedWalletId}
-        policy={walletPolicyResult.policy}
-        policyError={walletPolicyResult.error}
-      />
+      <Suspense fallback={<WalletControlsSkeleton />}>
+        <WalletControlsPanel
+          walletId={resolvedWalletId}
+          policyPromise={walletPolicyPromise}
+          t={t}
+        />
+      </Suspense>
 
-      <section className="space-y-3">
-        <h3 className="text-[36px] leading-[40px] font-medium tracking-[-0.3px] text-[#1c1c1d]">
-          Balances
-        </h3>
-        {trackedBalancesResult.error ? (
-          <p className="text-sm text-[rgba(28,28,29,0.58)]">{trackedBalancesResult.error}</p>
-        ) : null}
+      <Suspense fallback={<WalletBalancesSkeleton />}>
+        <WalletBalancesSection
+          balancesPromise={trackedBalancesPromise}
+          ownedTokensByMintPromise={ownedTokensByMintPromise}
+          t={t}
+        />
+      </Suspense>
 
-        {balances.length > 0 ? (
-          <div className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white">
-            {balances.map((balance) => {
-              const ownedToken =
-                balance.token === "SOL" ? null : (ownedTokensByMint.get(balance.mint) ?? null);
-
-              return (
-                <WalletBalanceRow
-                  key={`${balance.mint}-${balance.token}`}
-                  label={ownedToken?.name ?? balance.token}
-                  value={formatDisplayAmount(balance.uiAmount, balance.token)}
-                  mint={balance.mint}
-                  href={ownedToken ? `/dashboard/issuance/${ownedToken.id}` : null}
-                />
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white px-4 py-4 text-sm text-[rgba(28,28,29,0.62)]">
-            No tracked balances found yet for this wallet.
-          </div>
-        )}
-      </section>
-
-      <WalletActivitySection walletId={resolvedWalletId} initialActivity={walletActivity} />
+      <WalletActivityViewport walletId={resolvedWalletId} />
     </DashboardWorkspaceOverviewPanel>
+  );
+}
+
+export async function WalletBalanceSummary({
+  balancesPromise,
+  providerLabel,
+  publicKey,
+  purposeLabel,
+  t,
+}: {
+  balancesPromise: Promise<WalletTrackedBalancesResult>;
+  providerLabel: string;
+  publicKey: string;
+  purposeLabel: string | null;
+  t: Awaited<ReturnType<typeof getTranslations>>;
+}) {
+  const balancesResult = await balancesPromise;
+  const totalBalance = balancesResult.error ? null : resolveTotalBalance(balancesResult.balances);
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
+      <div className="space-y-6 p-6">
+        <div>
+          <p className="text-xs font-medium tracking-[0.14em] text-muted uppercase">
+            {t("DashboardCustody.totalBalance")}
+          </p>
+          {balancesResult.error ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-[38px] leading-none font-medium tracking-[-0.05em] text-primary">
+                —
+              </p>
+              <p className="text-sm text-tertiary">{balancesResult.error}</p>
+            </div>
+          ) : (
+            <p className="mt-3 text-[38px] leading-none font-medium tracking-[-0.05em] text-primary">
+              {formatCurrencyAmount(totalBalance)}
+            </p>
+          )}
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-border-subtle bg-fill-subtle">
+          <WalletInfoRow
+            label={t("DashboardCustody.address")}
+            value={truncateMiddle(publicKey)}
+            monospace
+          />
+          <WalletInfoRow label={t("DashboardCustody.provider")} value={providerLabel} />
+          {purposeLabel ? (
+            <WalletInfoRow label={t("DashboardCustody.purpose")} value={purposeLabel} />
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export async function WalletBalancesSection({
+  balancesPromise,
+  ownedTokensByMintPromise,
+  t,
+}: {
+  balancesPromise: Promise<WalletTrackedBalancesResult>;
+  ownedTokensByMintPromise: Promise<Map<string, { id: string; name: string | null }>>;
+  t: Awaited<ReturnType<typeof getTranslations>>;
+}) {
+  const [trackedBalancesResult, ownedTokensByMint] = await Promise.all([
+    balancesPromise,
+    ownedTokensByMintPromise,
+  ]);
+  const balances = trackedBalancesResult.balances;
+
+  return (
+    <section className="space-y-3">
+      <h3 className="text-[36px] leading-[40px] font-medium tracking-[-0.3px] text-primary">
+        {t("DashboardCustody.balances")}
+      </h3>
+      {trackedBalancesResult.error ? (
+        <p className="text-sm text-tertiary">{trackedBalancesResult.error}</p>
+      ) : null}
+
+      {balances.length > 0 ? (
+        <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
+          {balances.map((balance) => {
+            const ownedToken =
+              balance.token === "SOL" ? null : (ownedTokensByMint.get(balance.mint) ?? null);
+
+            return (
+              <WalletBalanceRow
+                key={`${balance.mint}-${balance.token}`}
+                label={ownedToken?.name ?? balance.token}
+                value={formatDisplayAmount(balance.uiAmount, balance.token)}
+                mint={balance.mint}
+                href={ownedToken ? `/dashboard/issuance/${ownedToken.id}` : null}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border-default bg-surface-raised px-4 py-4 text-sm text-secondary">
+          {t("DashboardCustody.noTrackedBalances")}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -355,44 +448,50 @@ function walletPolicyHasRestrictions(policy: PaymentWalletPolicy | null): boolea
   );
 }
 
-function WalletControlsPanel({
+async function WalletControlsPanel({
   walletId,
-  policy,
-  policyError,
+  policyPromise,
+  t,
 }: {
   walletId: string;
-  policy: PaymentWalletPolicy | null;
-  policyError: string | null;
+  policyPromise: Promise<WalletPolicyResult>;
+  t: Awaited<ReturnType<typeof getTranslations>>;
 }) {
+  const { policy, error: policyError } = await policyPromise;
   const hasRestrictions = walletPolicyHasRestrictions(policy);
   const destinationCount = policy?.destinationAllowlist.length ?? 0;
   const policyHref = `/dashboard/wallets/${encodeURIComponent(walletId)}/policy`;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white">
+    <section className="overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
       <div className="flex flex-col gap-5 p-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-2xl font-medium text-[#1c1c1d]">Wallet controls</h3>
+            <h3 className="text-2xl font-medium text-primary">
+              {t("DashboardCustody.walletControls")}
+            </h3>
           </div>
-          <p className="max-w-2xl text-sm leading-6 text-[rgba(28,28,29,0.62)]">
+          <p className="max-w-2xl text-sm leading-6 text-secondary">
             {hasRestrictions
-              ? "This wallet has outbound payment restrictions active."
-              : "This wallet starts from default allow. Add restrictions only where control is needed."}
+              ? t("DashboardCustody.walletRestrictionsActive")
+              : t("DashboardCustody.walletDefaultAllow")}
           </p>
           {policyError ? (
-            <p className="text-sm text-status-error-text">{policyError}</p>
+            <p className="text-sm text-error">{policyError}</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-3">
               <WalletControlMetric
-                label="Destinations"
-                value={destinationCount > 0 ? String(destinationCount) : "Open"}
+                label={t("DashboardCustody.destinations")}
+                value={destinationCount > 0 ? String(destinationCount) : t("DashboardCustody.open")}
               />
               <WalletControlMetric
-                label="Per transfer"
-                value={policy?.maxTransferAmount ?? "No cap"}
+                label={t("DashboardCustody.perTransfer")}
+                value={policy?.maxTransferAmount ?? t("DashboardCustody.noCap")}
               />
-              <WalletControlMetric label="Daily" value={policy?.maxDailyAmount ?? "No cap"} />
+              <WalletControlMetric
+                label={t("DashboardCustody.daily")}
+                value={policy?.maxDailyAmount ?? t("DashboardCustody.noCap")}
+              />
             </div>
           )}
         </div>
@@ -403,7 +502,9 @@ function WalletControlsPanel({
         >
           <Link href={policyHref}>
             <SlidersHorizontal className="size-4" />
-            {hasRestrictions ? "Review controls" : "Start profile"}
+            {hasRestrictions
+              ? t("DashboardCustody.reviewControls")
+              : t("DashboardCustody.startProfile")}
           </Link>
         </Button>
       </div>
@@ -413,9 +514,9 @@ function WalletControlsPanel({
 
 function WalletControlMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-[rgba(28,28,29,0.08)] bg-[rgba(28,28,29,0.03)] px-3 py-2">
-      <p className="text-xs font-medium text-[rgba(28,28,29,0.48)]">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-[#1c1c1d]" title={value}>
+    <div className="min-w-0 rounded-lg border border-border-subtle bg-fill-subtle px-3 py-2">
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-medium text-primary" title={value}>
         {value}
       </p>
     </div>
@@ -434,12 +535,12 @@ function WalletInfoRow({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-[rgba(28,28,29,0.08)] px-4 py-3 last:border-b-0">
-      <p className="text-[15px] text-[rgba(28,28,29,0.68)]">{label}</p>
+    <div className="flex items-center justify-between gap-4 border-b border-border-subtle px-4 py-3 last:border-b-0">
+      <p className="text-[15px] text-secondary">{label}</p>
       <div className="flex min-w-0 items-center gap-2">
         <p
           className={[
-            "truncate text-right text-[15px] text-[#1c1c1d]",
+            "truncate text-right text-[15px] text-primary",
             monospace ? "font-mono text-xs" : "",
           ].join(" ")}
           title={value}
@@ -466,15 +567,15 @@ function WalletBalanceRow({
   const content = (
     <div
       className={[
-        "flex flex-wrap items-center justify-between gap-4 border-b border-[rgba(28,28,29,0.08)] px-4 py-3 last:border-b-0",
-        href ? "transition-colors hover:bg-[rgba(28,28,29,0.03)]" : "",
+        "flex flex-wrap items-center justify-between gap-4 border-b border-border-subtle px-4 py-3 last:border-b-0",
+        href ? "transition-colors hover:bg-fill-subtle" : "",
       ].join(" ")}
     >
       <div>
-        <p className="text-[17px] font-medium text-[#1c1c1d]">{label}</p>
-        <p className="font-mono text-xs text-[rgba(28,28,29,0.52)]">{mint}</p>
+        <p className="text-[17px] font-medium text-primary">{label}</p>
+        <p className="font-mono text-xs text-tertiary">{mint}</p>
       </div>
-      <p className="text-[15px] text-[#1c1c1d]">{value}</p>
+      <p className="text-[15px] text-primary">{value}</p>
     </div>
   );
 

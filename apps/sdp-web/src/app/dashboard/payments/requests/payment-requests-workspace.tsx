@@ -10,6 +10,7 @@ import {
 } from "@sdp/types";
 import {
   BanknoteIcon,
+  ChevronRightIcon,
   ClockIcon,
   CoinsIcon,
   CopyIcon,
@@ -19,7 +20,7 @@ import {
   WalletIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   type ChangeEvent,
   type KeyboardEvent,
@@ -31,7 +32,6 @@ import {
 import { toast } from "sonner";
 import useSWR from "swr";
 import { z } from "zod";
-import { ApiPlaygroundShellSkeleton } from "@/components/api-playground-shell-skeleton";
 import { DashboardWorkspaceTabShell } from "@/components/dashboard-workspace-tab-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,41 +58,50 @@ import {
   type DashboardPlaygroundApiKeyOption,
   useDashboardWorkspace,
 } from "@/contexts/dashboard-workspace-context";
+import type { MessageKey } from "@/i18n/messages";
+import { useTranslations } from "@/i18n/provider";
 import { dashboardFetch } from "@/lib/dashboard-fetch";
 import { getStoredApiKeySecret } from "@/lib/playground-api-keys";
 import { useZodForm } from "@/lib/use-zod-form";
 import { cn } from "@/lib/utils";
 import { AddExternalAccountDialog } from "../counterparty/add-external-account-dialog";
+import { CounterpartyPlaygroundLoading } from "../counterparty-menu-loading";
 import { formatDisplayAmount, formatTimestamp, shortenAddress } from "../payments-overview.utils";
+import { syncPlaygroundApiKeysForActiveTab } from "../payments-playground-api-key-state";
 import { fetchCounterpartyAccounts } from "../payments-workspace.data";
-import { deriveTokenOptions, type PaymentRequestTokenOption } from "./payment-requests-page.data";
+import { PaymentsRouteTabs } from "../payments-workspace-tabs";
+import {
+  deriveTokenOptions,
+  type PaymentRequestsLocalErrorCode,
+  type PaymentRequestTokenOption,
+} from "./payment-requests-page.data";
 
 const PaymentRequestsPlayground = dynamic(
   () => import("./payment-requests-playground").then((module) => module.PaymentRequestsPlayground),
-  { loading: () => <ApiPlaygroundShellSkeleton /> }
+  { loading: () => <CounterpartyPlaygroundLoading /> }
 );
 
-const STATUS_LABEL = {
-  awaiting_payment: "Awaiting payment",
-  paid: "Paid",
-  canceled: "Canceled",
-  expired: "Expired",
-} as const satisfies Record<PaymentRequestStatus, string>;
+const STATUS_TRANSLATION_KEYS = {
+  awaiting_payment: "DashboardPayments.requests.awaitingPayment",
+  paid: "DashboardPayments.requests.paid",
+  canceled: "DashboardPayments.requests.canceled",
+  expired: "DashboardPayments.requests.expired",
+} as const satisfies Record<PaymentRequestStatus, MessageKey>;
 
 const EXPIRY_OPTIONS = [
-  { label: "No expiry", hours: null },
-  { label: "1 hour", hours: 1 },
-  { label: "24 hours", hours: 24 },
-  { label: "7 days", hours: 168 },
-  { label: "30 days", hours: 720 },
-] as const satisfies readonly { label: string; hours: number | null }[];
+  { id: "none", hours: null, labelKey: "DashboardPayments.requests.noExpiry" },
+  { id: "oneHour", hours: 1, labelKey: "DashboardPayments.requests.oneHour" },
+  { id: "twentyFourHours", hours: 24, labelKey: "DashboardPayments.requests.twentyFourHours" },
+  { id: "sevenDays", hours: 168, labelKey: "DashboardPayments.requests.sevenDays" },
+  { id: "thirtyDays", hours: 720, labelKey: "DashboardPayments.requests.thirtyDays" },
+] as const satisfies readonly { id: string; hours: number | null; labelKey: MessageKey }[];
 
 /**
  * Resolves the absolute expiry instant from a preset label. Computed from the
  * browser clock; callers `.toISOString()` it to UTC before sending.
  */
-function resolveExpiryDate(expiryLabel: string): Date | null {
-  const option = EXPIRY_OPTIONS.find((entry) => entry.label === expiryLabel);
+function resolveExpiryDate(expiryId: string): Date | null {
+  const option = EXPIRY_OPTIONS.find((entry) => entry.id === expiryId);
   if (!option || option.hours === null) {
     return null;
   }
@@ -132,17 +141,18 @@ function statusTone(status: PaymentRequestStatus): "success" | "error" | "pendin
 }
 
 function StatusBadge({ status }: { status: PaymentRequestStatus }) {
+  const t = useTranslations();
   const tone = statusTone(status);
   return (
     <span
       className={cn(
         "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-        tone === "success" && "bg-status-success-bg text-status-success-text",
-        tone === "error" && "bg-status-error-bg text-status-error-text",
-        tone === "pending" && "bg-border-light text-text-medium"
+        tone === "success" && "bg-success-bg text-success",
+        tone === "error" && "bg-error-bg text-error",
+        tone === "pending" && "bg-fill-strong text-secondary"
       )}
     >
-      {STATUS_LABEL[status]}
+      {t(STATUS_TRANSLATION_KEYS[status])}
     </span>
   );
 }
@@ -150,15 +160,15 @@ function StatusBadge({ status }: { status: PaymentRequestStatus }) {
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 py-3">
-      <span className="shrink-0 text-sm text-text-medium">{label}</span>
-      <span className="min-w-0 break-all text-right text-sm font-medium text-text-extra-high">
+      <span className="shrink-0 text-sm text-secondary">{label}</span>
+      <span className="min-w-0 break-all text-right text-sm font-medium text-primary">
         {children}
       </span>
     </div>
   );
 }
 
-const ANYONE_OPTION = "Anyone with the link";
+const ANYONE_OPTION = "anyone";
 
 function resolveAccountAddress(account: CounterpartyAccount): string {
   const address = account.details.address;
@@ -193,12 +203,13 @@ function CreateRequestModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations();
   const form = useZodForm(createRequestSchema, {
     amount: "",
     token: "",
     wallet: "",
     counterparty: ANYONE_OPTION,
-    expiry: "No expiry",
+    expiry: "none",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -215,7 +226,7 @@ function CreateRequestModal({
     selectedCounterpartyId
       ? ["payment-request-counterparty-accounts", selectedCounterpartyId]
       : null,
-    ([, id]: readonly [string, string]) => fetchCounterpartyAccounts(id),
+    ([, id]: readonly [string, string]) => fetchCounterpartyAccounts(id, t),
     { revalidateOnFocus: false }
   );
   const cryptoAccounts = useMemo(
@@ -255,7 +266,7 @@ function CreateRequestModal({
       toast.error(res.error);
       return;
     }
-    toast.success("Payment link created");
+    toast.success(t("DashboardPayments.requests.paymentLinkCreated"));
     onCreated();
   }
 
@@ -263,23 +274,23 @@ function CreateRequestModal({
     <>
       <Modal
         isOpen
-        ariaLabel="Create payment request"
+        ariaLabel={t("DashboardPayments.requests.createPaymentRequest")}
         onClose={submitting || addingAccount ? undefined : onClose}
         size="lg"
       >
         <div className="space-y-5 p-6">
           <div className="space-y-1">
-            <h2 className="text-xl font-medium tracking-tight text-text-extra-high">
-              Create payment link
+            <h2 className="text-xl font-medium tracking-tight text-primary">
+              {t("DashboardPayments.requests.createPaymentLink")}
             </h2>
-            <p className="text-sm text-text-medium">
-              Request a fixed payment to one of your wallets.
+            <p className="text-sm text-secondary">
+              {t("DashboardPayments.requests.createPaymentLinkDescription")}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="pr-amount">Amount</Label>
+              <Label htmlFor="pr-amount">{t("DashboardPayments.requests.amount")}</Label>
               <Input
                 size="xl"
                 id="pr-amount"
@@ -295,16 +306,16 @@ function CreateRequestModal({
                 }
               />
               {form.errors.amount && (
-                <p className="mt-1 text-xs text-status-error-text">{form.errors.amount}</p>
+                <p className="mt-1 text-xs text-error">{form.errors.amount}</p>
               )}
             </div>
             <div className="space-y-2">
-              <Label>Token</Label>
+              <Label>{t("DashboardPayments.requests.token")}</Label>
               <Select
                 size="xl"
                 className="w-full"
                 iconLeft={<CoinsIcon />}
-                placeholder="Select token"
+                placeholder={t("DashboardPayments.requests.selectToken")}
                 value={form.values.token}
                 onValueChange={(value) => form.setField("token", value === null ? "" : value)}
               >
@@ -314,19 +325,17 @@ function CreateRequestModal({
                   </SelectItem>
                 ))}
               </Select>
-              {form.errors.token && (
-                <p className="mt-1 text-xs text-status-error-text">{form.errors.token}</p>
-              )}
+              {form.errors.token && <p className="mt-1 text-xs text-error">{form.errors.token}</p>}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Destination wallet</Label>
+            <Label>{t("DashboardPayments.requests.destinationWallet")}</Label>
             <Select
               size="xl"
               className="w-full"
               iconLeft={<WalletIcon />}
-              placeholder="Select wallet"
+              placeholder={t("DashboardPayments.requests.selectWallet")}
               value={form.values.wallet}
               onValueChange={(value) => form.setField("wallet", value === null ? "" : value)}
             >
@@ -339,13 +348,11 @@ function CreateRequestModal({
                 );
               })}
             </Select>
-            {form.errors.wallet && (
-              <p className="mt-1 text-xs text-status-error-text">{form.errors.wallet}</p>
-            )}
+            {form.errors.wallet && <p className="mt-1 text-xs text-error">{form.errors.wallet}</p>}
           </div>
 
           <div className="space-y-2">
-            <Label>From (counterparty)</Label>
+            <Label>{t("DashboardPayments.requests.fromCounterparty")}</Label>
             <Select
               size="xl"
               className="w-full"
@@ -355,7 +362,9 @@ function CreateRequestModal({
                 form.setField("counterparty", value === null ? ANYONE_OPTION : value)
               }
             >
-              <SelectItem value={ANYONE_OPTION}>{ANYONE_OPTION}</SelectItem>
+              <SelectItem value={ANYONE_OPTION}>
+                {t("DashboardPayments.requests.anyoneWithLink")}
+              </SelectItem>
               {counterparties.map((counterparty) => (
                 <SelectItem key={counterparty.id} value={counterparty.id}>
                   {counterparty.displayName}
@@ -363,19 +372,23 @@ function CreateRequestModal({
               ))}
             </Select>
             {selectedCounterpartyId && accountsLoading && (
-              <p className="text-xs text-text-low">Loading crypto account…</p>
+              <p className="text-xs text-tertiary">
+                {t("DashboardPayments.requests.loadingCryptoAccount")}
+              </p>
             )}
             {selectedCounterpartyId && !accountsLoading && primaryCryptoAccount && (
-              <p className="text-xs text-text-low">
-                Pays from{" "}
-                <span className="font-mono text-text-medium">
+              <p className="text-xs text-tertiary">
+                {t("DashboardPayments.requests.paysFrom")}{" "}
+                <span className="font-mono text-secondary">
                   {resolveAccountAddress(primaryCryptoAccount)}
                 </span>
               </p>
             )}
             {selectedCounterpartyId && !accountsLoading && !primaryCryptoAccount && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border-medium px-3 py-2">
-                <p className="text-xs text-text-low">No crypto account on file.</p>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border-strong px-3 py-2">
+                <p className="text-xs text-tertiary">
+                  {t("DashboardPayments.requests.noCryptoAccount")}
+                </p>
                 <Button
                   type="button"
                   variant="secondary"
@@ -383,27 +396,25 @@ function CreateRequestModal({
                   iconLeft={<PlusIcon />}
                   onClick={() => setAddingAccount(true)}
                 >
-                  Add
+                  {t("DashboardPayments.requests.add")}
                 </Button>
               </div>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label>Link expires</Label>
+            <Label>{t("DashboardPayments.requests.linkExpires")}</Label>
             <Select
               size="xl"
               className="w-full"
               iconLeft={<ClockIcon />}
               trailing={expiresAtPreview ? formatLocalExpiry(expiresAtPreview) : undefined}
               value={form.values.expiry}
-              onValueChange={(value) =>
-                form.setField("expiry", value === null ? "No expiry" : value)
-              }
+              onValueChange={(value) => form.setField("expiry", value === null ? "none" : value)}
             >
               {EXPIRY_OPTIONS.map((option) => (
-                <SelectItem key={option.label} value={option.label}>
-                  {option.label}
+                <SelectItem key={option.id} value={option.id}>
+                  {t(option.labelKey)}
                 </SelectItem>
               ))}
             </Select>
@@ -411,10 +422,12 @@ function CreateRequestModal({
 
           <div className="flex items-center justify-end gap-3">
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
-              Cancel
+              {t("DashboardPayments.requests.cancel")}
             </Button>
             <Button type="button" onClick={() => void handleSubmit()} disabled={submitting}>
-              {submitting ? "Creating…" : "Create link"}
+              {submitting
+                ? t("DashboardPayments.requests.creating")
+                : t("DashboardPayments.requests.createLink")}
             </Button>
           </div>
         </div>
@@ -434,6 +447,7 @@ function CreateRequestModal({
 interface PaymentRequestsWorkspaceProps {
   initialPaymentRequests: PaymentRequest[];
   initialError?: string;
+  initialLocalErrorCode?: PaymentRequestsLocalErrorCode;
   apiBaseUrl: string | null;
   apiKeys: DashboardPlaygroundApiKeyOption[];
   wallets: PaymentsDashboardWallet[];
@@ -443,26 +457,29 @@ interface PaymentRequestsWorkspaceProps {
 export function PaymentRequestsWorkspace({
   initialPaymentRequests,
   initialError,
+  initialLocalErrorCode,
   apiBaseUrl,
   apiKeys,
   wallets,
   counterparties,
 }: PaymentRequestsWorkspaceProps) {
+  const t = useTranslations();
   const router = useRouter();
-  const { counterpartyTab, sdpEnvironment, selectedPlaygroundApiKeyId, setPlaygroundApiKeys } =
+  const { sdpEnvironment, selectedPlaygroundApiKeyId, setPlaygroundApiKeys } =
     useDashboardWorkspace();
+  const searchParams = useSearchParams();
   const tokens = useMemo(
     () => deriveTokenOptions(CLUSTER_BY_SDP_ENVIRONMENT[sdpEnvironment]),
     [sdpEnvironment]
   );
-  const isPlaygroundTab = counterpartyTab === "playground";
+  const isPlaygroundTab = searchParams.get("tab") === "playground";
   const [selected, setSelected] = useState<PaymentRequest | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const requests = initialPaymentRequests;
 
   useEffect(() => {
-    setPlaygroundApiKeys(apiKeys);
-  }, [apiKeys, setPlaygroundApiKeys]);
+    syncPlaygroundApiKeysForActiveTab(isPlaygroundTab, apiKeys, setPlaygroundApiKeys);
+  }, [apiKeys, isPlaygroundTab, setPlaygroundApiKeys]);
 
   const selectedPlaygroundApiKey = useMemo(
     () => apiKeys.find((key) => key.id === selectedPlaygroundApiKeyId),
@@ -508,50 +525,98 @@ export function PaymentRequestsWorkspace({
     <>
       <DashboardWorkspaceTabShell
         isPlaygroundTab={isPlaygroundTab}
+        tabNavigation={
+          <PaymentsRouteTabs
+            basePath="/dashboard/payments/requests"
+            value={isPlaygroundTab ? "playground" : "overview"}
+          />
+        }
         overviewClassName="flex min-h-0 flex-col overflow-hidden"
         overviewKey="payment-requests-overview-tab"
         playgroundKey="payment-requests-playground-tab"
         overview={
-          <Card className="flex min-h-0 flex-1 flex-col">
-            <CardHeader>
-              <CardTitle>Payment requests</CardTitle>
-              <CardDescription>Shareable links that request a fixed payment.</CardDescription>
+          <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg border border-border-default bg-surface-raised py-0 shadow-none ring-0">
+            <CardHeader className="p-4">
+              <CardTitle>{t("DashboardPayments.requests.paymentRequests")}</CardTitle>
+              <CardDescription>
+                {t("DashboardPayments.requests.paymentRequestsDescription")}
+              </CardDescription>
               {requests.length > 0 && (
                 <CardAction>
                   <Button type="button" iconLeft={<PlusIcon />} onClick={() => setCreateOpen(true)}>
-                    Create
+                    {t("DashboardPayments.requests.create")}
                   </Button>
                 </CardAction>
               )}
             </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col">
-              {initialError ? (
-                <p className="text-sm text-status-error-text">{initialError}</p>
+            <CardContent className="flex min-h-0 flex-1 flex-col px-0">
+              {initialError || initialLocalErrorCode ? (
+                <p className="text-sm text-error">
+                  {initialError ?? t("DashboardPayments.requests.loadFailed")}
+                </p>
               ) : requests.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border-medium py-16 text-center">
-                  <ReceiptTextIcon className="h-10 w-10 text-text-extra-low" />
+                <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
+                  <ReceiptTextIcon className="h-10 w-10 text-muted" />
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-text-extra-high">
-                      No payment requests yet
+                    <p className="text-sm font-medium text-primary">
+                      {t("DashboardPayments.requests.noPaymentRequests")}
                     </p>
-                    <p className="text-sm text-text-low">
-                      Create a payment link to request a fixed payment.
+                    <p className="text-sm text-tertiary">
+                      {t("DashboardPayments.requests.noPaymentRequestsDescription")}
                     </p>
                   </div>
                   <Button type="button" iconLeft={<PlusIcon />} onClick={() => setCreateOpen(true)}>
-                    Create
+                    {t("DashboardPayments.requests.create")}
                   </Button>
                 </div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                  <Table className="[&_table]:table-fixed">
+                  <div className="divide-y divide-border-default md:hidden">
+                    {requests.map((request) => {
+                      const symbol = tokenSymbolByMint.get(request.token);
+                      return (
+                        <button
+                          key={request.id}
+                          type="button"
+                          onClick={() => setSelected(request)}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-fill-subtle"
+                        >
+                          <span className="min-w-0 flex-1 space-y-1.5">
+                            <span className="flex items-center justify-between gap-3">
+                              <StatusBadge status={request.status} />
+                              <span className="truncate text-sm font-medium text-primary">
+                                {formatDisplayAmount(
+                                  request.amount,
+                                  symbol ? symbol : shortenAddress(request.token)
+                                )}
+                              </span>
+                            </span>
+                            <span className="block truncate text-xs text-secondary">
+                              {fromLabel(request.counterpartyId)} ·{" "}
+                              {formatTimestamp(request.createdAt, t)}
+                            </span>
+                          </span>
+                          <ChevronRightIcon className="size-4 shrink-0 text-tertiary" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Table className="hidden rounded-none border-0 [&_table]:min-w-[800px] [&_table]:table-fixed md:block">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[16%]">Status</TableHead>
-                        <TableHead className="w-[20%]">Amount</TableHead>
-                        <TableHead className="w-[22%]">From</TableHead>
-                        <TableHead className="w-[22%]">To</TableHead>
-                        <TableHead className="w-[20%]">Created</TableHead>
+                        <TableHead className="w-[16%]">{t("DashboardPayments.status")}</TableHead>
+                        <TableHead className="w-[20%]">
+                          {t("DashboardPayments.requests.amount")}
+                        </TableHead>
+                        <TableHead className="w-[22%]">
+                          {t("DashboardPayments.requests.from")}
+                        </TableHead>
+                        <TableHead className="w-[22%]">
+                          {t("DashboardPayments.requests.to")}
+                        </TableHead>
+                        <TableHead className="w-[20%]">
+                          {t("DashboardPayments.recurring.created")}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -582,18 +647,18 @@ export function PaymentRequestsWorkspace({
                                 )}
                               </span>
                             </TableCell>
-                            <TableCell className="text-sm text-text-medium">
+                            <TableCell className="text-sm text-secondary">
                               <span className="block truncate">
                                 {fromLabel(request.counterpartyId)}
                               </span>
                             </TableCell>
-                            <TableCell className="font-mono text-sm text-text-medium">
+                            <TableCell className="font-mono text-sm text-secondary">
                               <span className="block truncate">
                                 {shortenAddress(request.destinationAddress)}
                               </span>
                             </TableCell>
-                            <TableCell className="text-sm text-text-medium">
-                              {formatTimestamp(request.createdAt)}
+                            <TableCell className="text-sm text-secondary">
+                              {formatTimestamp(request.createdAt, t)}
                             </TableCell>
                           </TableRow>
                         );
@@ -619,26 +684,26 @@ export function PaymentRequestsWorkspace({
       {selected && payLink ? (
         <Modal
           isOpen
-          ariaLabel="Payment request details"
+          ariaLabel={t("DashboardPayments.requests.paymentRequestDetails")}
           onClose={() => setSelected(null)}
           size="lg"
         >
           <div className="space-y-5 p-6">
             <div className="flex items-start justify-between gap-4 pr-8">
               <div className="space-y-1">
-                <h2 className="text-xl font-medium tracking-tight text-text-extra-high">
-                  Payment request
+                <h2 className="text-xl font-medium tracking-tight text-primary">
+                  {t("DashboardPayments.requests.paymentRequest")}
                 </h2>
-                <p className="text-sm text-text-medium">{formatTimestamp(selected.createdAt)}</p>
+                <p className="text-sm text-secondary">{formatTimestamp(selected.createdAt, t)}</p>
               </div>
               <StatusBadge status={selected.status} />
             </div>
 
-            <div className="rounded-2xl bg-border-extra-light p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-text-medium">
-                Amount requested
+            <div className="rounded-2xl bg-fill-subtle p-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-secondary">
+                {t("DashboardPayments.requests.amountRequested")}
               </p>
-              <p className="truncate text-xl font-semibold tracking-tight text-text-extra-high">
+              <p className="truncate text-xl font-semibold tracking-tight text-primary">
                 {formatDisplayAmount(
                   selected.amount,
                   selectedTokenSymbol ? selectedTokenSymbol : shortenAddress(selected.token)
@@ -646,8 +711,8 @@ export function PaymentRequestsWorkspace({
               </p>
             </div>
 
-            <div className="flex items-center gap-2 rounded-2xl border border-border-light p-3">
-              <span className="min-w-0 flex-1 truncate font-mono text-sm text-text-medium">
+            <div className="flex items-center gap-2 rounded-2xl border border-border-default p-3">
+              <span className="min-w-0 flex-1 truncate font-mono text-sm text-secondary">
                 {payLink}
               </span>
               <Button
@@ -657,34 +722,40 @@ export function PaymentRequestsWorkspace({
                 iconLeft={<CopyIcon />}
                 onClick={() => {
                   void navigator.clipboard.writeText(payLink);
-                  toast.success("Payment link copied");
+                  toast.success(t("DashboardPayments.requests.paymentLinkCopied"));
                 }}
               >
-                Copy
+                {t("DashboardPayments.requests.copy")}
               </Button>
             </div>
 
-            <div className="rounded-2xl border border-border-light px-4">
-              <div className="divide-y divide-border-light">
-                <DetailRow label="From">{fromLabel(selected.counterpartyId)}</DetailRow>
-                <DetailRow label="To">
+            <div className="rounded-2xl border border-border-default px-4">
+              <div className="divide-y divide-border-default">
+                <DetailRow label={t("DashboardPayments.requests.from")}>
+                  {fromLabel(selected.counterpartyId)}
+                </DetailRow>
+                <DetailRow label={t("DashboardPayments.requests.to")}>
                   {selectedWalletName ? (
-                    <span className="block font-medium text-text-extra-high">
-                      {selectedWalletName}
-                    </span>
+                    <span className="block font-medium text-primary">{selectedWalletName}</span>
                   ) : null}
-                  <span className="block font-mono text-xs font-normal text-text-medium">
+                  <span className="block font-mono text-xs font-normal text-secondary">
                     {selected.destinationAddress}
                   </span>
                 </DetailRow>
-                <DetailRow label="Token">
+                <DetailRow label={t("DashboardPayments.requests.token")}>
                   {selectedTokenSymbol ? selectedTokenSymbol : shortenAddress(selected.token)}
                 </DetailRow>
-                <DetailRow label="Reference">{shortenAddress(selected.reference)}</DetailRow>
-                <DetailRow label="Expires">
-                  {selected.expiresAt ? formatTimestamp(selected.expiresAt) : "No expiry"}
+                <DetailRow label={t("DashboardPayments.requests.reference")}>
+                  {shortenAddress(selected.reference)}
                 </DetailRow>
-                <DetailRow label="Created">{formatTimestamp(selected.createdAt)}</DetailRow>
+                <DetailRow label={t("DashboardPayments.requests.expires")}>
+                  {selected.expiresAt
+                    ? formatTimestamp(selected.expiresAt, t)
+                    : t("DashboardPayments.requests.noExpiry")}
+                </DetailRow>
+                <DetailRow label={t("DashboardPayments.recurring.created")}>
+                  {formatTimestamp(selected.createdAt, t)}
+                </DetailRow>
               </div>
             </div>
           </div>

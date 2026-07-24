@@ -1,3 +1,4 @@
+import { redactCredentialSecrets } from "@sdp/custody";
 import {
   PRIVATE_CHANNEL_EVENT_FAMILIES,
   PRIVATE_CHANNEL_EVENT_STATUSES,
@@ -11,7 +12,6 @@ import {
   type PrivateChannelEventRepository,
   type PrivateChannelEventWriteInput,
 } from "@/db/repositories";
-import { redactCredentialSecrets } from "@/lib/redaction";
 import type { Env } from "@/types/env";
 import { createDbEventSink } from "./sinks/db-sink";
 import { createLogEventSink } from "./sinks/log-sink";

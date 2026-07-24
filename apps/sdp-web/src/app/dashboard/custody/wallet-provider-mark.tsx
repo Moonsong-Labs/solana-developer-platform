@@ -17,58 +17,58 @@ const PROVIDER_LOGOS: Partial<
 > = {
   privy: {
     src: "/provider-logos/privy.png",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-2",
   },
   fireblocks: {
     src: "/provider-logos/fireblocks.svg",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-2.5",
   },
   coinbase_cdp: {
     src: "/provider-logos/coinbase-cdp.png",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-1.5",
   },
   para: {
     src: "/provider-logos/para.svg",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-2",
   },
   turnkey: {
     src: "/provider-logos/turnkey.svg",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-2.5",
   },
   dfns: {
     src: "/provider-logos/dfns.svg",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-1.5",
   },
   anchorage: {
     src: "/provider-logos/anchorage.svg",
-    backgroundClassName: "bg-[#111111]",
+    backgroundClassName: "bg-primary",
     paddingClassName: "p-2.5",
   },
   utila: {
     src: "/provider-logos/utila.svg",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-2",
   },
   ibm_haven: {
     src: "/provider-logos/ibm-haven.svg",
-    backgroundClassName: "bg-white",
+    backgroundClassName: "bg-[white]",
     paddingClassName: "p-1.5",
   },
 };
 
 interface WalletProviderMarkProps {
-  provider: KnownCustodyProvider;
+  provider?: KnownCustodyProvider | null;
   size?: "xs" | "sm" | "md";
 }
 
 export function WalletProviderMark({ provider, size = "md" }: WalletProviderMarkProps) {
-  const logo = PROVIDER_LOGOS[provider];
+  const logo = provider ? PROVIDER_LOGOS[provider] : undefined;
   const dimensionClass =
     size === "xs"
       ? "h-6 w-6 rounded-md"
@@ -81,11 +81,11 @@ export function WalletProviderMark({ provider, size = "md" }: WalletProviderMark
   return (
     <div
       className={[
-        "inline-flex items-center justify-center overflow-hidden border border-[rgba(28,28,29,0.08)]",
-        logo?.backgroundClassName ?? "bg-[rgba(28,28,29,0.04)]",
+        "inline-flex items-center justify-center overflow-hidden border border-border-subtle",
+        logo?.backgroundClassName ?? "bg-fill-subtle",
         dimensionClass,
       ].join(" ")}
-      title={formatCustodyProviderName(provider)}
+      title={provider ? formatCustodyProviderName(provider) : undefined}
       aria-hidden="true"
     >
       {logo ? (
@@ -93,7 +93,7 @@ export function WalletProviderMark({ provider, size = "md" }: WalletProviderMark
           <Image src={logo.src} alt="" fill sizes={imageSizes} className="object-contain" />
         </div>
       ) : (
-        <KeyRound size={iconSize} className="text-[rgba(28,28,29,0.72)]" />
+        <KeyRound size={iconSize} className="text-secondary" />
       )}
     </div>
   );

@@ -4,6 +4,8 @@ import { getCryptoRailAssetLabel } from "@sdp/types/payment-rails";
 import { SendIcon, WalletIcon } from "lucide-react";
 import { useMemo } from "react";
 import { Combobox } from "@/components/ui/combobox";
+import type { MessageKey, TranslationValues } from "@/i18n/messages";
+import { useTranslations } from "@/i18n/provider";
 import { hasEnabledRampProvider } from "@/lib/provider-availability";
 import { toRampCryptoToken } from "@/lib/ramps";
 import type { OfframpWizard } from "../hooks/use-offramp-wizard";
@@ -20,12 +22,16 @@ import { RampStatusPanel } from "./ramp-status-panel";
 import { RequirementsFields } from "./requirements-fields";
 import { WalletAssetBreakdown } from "./wallet-asset-breakdown";
 
+type Translate = (key: MessageKey, values?: TranslationValues) => string;
+
 function OfframpManualQuoteStep({
   wizard,
   quote,
+  t,
 }: {
   wizard: OfframpWizard;
   quote: Extract<NonNullable<OfframpWizard["quote"]>, { deliveryMode: "manual_instructions" }>;
+  t: Translate;
 }) {
   const {
     selectedRampPair,
@@ -41,14 +47,17 @@ function OfframpManualQuoteStep({
 
   if (!quote.paymentInstructions) {
     return (
-      <div className="rounded-2xl border border-status-error-border bg-status-error-bg px-5 py-5 text-sm text-status-error-text">
-        Ramp quote is missing payment instructions.
+      <div className="rounded-2xl border border-error-border bg-error-bg px-5 py-5 text-sm text-error">
+        {t("DashboardPayments.ramps.quoteMissingInstructions")}
       </div>
     );
   }
 
   const cryptoToken = toRampCryptoToken(selectedRampPair.assetRail);
-  const sendLabel = `Send ${fields.amount.trim()} ${cryptoToken.toUpperCase()}`;
+  const sendLabel = t("DashboardPayments.ramps.sendCrypto", {
+    amount: fields.amount.trim(),
+    token: cryptoToken.toUpperCase(),
+  });
   const sendAction = hasCryptoDepositInstruction
     ? {
         loading: onchainSendLoading,
@@ -56,9 +65,9 @@ function OfframpManualQuoteStep({
         disabled: !canSendOnchain || quoteExpired,
         onClick: () => void sendCryptoToDeposit(),
         icon: <SendIcon />,
-        idleLabel: quoteExpired ? "Quote expired" : sendLabel,
-        busyLabel: "Sending...",
-        doneLabel: "Transfer submitted",
+        idleLabel: quoteExpired ? t("DashboardPayments.ramps.quoteExpired") : sendLabel,
+        busyLabel: t("DashboardPayments.ramps.sending"),
+        doneLabel: t("DashboardPayments.ramps.transferSubmitted"),
       }
     : undefined;
 
@@ -70,10 +79,13 @@ function OfframpManualQuoteStep({
         fiatCurrency={selectedRampPair.fiatCurrency}
         cryptoToken={cryptoToken}
         instructions={quote.paymentInstructions}
-        description={`Send ${fields.amount.trim()} ${cryptoToken.toUpperCase()} to the deposit address below before the quote expires. The provider converts it at the locked rate and pays out to the saved bank account automatically.`}
+        description={t("DashboardPayments.ramps.offrampManualDescription", {
+          amount: fields.amount.trim(),
+          token: cryptoToken.toUpperCase(),
+        })}
         action={sendAction}
       />
-      <div className="border-t border-border-light pt-5">
+      <div className="border-t border-border-default pt-5">
         <RampStatusPanel direction="offramp" transfer={transferStatus} />
       </div>
     </div>
@@ -81,6 +93,7 @@ function OfframpManualQuoteStep({
 }
 
 export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
+  const t = useTranslations();
   const {
     currentStepId,
     rampProviderAccess,
@@ -110,13 +123,13 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
     return (
       <div className="space-y-4">
         <Combobox
-          label="Source wallet"
+          label={t("DashboardPayments.ramps.sourceWallet")}
           value={fields.walletId || null}
           onChange={(walletId) => setField("walletId", walletId)}
           options={walletOptions}
-          placeholder="Select a source wallet"
-          searchPlaceholder="Search wallets"
-          icon={<WalletIcon className="size-5 shrink-0 text-text-low" />}
+          placeholder={t("DashboardPayments.ramps.selectSourceWallet")}
+          searchPlaceholder={t("DashboardPayments.ramps.searchWallets")}
+          icon={<WalletIcon className="size-5 shrink-0 text-tertiary" />}
           isLoading={walletsLoading}
         />
         {selectedWallet ? <WalletAssetBreakdown wallet={selectedWallet} /> : null}
@@ -127,8 +140,8 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
   if (currentStepId === "WITHDRAW") {
     if (!hasEnabledRampProvider(rampProviderAccess)) {
       return (
-        <div className="rounded-2xl border border-border-light bg-border-extra-light px-5 py-5 text-sm text-text-low">
-          No payout providers are enabled for this organization.
+        <div className="rounded-2xl border border-border-default bg-fill-subtle px-5 py-5 text-sm text-tertiary">
+          {t("DashboardPayments.ramps.noPayoutProviders")}
         </div>
       );
     }
@@ -153,7 +166,7 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
           onProviderSelect={(nextProvider) => setField("provider", nextProvider)}
         />
         {requirementsBlocker ? (
-          <div className="rounded-2xl border border-status-error-border bg-status-error-bg px-4 py-3 text-sm text-status-error-text">
+          <div className="rounded-2xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
             {requirementsBlocker}
           </div>
         ) : null}
@@ -189,8 +202,11 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
   if (currentStepId === "COMPLETE" && quote?.deliveryMode === "hosted") {
     return (
       <div className="space-y-6">
-        <MoonpayRampFrame title={`${quote.provider} payout`} src={quote.hostedUrl} />
-        <div className="border-t border-border-light pt-5">
+        <MoonpayRampFrame
+          title={t("DashboardPayments.ramps.providerPayout", { provider: quote.provider })}
+          src={quote.hostedUrl}
+        />
+        <div className="border-t border-border-default pt-5">
           <RampStatusPanel direction="offramp" transfer={transferStatus} />
         </div>
       </div>
@@ -204,6 +220,7 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
     return (
       <div className="space-y-6">
         <MoneygramRampWidget
+          direction="offramp"
           quote={quote}
           counterparty={selectedCounterparty}
           sourceWalletId={fields.walletId}
@@ -215,7 +232,7 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
           fiatCurrency={selectedRampPair.fiatCurrency}
           onSessionExpiring={refreshQuote}
         />
-        <div className="border-t border-border-light pt-5">
+        <div className="border-t border-border-default pt-5">
           <RampStatusPanel direction="offramp" transfer={transferStatus} />
         </div>
       </div>
@@ -223,7 +240,7 @@ export function OfframpStepContent({ wizard }: { wizard: OfframpWizard }) {
   }
 
   if (currentStepId === "COMPLETE" && quote?.deliveryMode === "manual_instructions") {
-    return <OfframpManualQuoteStep wizard={wizard} quote={quote} />;
+    return <OfframpManualQuoteStep wizard={wizard} quote={quote} t={t} />;
   }
 
   return <RampQuoteSkeleton />;

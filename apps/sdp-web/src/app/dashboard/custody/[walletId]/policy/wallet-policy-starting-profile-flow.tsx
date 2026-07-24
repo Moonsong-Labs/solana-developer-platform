@@ -1,1601 +1,1555 @@
 "use client";
 
-import type {
-  PaymentWalletPolicy,
-  PolicyDefaultAction,
-  PolicyRule,
-  WalletOperationFamily,
-} from "@sdp/types";
-import { ArrowLeft, ArrowRight, Check, ChevronDown } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import type { PaymentWalletPolicy, PolicyProfileStatus, WalletOperationFamily } from "@sdp/types";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Copy,
+  History,
+  ListChecks,
+  MoreHorizontal,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { updateWalletPolicy } from "@/app/dashboard/payments/payments-workspace.data";
+import { DashboardNavigationLink as Link } from "@/components/dashboard-navigation-link";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { Select, SelectItem } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { WizardStepProgress } from "@/components/ui/wizard-step-progress";
+import { useTranslations } from "@/i18n/provider";
+import { useDashboardRouter } from "@/lib/use-dashboard-router";
 import { cn } from "@/lib/utils";
+import {
+  AUTHORING_RULE_ACTIONS,
+  type AuthoringDefaultAction,
+  type AuthoringRuleAction,
+  buildDisabledPolicyPayload,
+  buildPolicyPayload,
+  clearPolicyDraft,
+  createPolicyAuthoringState,
+  DESTINATION_MODES,
+  hasLimitsAndAssetsControls,
+  isValidSolanaAddress,
+  loadPolicyDraft,
+  type PolicyAuthoringState,
+  type PolicyFlowStep,
+  parseDestinationText,
+  policyStateFingerprint,
+  type RestrictionCategory,
+  type StoredPolicyDraft,
+  savePolicyDraft,
+  validatePolicyState,
+  WALLET_OPERATION_FAMILIES,
+} from "./wallet-policy-authoring";
 
-type FlowStep = "intent" | "details" | "review";
-type RestrictionCategoryId = "operations" | "destinations" | "limits" | "approvals" | "advanced";
-type AdvancedFamily = Extract<WalletOperationFamily, "raw_sign" | "program">;
+interface WalletAssetOption {
+  token: string;
+  mint: string;
+  uiAmount: string;
+}
 
 interface WalletPolicyStartingProfileFlowProps {
+  projectId: string;
   wallet: {
     walletId: string;
     publicKey: string;
     label: string | null;
     provider: string | null;
   };
+  walletAssets: WalletAssetOption[];
   initialPolicy: PaymentWalletPolicy;
   policyError: string | null;
 }
 
-interface RestrictionCategory {
-  id: RestrictionCategoryId;
-  title: string;
-  description: string;
-}
-
-interface StoredPolicyDraft {
-  status: "draft" | "disabled";
-  step: FlowStep;
-  categories: RestrictionCategoryId[];
-  blockedOperationFamilies: WalletOperationFamily[];
-  destinationAllowlist: string[];
-  maxTransferAmount: string;
-  maxDailyAmount: string;
-  approvalFamilies: WalletOperationFamily[];
-  advancedDeniedFamilies: AdvancedFamily[];
-  updatedAt: string;
-}
-
-type PolicyAudit = NonNullable<PaymentWalletPolicy["audit"]>;
-type PolicyAuditEntry = PolicyAudit["recentEvaluations"][number];
-
 const FLOW_STEPS = [
-  {
-    id: "intent",
-    label: "Intent",
-    title: "Set wallet policies",
-    description: "Choose where funds can go and how much this wallet can transfer.",
-  },
-  {
-    id: "details",
-    label: "Rules",
-    title: "Starting rules",
-    description: "Configure the selected rule areas before review.",
-  },
-  {
-    id: "review",
-    label: "Review",
-    title: "Final review",
-    description: "Review the changes before applying wallet controls.",
-  },
-] as const satisfies readonly {
-  id: FlowStep;
-  label: string;
-  title: string;
-  description: string;
-}[];
+  "intent",
+  "limits-assets",
+  "destinations-operations",
+  "review",
+] as const satisfies readonly PolicyFlowStep[];
 
-const RESTRICTION_CATEGORIES = [
+const CATEGORY_OPTIONS = [
   {
-    id: "operations",
-    title: "Operation access",
-    description: "Block high-risk operation families while keeping normal usage available.",
+    id: "limits",
+    titleKey: "DashboardCustody.policyTransferLimits",
+    descriptionKey: "DashboardCustody.policyCategoryLimitsDescription",
+  },
+  {
+    id: "assets",
+    titleKey: "DashboardCustody.policyAllowedAssets",
+    descriptionKey: "DashboardCustody.policyAllowedAssetsDescription",
   },
   {
     id: "destinations",
-    title: "Allowed destinations",
-    description: "Use when this wallet should only pay known addresses.",
+    titleKey: "DashboardCustody.policyDestinationControls",
+    descriptionKey: "DashboardCustody.policyDestinationControlsDescription",
   },
   {
-    id: "limits",
-    title: "Transfer limits",
-    description: "Use when this wallet needs spend caps or daily outflow limits.",
+    id: "operations",
+    titleKey: "DashboardCustody.policyOperationControls",
+    descriptionKey: "DashboardCustody.policyOperationControlsDescription",
   },
-  {
-    id: "approvals",
-    title: "Approval checks",
-    description: "Pause selected operation families for approval before execution.",
+] as const satisfies readonly {
+  id: RestrictionCategory;
+  titleKey: Parameters<ReturnType<typeof useTranslations>>[0];
+  descriptionKey: Parameters<ReturnType<typeof useTranslations>>[0];
+}[];
+
+const STEP_COPY = {
+  intent: {
+    titleKey: "DashboardCustody.policyAuthoringIntentTitle",
+    descriptionKey: "DashboardCustody.policyAuthoringIntentDescription",
   },
-  {
-    id: "advanced",
-    title: "Advanced signing",
-    description: "Restrict raw signing and direct program interaction paths.",
+  "limits-assets": {
+    titleKey: "DashboardCustody.policyAuthoringLimitsTitle",
+    descriptionKey: "DashboardCustody.policyAuthoringLimitsDescription",
   },
-] as const satisfies readonly RestrictionCategory[];
+  "destinations-operations": {
+    titleKey: "DashboardCustody.policyAuthoringDestinationsTitle",
+    descriptionKey: "DashboardCustody.policyAuthoringDestinationsDescription",
+  },
+  review: {
+    titleKey: "DashboardCustody.policyAuthoringReviewTitle",
+    descriptionKey: "DashboardCustody.policyAuthoringReviewDescription",
+  },
+} as const;
 
-const RESTRICTION_CATEGORY_IDS = RESTRICTION_CATEGORIES.map((category) => category.id);
-const DEFAULT_POLICY_ACTION = "allow" satisfies PolicyDefaultAction;
-const OPERATION_FAMILY_OPTIONS = [
-  { id: "payment", label: "Payments" },
-  { id: "transfer", label: "Transfers" },
-  { id: "ramp", label: "Ramps" },
-  { id: "issuance", label: "Issuance" },
-  { id: "provider_admin", label: "Provider admin" },
-] as const satisfies readonly { id: WalletOperationFamily; label: string }[];
-const APPROVAL_FAMILY_OPTIONS = [
-  { id: "payment", label: "Payments" },
-  { id: "ramp", label: "Ramps" },
-  { id: "issuance", label: "Issuance" },
-  { id: "raw_sign", label: "Raw signing" },
-  { id: "program", label: "Program interactions" },
-] as const satisfies readonly { id: WalletOperationFamily; label: string }[];
-const ADVANCED_FAMILY_OPTIONS = [
-  { id: "raw_sign", label: "Raw signing" },
-  { id: "program", label: "Program interactions" },
-] as const satisfies readonly { id: AdvancedFamily; label: string }[];
+const DEFAULT_ACTION_LABEL_KEYS = {
+  allow: "DashboardCustody.policyDefaultAllow",
+  approval_required: "DashboardCustody.policyDefaultApproval",
+  deny: "DashboardCustody.policyDefaultDeny",
+} as const satisfies Record<
+  AuthoringDefaultAction,
+  Parameters<ReturnType<typeof useTranslations>>[0]
+>;
 
-const SOLANA_ADDRESS_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const CSV_HEADER_VALUES = new Set([
-  "address",
-  "addresses",
-  "destination",
-  "destinations",
-  "pubkey",
-  "public_key",
-]);
+const RULE_ACTION_LABEL_KEYS = {
+  allow: "DashboardCustody.policyActionAllow",
+  deny: "DashboardCustody.policyActionDeny",
+  approval_required: "DashboardCustody.policyActionApproval",
+} as const satisfies Record<AuthoringRuleAction, Parameters<ReturnType<typeof useTranslations>>[0]>;
 
-function draftStorageKey(walletId: string): string {
-  return `sdp.wallet-policy-starting-profile.${walletId}`;
-}
-
-function policyHasRestrictions(policy: PaymentWalletPolicy): boolean {
-  return (
-    policy.destinationAllowlist.length > 0 ||
-    Boolean(policy.maxTransferAmount) ||
-    Boolean(policy.maxDailyAmount) ||
-    Boolean(policy.rules?.length)
-  );
-}
-
-function categoriesFromPolicy(policy: PaymentWalletPolicy): RestrictionCategoryId[] {
-  const categories: RestrictionCategoryId[] = [];
-  const blockedFamilies = blockedOperationFamiliesFromRules(policy.rules ?? []);
-  const approvalFamilies = approvalFamiliesFromRules(policy.rules ?? []);
-  const advancedFamilies = advancedDeniedFamiliesFromRules(policy.rules ?? []);
-  if (blockedFamilies.length > 0) categories.push("operations");
-  if (policy.destinationAllowlist.length > 0) categories.push("destinations");
-  if (policy.maxTransferAmount || policy.maxDailyAmount) categories.push("limits");
-  if (approvalFamilies.length > 0) categories.push("approvals");
-  if (advancedFamilies.length > 0) categories.push("advanced");
-  return categories;
-}
-
-function blockedOperationFamiliesFromRules(rules: PolicyRule[]): WalletOperationFamily[] {
-  return uniqueValues(
-    rules
-      .filter(
-        (rule): rule is Extract<PolicyRule, { kind: "operation_family" }> =>
-          rule.kind === "operation_family" && rule.action === "deny"
-      )
-      .flatMap((rule) => rule.families ?? (rule.family ? [rule.family] : []))
-      .filter((family) => family !== "raw_sign" && family !== "program")
-  ) as WalletOperationFamily[];
-}
-
-function advancedDeniedFamiliesFromRules(rules: PolicyRule[]): AdvancedFamily[] {
-  return uniqueValues(
-    rules
-      .filter(
-        (rule): rule is Extract<PolicyRule, { kind: "operation_family" }> =>
-          rule.kind === "operation_family" && rule.action === "deny"
-      )
-      .flatMap(advancedDeniedFamiliesFromOperationRule)
-  ) as AdvancedFamily[];
-}
-
-function advancedDeniedFamiliesFromOperationRule(
-  rule: Extract<PolicyRule, { kind: "operation_family" }>
-): AdvancedFamily[] {
-  return (rule.families ?? (rule.family ? [rule.family] : [])).filter(
-    (family): family is AdvancedFamily => family === "raw_sign" || family === "program"
-  );
-}
-
-function approvalFamiliesFromRules(rules: PolicyRule[]): WalletOperationFamily[] {
-  return uniqueValues(
-    rules
-      .filter((rule): rule is Extract<PolicyRule, { kind: "approval" }> => rule.kind === "approval")
-      .flatMap((rule) => rule.families ?? [])
-  ) as WalletOperationFamily[];
-}
-
-function uniqueValues(values: string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function filterKnownValues<TValue extends string>(
-  values: unknown,
-  allowedValues: readonly TValue[]
-): TValue[] {
-  if (!Array.isArray(values)) return [];
-  const allowed = new Set<string>(allowedValues);
-  return values.filter((value): value is TValue => typeof value === "string" && allowed.has(value));
-}
-
-function parseCsvCells(line: string): string[] {
-  const cells: string[] = [];
-  let current = "";
-  let isQuoted = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    const nextCharacter = line[index + 1];
-
-    if (character === '"' && nextCharacter === '"') {
-      current += '"';
-      index += 1;
-      continue;
-    }
-
-    if (character === '"') {
-      isQuoted = !isQuoted;
-      continue;
-    }
-
-    if (!isQuoted && (character === "," || character === "\t" || character === ";")) {
-      cells.push(current);
-      current = "";
-      continue;
-    }
-
-    current += character;
-  }
-
-  cells.push(current);
-  return cells;
-}
-
-function normalizeCsvCell(value: string): string {
-  return value
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .trim();
-}
-
-function looksLikeAddressInput(value: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{16,64}$/.test(value);
-}
-
-function parseDestinationText(value: string): { addresses: string[]; invalid: string[] } {
-  const parts = uniqueValues(
-    value
-      .split(/\r?\n/)
-      .flatMap((line) => parseCsvCells(line))
-      .flatMap((cell) => normalizeCsvCell(cell).split(/\s+/))
-      .map(normalizeCsvCell)
-      .filter((part) => !CSV_HEADER_VALUES.has(part.toLowerCase()))
-  );
-  return {
-    addresses: parts.filter((part) => SOLANA_ADDRESS_PATTERN.test(part)),
-    invalid: parts.filter(
-      (part) => !SOLANA_ADDRESS_PATTERN.test(part) && looksLikeAddressInput(part)
-    ),
-  };
-}
-
-function isPositiveAmount(value: string): boolean {
-  const trimmedValue = value.trim();
-  return trimmedValue === "" || (/^\d+(\.\d+)?$/.test(trimmedValue) && Number(trimmedValue) > 0);
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Saved draft";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function isStoredDraft(value: unknown): value is StoredPolicyDraft {
-  if (!value || typeof value !== "object") return false;
-  const draft = value as Partial<StoredPolicyDraft>;
-  return (
-    (draft.status === "draft" || draft.status === "disabled") &&
-    typeof draft.step === "string" &&
-    Array.isArray(draft.categories) &&
-    Array.isArray(draft.blockedOperationFamilies) &&
-    Array.isArray(draft.destinationAllowlist) &&
-    typeof draft.maxTransferAmount === "string" &&
-    typeof draft.maxDailyAmount === "string" &&
-    Array.isArray(draft.approvalFamilies) &&
-    Array.isArray(draft.advancedDeniedFamilies) &&
-    typeof draft.updatedAt === "string"
-  );
-}
-
-function readStoredDraft(walletId: string): StoredPolicyDraft | null {
-  try {
-    const raw = window.localStorage.getItem(draftStorageKey(walletId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isStoredDraft(parsed)) return null;
-
-    const draftCategories = filterKnownValues(parsed.categories, RESTRICTION_CATEGORY_IDS);
-    if (parsed.status === "draft" && draftCategories.length === 0) {
-      window.localStorage.removeItem(draftStorageKey(walletId));
-      return null;
-    }
-
-    return {
-      ...parsed,
-      categories: draftCategories,
-      blockedOperationFamilies: filterKnownValues(
-        parsed.blockedOperationFamilies,
-        OPERATION_FAMILY_OPTIONS.map((option) => option.id)
-      ),
-      approvalFamilies: filterKnownValues(
-        parsed.approvalFamilies,
-        APPROVAL_FAMILY_OPTIONS.map((option) => option.id)
-      ),
-      advancedDeniedFamilies: filterKnownValues(
-        parsed.advancedDeniedFamilies,
-        ADVANCED_FAMILY_OPTIONS.map((option) => option.id)
-      ),
-    };
-  } catch {
-    return null;
-  }
-}
+const FAMILY_LABEL_KEYS = {
+  transfer: "DashboardCustody.policyTransfers",
+  payment: "DashboardCustody.policyPayments",
+  ramp: "DashboardCustody.policyRamps",
+  issuance: "DashboardCustody.policyIssuance",
+  raw_sign: "DashboardCustody.policyRawSigning",
+  program: "DashboardCustody.policyProgramOperations",
+  provider_admin: "DashboardCustody.policyProviderAdministration",
+} as const satisfies Record<
+  WalletOperationFamily,
+  Parameters<ReturnType<typeof useTranslations>>[0]
+>;
 
 function toggleValue<TValue extends string>(values: TValue[], value: TValue): TValue[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
-function formatCount(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function formatFamilyLabel(family: WalletOperationFamily): string {
-  const match = [...OPERATION_FAMILY_OPTIONS, ...APPROVAL_FAMILY_OPTIONS].find(
-    (option) => option.id === family
-  );
-  return match?.label ?? family.replaceAll("_", " ");
-}
-
-function formatFamilyList(families: readonly WalletOperationFamily[]): string {
-  return families.map(formatFamilyLabel).join(", ");
-}
-
-function formatPolicyDecision(decision: PolicyAuditEntry["decision"]): string {
-  const labels = {
-    allow: "Allowed",
-    deny: "Denied",
-    approval_required: "Approval required",
-    provider_approval_required: "Provider approval required",
-    review: "Review",
-    not_evaluated: "Not evaluated",
-  } satisfies Record<PolicyAuditEntry["decision"], string>;
-  return labels[decision];
-}
-
-function formatPolicyStatus(status: PolicyAuditEntry["status"]): string {
-  return status.replaceAll("_", " ");
-}
-
-function formatPolicyAuditOperation(entry: PolicyAuditEntry): string {
-  const operation = `${formatFamilyLabel(entry.operationFamily)} / ${entry.operationType.replaceAll("_", " ")}`;
-  const amount = [entry.amount, entry.asset].filter(Boolean).join(" ");
-  return amount ? `${operation} / ${amount}` : operation;
-}
-
-function getWalletDetailHref(pathname: string, walletId: string): string {
+function walletDetailHref(pathname: string, walletId: string): string {
   const section = pathname.startsWith("/dashboard/custody/") ? "custody" : "wallets";
   return `/dashboard/${section}/${encodeURIComponent(walletId)}`;
 }
 
-function getPolicyFlowValidationState({
-  selectedCategories,
-  selectedCategorySet,
-  blockedOperationFamilies,
-  destinationParse,
-  maxTransferAmount,
-  maxDailyAmount,
-  approvalFamilies,
-  advancedDeniedFamilies,
-  isSubmitting,
-  policyError,
-}: {
-  selectedCategories: RestrictionCategoryId[];
-  selectedCategorySet: ReadonlySet<RestrictionCategoryId>;
-  blockedOperationFamilies: WalletOperationFamily[];
-  destinationParse: ReturnType<typeof parseDestinationText>;
-  maxTransferAmount: string;
-  maxDailyAmount: string;
-  approvalFamilies: WalletOperationFamily[];
-  advancedDeniedFamilies: AdvancedFamily[];
-  isSubmitting: boolean;
-  policyError: string | null;
-}) {
-  const hasOperationRule = selectedCategorySet.has("operations");
-  const hasDestinationRule = selectedCategorySet.has("destinations");
-  const hasLimitRule = selectedCategorySet.has("limits");
-  const hasApprovalRule = selectedCategorySet.has("approvals");
-  const hasAdvancedRule = selectedCategorySet.has("advanced");
-  const hasLimitAmount = Boolean(maxTransferAmount.trim() || maxDailyAmount.trim());
-  const canActivateOperations = !hasOperationRule || blockedOperationFamilies.length > 0;
-  const canActivateDestinations =
-    !hasDestinationRule ||
-    (destinationParse.addresses.length > 0 && destinationParse.invalid.length === 0);
-  const canActivateLimits =
-    !hasLimitRule ||
-    (hasLimitAmount && isPositiveAmount(maxTransferAmount) && isPositiveAmount(maxDailyAmount));
-  const canActivateApprovals = !hasApprovalRule || approvalFamilies.length > 0;
-  const canActivateAdvanced = !hasAdvancedRule || advancedDeniedFamilies.length > 0;
-  const hasActivatableRestriction =
-    (hasOperationRule && blockedOperationFamilies.length > 0) ||
-    (hasDestinationRule && destinationParse.addresses.length > 0) ||
-    (hasLimitRule && hasLimitAmount) ||
-    (hasApprovalRule && approvalFamilies.length > 0) ||
-    (hasAdvancedRule && advancedDeniedFamilies.length > 0);
-  const canSubmit =
-    selectedCategories.length > 0 &&
-    hasActivatableRestriction &&
-    canActivateOperations &&
-    canActivateDestinations &&
-    canActivateLimits &&
-    canActivateApprovals &&
-    canActivateAdvanced &&
-    !isSubmitting &&
-    !policyError;
-
-  return {
-    canActivateOperations,
-    canActivateDestinations,
-    canActivateLimits,
-    canActivateApprovals,
-    canActivateAdvanced,
-    canActivate: canSubmit,
-    canSubmitReview: canSubmit,
-  };
+function operationControlCount(state: PolicyAuthoringState): number {
+  return (
+    Object.values(state.familyActions).filter(Boolean).length + state.operationTypeRules.length
+  );
 }
 
-function buildPolicyRules({
-  selectedCategorySet,
-  blockedOperationFamilies,
-  destinationAllowlist,
-  maxTransferAmount,
-  approvalFamilies,
-  advancedDeniedFamilies,
-}: {
-  selectedCategorySet: ReadonlySet<RestrictionCategoryId>;
-  blockedOperationFamilies: WalletOperationFamily[];
-  destinationAllowlist: string[];
-  maxTransferAmount: string;
-  approvalFamilies: WalletOperationFamily[];
-  advancedDeniedFamilies: AdvancedFamily[];
-}): PolicyRule[] {
-  const rules: PolicyRule[] = [];
-
-  if (selectedCategorySet.has("operations")) {
-    for (const family of blockedOperationFamilies) {
-      rules.push({
-        id: `deny-${family}`,
-        kind: "operation_family",
-        family,
-        action: "deny",
-        name: `Block ${formatFamilyLabel(family)}`,
-      });
-    }
-  }
-
-  if (selectedCategorySet.has("destinations") && destinationAllowlist.length > 0) {
-    rules.push({
-      id: "allowed-destinations",
-      kind: "destination",
-      allowlist: destinationAllowlist,
-      action: "allow",
-      name: "Allowed destinations",
-    });
-  }
-
-  if (selectedCategorySet.has("limits") && maxTransferAmount) {
-    rules.push({
-      id: "per-transfer-limit",
-      kind: "amount",
-      max: maxTransferAmount,
-      action: "allow",
-      name: "Per transfer limit",
-    });
-  }
-
-  if (selectedCategorySet.has("approvals") && approvalFamilies.length > 0) {
-    rules.push({
-      id: "approval-required",
-      kind: "approval",
-      families: approvalFamilies,
-      action: "approval_required",
-      name: "Approval checks",
-    });
-  }
-
-  if (selectedCategorySet.has("advanced")) {
-    for (const family of advancedDeniedFamilies) {
-      rules.push({
-        id: `deny-${family}`,
-        kind: "operation_family",
-        family,
-        action: "deny",
-        name: `Block ${formatFamilyLabel(family)}`,
-      });
-    }
-  }
-
-  return rules;
+function hasActiveRestrictions(policy: PaymentWalletPolicy): boolean {
+  return Boolean(
+    policy.destinationAllowlist.length ||
+      policy.maxTransferAmount ||
+      policy.maxDailyAmount ||
+      policy.rules?.length
+  );
 }
 
 export function WalletPolicyStartingProfileFlow({
+  projectId,
   wallet,
+  walletAssets,
   initialPolicy,
   policyError,
 }: WalletPolicyStartingProfileFlowProps) {
-  const router = useRouter();
+  const t = useTranslations();
+  const router = useDashboardRouter();
   const pathname = usePathname();
+  const initialState = useMemo(() => createPolicyAuthoringState(initialPolicy), [initialPolicy]);
+  const [state, setState] = useState(initialState);
   const [currentPolicy, setCurrentPolicy] = useState(initialPolicy);
+  const [activeFingerprint, setActiveFingerprint] = useState(() =>
+    policyStateFingerprint(wallet.walletId, initialState)
+  );
   const [stepIndex, setStepIndex] = useState(0);
-  const [selectedCategories, setSelectedCategories] = useState<RestrictionCategoryId[]>(
-    categoriesFromPolicy(initialPolicy)
-  );
-  const [expandedRuleIds, setExpandedRuleIds] = useState<RestrictionCategoryId[]>(
-    categoriesFromPolicy(initialPolicy)
-  );
-  const [blockedOperationFamilies, setBlockedOperationFamilies] = useState<WalletOperationFamily[]>(
-    blockedOperationFamiliesFromRules(initialPolicy.rules ?? [])
-  );
-  const [destinationText, setDestinationText] = useState(
-    initialPolicy.destinationAllowlist.join("\n")
-  );
-  const [maxTransferAmount, setMaxTransferAmount] = useState(initialPolicy.maxTransferAmount ?? "");
-  const [maxDailyAmount, setMaxDailyAmount] = useState(initialPolicy.maxDailyAmount ?? "");
-  const [approvalFamilies, setApprovalFamilies] = useState<WalletOperationFamily[]>(
-    approvalFamiliesFromRules(initialPolicy.rules ?? [])
-  );
-  const [advancedDeniedFamilies, setAdvancedDeniedFamilies] = useState<AdvancedFamily[]>(
-    advancedDeniedFamiliesFromRules(initialPolicy.rules ?? [])
-  );
-  const [savedDraft, setSavedDraft] = useState<StoredPolicyDraft | null>(null);
-  const [localStatus, setLocalStatus] = useState<"draft" | "disabled" | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationRequestedSteps, setValidationRequestedSteps] = useState<PolicyFlowStep[]>([]);
+  const [disableOpen, setDisableOpen] = useState(false);
 
   useEffect(() => {
-    const draft = readStoredDraft(wallet.walletId);
+    const draft = loadPolicyDraft(window.localStorage, projectId, wallet.walletId);
     if (draft) {
-      setSavedDraft(draft);
-      setLocalStatus(draft.status);
-      setSelectedCategories(draft.categories);
-      setExpandedRuleIds(draft.categories);
-      setBlockedOperationFamilies(draft.blockedOperationFamilies);
-      setDestinationText(draft.destinationAllowlist.join("\n"));
-      setMaxTransferAmount(draft.maxTransferAmount);
-      setMaxDailyAmount(draft.maxDailyAmount);
-      setApprovalFamilies(draft.approvalFamilies);
-      setAdvancedDeniedFamilies(draft.advancedDeniedFamilies);
-      const draftStepIndex = FLOW_STEPS.findIndex((step) => step.id === draft.step);
-      setStepIndex(Math.max(0, draftStepIndex));
+      setState(draft.state);
+      const savedStepIndex = FLOW_STEPS.indexOf(draft.step);
+      setStepIndex(
+        savedStepIndex === 1 && !hasLimitsAndAssetsControls(draft.state)
+          ? 2
+          : savedStepIndex < 0
+            ? 0
+            : savedStepIndex
+      );
     }
     setIsLoaded(true);
-  }, [wallet.walletId]);
+  }, [projectId, wallet.walletId]);
 
-  const currentStep = FLOW_STEPS[stepIndex] ?? FLOW_STEPS[0];
-  const selectedCategorySet = useMemo(() => new Set(selectedCategories), [selectedCategories]);
-  const expandedRuleSet = useMemo(() => new Set(expandedRuleIds), [expandedRuleIds]);
-  const destinationParse = useMemo(() => parseDestinationText(destinationText), [destinationText]);
-  const hasLivePolicy = policyHasRestrictions(currentPolicy);
-  const walletDetailHref = getWalletDetailHref(pathname, wallet.walletId);
-  const {
-    canActivateOperations,
-    canActivateDestinations,
-    canActivateLimits,
-    canActivateApprovals,
-    canActivateAdvanced,
-    canActivate,
-    canSubmitReview,
-  } = getPolicyFlowValidationState({
-    selectedCategories,
-    selectedCategorySet,
-    blockedOperationFamilies,
-    destinationParse,
-    maxTransferAmount,
-    maxDailyAmount,
-    approvalFamilies,
-    advancedDeniedFamilies,
-    isSubmitting,
-    policyError,
-  });
+  const currentStep = FLOW_STEPS[stepIndex] ?? "intent";
+  const currentStepCopy = STEP_COPY[currentStep];
+  const validation = useMemo(() => validatePolicyState(state), [state]);
+  const visibleValidation = validationRequestedSteps.includes(currentStep) ? validation : {};
+  const destinationParse = useMemo(
+    () => parseDestinationText(state.destinationText),
+    [state.destinationText]
+  );
+  const stateFingerprint = useMemo(
+    () => policyStateFingerprint(wallet.walletId, state),
+    [state, wallet.walletId]
+  );
+  const isDirty = stateFingerprint !== activeFingerprint;
 
-  function persistDraft(options: { notify: boolean } = { notify: false }) {
-    if (typeof window === "undefined") return;
-
-    const draft: StoredPolicyDraft = {
-      status: "draft",
-      step: currentStep.id,
-      categories: selectedCategories,
-      blockedOperationFamilies,
-      destinationAllowlist: destinationParse.addresses,
-      maxTransferAmount: maxTransferAmount.trim(),
-      maxDailyAmount: maxDailyAmount.trim(),
-      approvalFamilies,
-      advancedDeniedFamilies,
+  function createDraft(): StoredPolicyDraft {
+    return {
+      version: 1,
+      projectId,
+      walletId: wallet.walletId,
+      step: currentStep,
+      state,
       updatedAt: new Date().toISOString(),
     };
+  }
 
+  function persistDraft(notify = false) {
+    const draft = createDraft();
     try {
-      window.localStorage.setItem(draftStorageKey(wallet.walletId), JSON.stringify(draft));
-      setSavedDraft(draft);
-      setLocalStatus("draft");
+      savePolicyDraft(window.localStorage, draft);
+      if (notify) {
+        toast.success(t("DashboardCustody.policyDraftSaved"), {
+          description: t("DashboardCustody.policyDraftSavedDescription"),
+          position: "bottom-right",
+        });
+      }
     } catch {
-      setSavedDraft(null);
-      setLocalStatus(null);
-      toast.error("Draft could not be saved.", {
-        description: "You can keep configuring, but changes may be lost if you leave.",
-        position: "bottom-right",
-      });
-      return;
-    }
-
-    if (options.notify) {
-      toast.success("Draft saved.", {
-        description: "The profile is not active yet.",
+      toast.error(t("DashboardCustody.policyDraftSaveFailed"), {
+        description: t("DashboardCustody.policyDraftSaveFailedDescription"),
         position: "bottom-right",
       });
     }
   }
 
-  function clearDraft() {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(draftStorageKey(wallet.walletId));
-    }
-    setSavedDraft(null);
-    setLocalStatus(null);
+  useEffect(() => {
+    if (!isLoaded || !isDirty) return;
+    const draft: StoredPolicyDraft = {
+      version: 1,
+      projectId,
+      walletId: wallet.walletId,
+      step: currentStep,
+      state,
+      updatedAt: new Date().toISOString(),
+    };
+    const timeout = window.setTimeout(() => {
+      try {
+        savePolicyDraft(window.localStorage, draft);
+      } catch {
+        // Manual Save draft surfaces storage failures without interrupting editing on every keystroke.
+      }
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [currentStep, isDirty, isLoaded, projectId, state, wallet.walletId]);
+
+  function setPolicyState(update: (current: PolicyAuthoringState) => PolicyAuthoringState) {
+    setState((current) => update(current));
   }
 
-  function toggleCategory(categoryId: RestrictionCategoryId) {
-    setSelectedCategories((current) => toggleValue(current, categoryId));
-    setExpandedRuleIds((current) =>
-      selectedCategorySet.has(categoryId)
-        ? current.filter((item) => item !== categoryId)
-        : current.includes(categoryId)
-          ? current
-          : [...current, categoryId]
-    );
-    if (localStatus === "disabled") setLocalStatus(null);
-  }
-
-  function toggleExpandedRule(categoryId: RestrictionCategoryId) {
-    setExpandedRuleIds((current) => toggleValue(current, categoryId));
-  }
-
-  function goNext() {
-    if (currentStep.id === "intent" && selectedCategories.length === 0) {
-      toast.error("Choose at least one restriction category.", {
-        position: "bottom-right",
-      });
-      return;
+  function stepHasErrors(step: PolicyFlowStep): boolean {
+    if (step === "intent") return Boolean(validation.intent);
+    if (step === "limits-assets") {
+      return Boolean(
+        validation.maxTransferAmount || validation.maxDailyAmount || validation.assets
+      );
     }
-
-    if (currentStep.id === "details") {
-      if (!canActivateDestinations) {
-        toast.error("Check destination addresses.", {
-          description: "Use valid Solana addresses before review.",
-          position: "bottom-right",
-        });
-        return;
-      }
-      if (!canActivateOperations) {
-        toast.error("Choose operation access controls.", {
-          description: "Select at least one operation family to block.",
-          position: "bottom-right",
-        });
-        return;
-      }
-      if (!canActivateLimits) {
-        toast.error("Check transfer limits.", {
-          description: "Enter a positive number for each configured limit.",
-          position: "bottom-right",
-        });
-        return;
-      }
-      if (!canActivateApprovals) {
-        toast.error("Choose approval checks.", {
-          description: "Select at least one operation family that should require approval.",
-          position: "bottom-right",
-        });
-        return;
-      }
-      if (!canActivateAdvanced) {
-        toast.error("Choose advanced signing controls.", {
-          description: "Select raw signing, program interactions, or both.",
-          position: "bottom-right",
-        });
-        return;
-      }
+    if (step === "destinations-operations") {
+      return Boolean(validation.destinations || validation.operations);
     }
-
-    persistDraft();
-
-    setStepIndex((current) => Math.min(current + 1, FLOW_STEPS.length - 1));
+    return Object.keys(validation).length > 0;
   }
 
   function goBack() {
     if (stepIndex === 0) {
-      router.push(walletDetailHref);
+      router.push(walletDetailHref(pathname, wallet.walletId));
       return;
     }
-    setStepIndex((current) => Math.max(current - 1, 0));
-  }
-
-  async function activateProfile() {
-    if (!canActivate) {
-      persistDraft({ notify: true });
-      return;
-    }
-
-    setIsSubmitting(true);
-    const toastId = toast.loading("Activating wallet controls.", {
-      position: "bottom-right",
-    });
-    try {
-      const updated = await updateWalletPolicy(wallet.walletId, {
-        walletId: wallet.walletId,
-        destinationAllowlist: selectedCategorySet.has("destinations")
-          ? destinationParse.addresses
-          : [],
-        ...(selectedCategorySet.has("limits") && maxTransferAmount.trim()
-          ? { maxTransferAmount: maxTransferAmount.trim() }
-          : {}),
-        ...(selectedCategorySet.has("limits") && maxDailyAmount.trim()
-          ? { maxDailyAmount: maxDailyAmount.trim() }
-          : {}),
-        defaultAction: DEFAULT_POLICY_ACTION,
-        rules: buildPolicyRules({
-          selectedCategorySet,
-          blockedOperationFamilies,
-          destinationAllowlist: destinationParse.addresses,
-          maxTransferAmount: maxTransferAmount.trim(),
-          approvalFamilies,
-          advancedDeniedFamilies,
-        }),
-      });
-
-      setCurrentPolicy(updated);
-      clearDraft();
-
-      toast.success("Wallet controls active.", {
-        id: toastId,
-        description: "The selected restrictions are now active.",
-        position: "bottom-right",
-      });
-
-      if (!hasLivePolicy) {
-        router.replace(walletDetailHref);
-      }
-    } catch (error) {
-      toast.error("Activation failed.", {
-        id: toastId,
-        description: error instanceof Error ? error.message : "Wallet controls could not be saved.",
-        position: "bottom-right",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function disableProfile() {
-    setIsSubmitting(true);
-    const toastId = toast.loading("Disabling wallet controls.", {
-      position: "bottom-right",
-    });
-    try {
-      const updated = await updateWalletPolicy(wallet.walletId, {
-        walletId: wallet.walletId,
-        destinationAllowlist: [],
-        defaultAction: DEFAULT_POLICY_ACTION,
-        rules: [],
-      });
-
-      const disabledDraft: StoredPolicyDraft = {
-        status: "disabled",
-        step: "intent",
-        categories: [],
-        blockedOperationFamilies: [],
-        destinationAllowlist: [],
-        maxTransferAmount: "",
-        maxDailyAmount: "",
-        approvalFamilies: [],
-        advancedDeniedFamilies: [],
-        updatedAt: new Date().toISOString(),
-      };
-
-      setCurrentPolicy(updated);
-      setSelectedCategories([]);
-      setBlockedOperationFamilies([]);
-      setDestinationText("");
-      setMaxTransferAmount("");
-      setMaxDailyAmount("");
-      setApprovalFamilies([]);
-      setAdvancedDeniedFamilies([]);
-      setExpandedRuleIds([]);
-      setSavedDraft(disabledDraft);
-      setLocalStatus("disabled");
+    if (currentStep === "destinations-operations" && !hasLimitsAndAssetsControls(state)) {
       setStepIndex(0);
-      try {
-        window.localStorage.setItem(
-          draftStorageKey(wallet.walletId),
-          JSON.stringify(disabledDraft)
-        );
-      } catch {
-        // The backend policy is already disabled; keep the UI in sync even if local storage is full.
-      }
+      return;
+    }
+    setStepIndex((current) => Math.max(0, current - 1));
+  }
 
-      toast.success("Wallet controls disabled.", {
+  function goNext() {
+    if (stepHasErrors(currentStep)) {
+      setValidationRequestedSteps((steps) =>
+        steps.includes(currentStep) ? steps : [...steps, currentStep]
+      );
+      return;
+    }
+    persistDraft();
+    setStepIndex((current) =>
+      currentStep === "intent" && !hasLimitsAndAssetsControls(state)
+        ? 2
+        : Math.min(FLOW_STEPS.length - 1, current + 1)
+    );
+  }
+
+  async function activateControls() {
+    if (Object.keys(validation).length > 0 || policyError || !isDirty) {
+      toast.error(t("DashboardCustody.policyActivationValidation"), { position: "bottom-right" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    const toastId = toast.loading(t("DashboardCustody.policyActivating"), {
+      position: "bottom-right",
+    });
+    try {
+      const updated = await updateWalletPolicy(
+        wallet.walletId,
+        buildPolicyPayload(wallet.walletId, state),
+        t
+      );
+      const returnedState = createPolicyAuthoringState(updated);
+      setCurrentPolicy(updated);
+      setState(returnedState);
+      setActiveFingerprint(policyStateFingerprint(wallet.walletId, returnedState));
+      clearPolicyDraft(window.localStorage, projectId, wallet.walletId);
+      toast.success(t("DashboardCustody.policyActive"), {
         id: toastId,
-        description: "The wallet is back to default allow.",
+        description: t("DashboardCustody.policyActiveDescription"),
         position: "bottom-right",
       });
     } catch (error) {
-      toast.error("Disable failed.", {
+      toast.error(t("DashboardCustody.policyActivationFailed"), {
         id: toastId,
-        description: error instanceof Error ? error.message : "Wallet controls could not be saved.",
+        description:
+          error instanceof Error ? error.message : t("DashboardCustody.policySaveFailed"),
         position: "bottom-right",
       });
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  async function disableControls() {
+    setIsSubmitting(true);
+    const toastId = toast.loading(t("DashboardCustody.policyDisabling"), {
+      position: "bottom-right",
+    });
+    try {
+      const updated = await updateWalletPolicy(
+        wallet.walletId,
+        buildDisabledPolicyPayload(wallet.walletId),
+        t
+      );
+      const returnedState = createPolicyAuthoringState(updated);
+      setCurrentPolicy(updated);
+      setState(returnedState);
+      setActiveFingerprint(policyStateFingerprint(wallet.walletId, returnedState));
+      setStepIndex(0);
+      clearPolicyDraft(window.localStorage, projectId, wallet.walletId);
+      setDisableOpen(false);
+      toast.success(t("DashboardCustody.policyDisabled"), {
+        id: toastId,
+        description: t("DashboardCustody.policyDisabledDescription"),
+        position: "bottom-right",
+      });
+    } catch (error) {
+      toast.error(t("DashboardCustody.policyDisableFailed"), {
+        id: toastId,
+        description:
+          error instanceof Error ? error.message : t("DashboardCustody.policySaveFailed"),
+        position: "bottom-right",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const canActivate =
+    isDirty && !isSubmitting && !policyError && Object.keys(validation).length === 0;
+  const hasActiveControls =
+    Boolean(currentPolicy.controlProfile) && hasActiveRestrictions(currentPolicy);
 
   return (
-    <div className="mx-auto flex h-[80vh] w-full max-w-xl flex-col px-4 py-4">
-      <StepIndicator stepIndex={stepIndex} />
+    <div className="flex h-full min-h-0 flex-col bg-surface-raised">
+      <WalletPolicyToolbar
+        stepIndex={stepIndex}
+        walletHref={walletDetailHref(pathname, wallet.walletId)}
+      />
 
-      <div className="mt-6 space-y-1">
-        <h1 className="text-2xl font-medium text-text-extra-high">{currentStep.title}</h1>
-        <p className="text-sm text-text-medium">{currentStep.description}</p>
-        {savedDraft?.updatedAt && localStatus === "draft" ? (
-          <p className="pt-1 text-xs text-text-extra-low">
-            Draft saved {formatDateTime(savedDraft.updatedAt)}
-          </p>
-        ) : null}
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-6 md:py-8">
+        <div className="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <main className="min-w-0">
+            <div className="mb-6">
+              <h1 className="text-2xl font-medium text-primary">{t(currentStepCopy.titleKey)}</h1>
+              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-secondary">
+                {t(currentStepCopy.descriptionKey)}
+              </p>
+            </div>
 
-      {policyError ? (
-        <div className="mt-4 rounded-md border border-status-error-border bg-status-error-bg px-3 py-2 text-sm text-status-error-text">
-          {policyError}
+            {policyError ? (
+              <div className="mb-5 rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
+                {policyError}
+              </div>
+            ) : null}
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16 }}
+              >
+                {!isLoaded ? <LoadingState /> : null}
+                {isLoaded && currentStep === "intent" ? (
+                  <IntentStep
+                    state={state}
+                    setPolicyState={setPolicyState}
+                    error={visibleValidation.intent}
+                  />
+                ) : null}
+                {isLoaded && currentStep === "limits-assets" ? (
+                  <LimitsAndAssetsStep
+                    state={state}
+                    setPolicyState={setPolicyState}
+                    walletAssets={walletAssets}
+                    errors={visibleValidation}
+                  />
+                ) : null}
+                {isLoaded && currentStep === "destinations-operations" ? (
+                  <DestinationsAndOperationsStep
+                    state={state}
+                    setPolicyState={setPolicyState}
+                    destinationParse={destinationParse}
+                    errors={visibleValidation}
+                  />
+                ) : null}
+                {isLoaded && currentStep === "review" ? (
+                  <ReviewStep
+                    state={state}
+                    onEdit={(step, category) => {
+                      if (category) {
+                        setPolicyState((current) =>
+                          current.categories.includes(category)
+                            ? current
+                            : { ...current, categories: [...current.categories, category] }
+                        );
+                      }
+                      setStepIndex(FLOW_STEPS.indexOf(step));
+                    }}
+                  />
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          <PolicySummaryRail
+            wallet={wallet}
+            policy={currentPolicy}
+            state={state}
+            stepIndex={stepIndex}
+            destinationCount={destinationParse.valid.length}
+          />
         </div>
-      ) : null}
-
-      <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-1 py-1">
-        <PolicyAuditPanel audit={currentPolicy.audit ?? null} />
-        {!isLoaded ? <LoadingState /> : null}
-        {isLoaded && currentStep.id === "intent" ? (
-          <IntentStep selectedCategories={selectedCategories} onToggle={toggleCategory} />
-        ) : null}
-        {isLoaded && currentStep.id === "details" ? (
-          <DetailsStep
-            selectedCategories={selectedCategories}
-            expandedRuleSet={expandedRuleSet}
-            onToggleExpandedRule={toggleExpandedRule}
-            destinationText={destinationText}
-            setDestinationText={setDestinationText}
-            destinationCount={destinationParse.addresses.length}
-            invalidDestinations={destinationParse.invalid}
-            maxTransferAmount={maxTransferAmount}
-            setMaxTransferAmount={setMaxTransferAmount}
-            maxDailyAmount={maxDailyAmount}
-            setMaxDailyAmount={setMaxDailyAmount}
-            blockedOperationFamilies={blockedOperationFamilies}
-            setBlockedOperationFamilies={setBlockedOperationFamilies}
-            approvalFamilies={approvalFamilies}
-            setApprovalFamilies={setApprovalFamilies}
-            advancedDeniedFamilies={advancedDeniedFamilies}
-            setAdvancedDeniedFamilies={setAdvancedDeniedFamilies}
-          />
-        ) : null}
-        {isLoaded && currentStep.id === "review" ? (
-          <ReviewStep
-            selectedCategories={selectedCategories}
-            blockedOperationFamilies={blockedOperationFamilies}
-            destinationCount={destinationParse.addresses.length}
-            invalidDestinationCount={destinationParse.invalid.length}
-            maxTransferAmount={maxTransferAmount.trim()}
-            maxDailyAmount={maxDailyAmount.trim()}
-            approvalFamilies={approvalFamilies}
-            advancedDeniedFamilies={advancedDeniedFamilies}
-            controlProfile={currentPolicy.controlProfile ?? null}
-          />
-        ) : null}
       </div>
 
-      <footer className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-2 sm:flex-row">
+      <footer className="shrink-0 border-t border-border-default bg-surface-raised/95 px-4 py-4 md:px-6">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3">
           <Button
             type="button"
             variant="secondary"
-            className="w-full sm:w-auto"
             onClick={goBack}
+            disabled={isSubmitting}
             iconLeft={<ArrowLeft className="size-4" />}
           >
-            {stepIndex === 0 ? "Back" : "Previous"}
+            {t("DashboardCustody.back")}
           </Button>
-        </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {hasLivePolicy && currentStep.id === "review" ? (
-            <Button
-              type="button"
-              variant="destructive"
-              className="w-full sm:w-auto"
-              onClick={disableProfile}
-              disabled={isSubmitting}
-            >
-              Disable
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            className="w-full sm:w-auto"
-            onClick={currentStep.id === "review" ? activateProfile : goNext}
-            iconRight={currentStep.id === "review" ? undefined : <ArrowRight className="size-4" />}
-            disabled={
-              isSubmitting ||
-              Boolean(policyError && currentStep.id === "review") ||
-              (currentStep.id === "review" && !canSubmitReview)
-            }
-          >
-            {currentStep.id === "review" ? "Apply controls" : "Continue"}
-          </Button>
+          <div className="flex min-w-0 items-center gap-2">
+            {currentStep === "review" ? (
+              <>
+                {hasActiveControls ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        aria-label={t("DashboardCustody.policyMoreActions")}
+                        disabled={isSubmitting}
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        className="text-error focus:bg-error-bg"
+                        onSelect={() => setDisableOpen(true)}
+                      >
+                        <Trash2 className="size-4" />
+                        {t("DashboardCustody.policyDisableControls")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => persistDraft(true)}
+                  disabled={isSubmitting}
+                >
+                  {t("DashboardCustody.policySaveDraft")}
+                </Button>
+                <Button type="button" onClick={activateControls} disabled={!canActivate}>
+                  {isSubmitting
+                    ? t("DashboardCustody.policyActivating")
+                    : isDirty
+                      ? t("DashboardCustody.policyActivateControls")
+                      : t("DashboardCustody.policyControlsActive")}
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                onClick={goNext}
+                disabled={isSubmitting}
+                iconRight={<ArrowRight className="size-4" />}
+              >
+                {t("DashboardCustody.continue")}
+              </Button>
+            )}
+          </div>
         </div>
       </footer>
+
+      <DisableControlsDialog
+        open={disableOpen}
+        walletName={wallet.label || wallet.walletId}
+        submitting={isSubmitting}
+        onClose={() => setDisableOpen(false)}
+        onConfirm={disableControls}
+      />
     </div>
   );
 }
 
-function PolicyAuditPanel({ audit }: { audit: PolicyAudit | null }) {
-  const evaluations = audit?.recentEvaluations.slice(0, 5) ?? [];
-  if (evaluations.length === 0) return null;
+export function WalletPolicyToolbar({
+  stepIndex,
+  walletHref,
+}: {
+  stepIndex: number;
+  walletHref: string;
+}) {
+  const t = useTranslations();
 
   return (
-    <section className="mb-4 rounded-lg border border-border-light bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-text-extra-high">Recent policy decisions</h2>
-          <p className="mt-1 text-xs text-text-extra-low">
-            {formatCount(evaluations.length, "evaluation")} shown for this wallet
-          </p>
+    <div data-wallet-policy-toolbar="true" className="shrink-0 px-4 py-3 md:px-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
+        <StepIndicator stepIndex={stepIndex} />
+        <div
+          data-wallet-policy-toolbar-actions="true"
+          className="ml-auto flex flex-wrap items-center justify-end gap-2"
+        >
+          <Button asChild variant="outline" size="sm">
+            <Link href={`${walletHref}/policy/audit`}>
+              <ListChecks className="size-4" />
+              {t("DashboardCustody.policyAuditTitle")}
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`${walletHref}/policy/revisions`}>
+              <History className="size-4" />
+              {t("DashboardCustody.policyAuditRevisionHistory")}
+            </Link>
+          </Button>
         </div>
       </div>
-
-      <div className="mt-3 divide-y divide-border-light">
-        {evaluations.map((entry) => (
-          <div key={entry.policyEvaluationId} className="py-3 first:pt-0 last:pb-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-semibold text-text-extra-high">
-                {formatPolicyDecision(entry.decision)}
-              </span>
-              <span className="rounded-full bg-border-extra-light px-2 py-0.5 text-text-medium">
-                {formatPolicyStatus(entry.status)}
-              </span>
-              {entry.requiresApproval ? (
-                <span className="rounded-full bg-status-warning-bg px-2 py-0.5 text-status-warning-text">
-                  Needs approval
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-1 text-sm leading-5 text-text-medium">
-              {formatPolicyAuditOperation(entry)}
-            </p>
-            <p className="mt-1 text-xs leading-5 text-text-medium">
-              {entry.reason ?? entry.reasonCode}
-            </p>
-            <p className="mt-1 text-xs text-text-extra-low">
-              {formatDateTime(entry.evaluatedAt)}
-              {entry.approvalRequestId ? ` / Approval ${entry.approvalRequestId}` : ""}
-            </p>
-          </div>
-        ))}
-      </div>
-    </section>
+    </div>
   );
 }
 
 function StepIndicator({ stepIndex }: { stepIndex: number }) {
+  const t = useTranslations();
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1.5">
-        {FLOW_STEPS.map((step, index) => (
-          <div
-            key={step.id}
-            className={cn(
-              "h-1.5 rounded-full transition-all duration-200",
-              index === stepIndex
-                ? "w-4 bg-gray-1400"
-                : index < stepIndex
-                  ? "w-1.5 bg-gray-1400"
-                  : "w-1.5 bg-border-light"
-            )}
-          />
-        ))}
-      </div>
-      <span className="text-xs text-text-extra-low">
-        Step {stepIndex + 1} of {FLOW_STEPS.length}
-      </span>
-    </div>
+    <WizardStepProgress
+      data-wallet-policy-stepper="true"
+      currentStep={stepIndex}
+      progressLabel={t("DashboardCustody.stepOf", {
+        current: stepIndex + 1,
+        total: FLOW_STEPS.length,
+      })}
+      steps={FLOW_STEPS}
+    />
   );
 }
 
 function LoadingState() {
   return (
-    <div className="grid gap-3">
-      <div className="h-20 animate-pulse rounded-lg bg-gray-100" />
-      <div className="h-20 animate-pulse rounded-lg bg-gray-100" />
-      <div className="h-20 animate-pulse rounded-lg bg-gray-100" />
+    <div className="space-y-4">
+      <div className="h-32 animate-pulse rounded-lg bg-surface-sunken" />
+      <div className="h-48 animate-pulse rounded-lg bg-surface-sunken" />
     </div>
   );
 }
 
-function IntentStep({
-  selectedCategories,
-  onToggle,
-}: {
-  selectedCategories: RestrictionCategoryId[];
-  onToggle: (category: RestrictionCategoryId) => void;
-}) {
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {RESTRICTION_CATEGORIES.map((category) => {
-        const selected = selectedCategories.includes(category.id);
-
-        return (
-          <button
-            key={category.id}
-            type="button"
-            onClick={() => onToggle(category.id)}
-            aria-pressed={selected}
-            className={cn(
-              "relative min-h-[150px] rounded-lg border p-4 pr-14 text-left transition-colors",
-              selected
-                ? "border-[rgba(28,28,29,0.72)] bg-[rgba(28,28,29,0.04)] shadow-[inset_0_0_0_1px_rgba(28,28,29,0.72)]"
-                : "border-border-light bg-white hover:bg-gray-100"
-            )}
-          >
-            <p className="text-base font-semibold text-text-extra-high">{category.title}</p>
-            <p className="mt-2 text-sm leading-6 text-text-medium">{category.description}</p>
-            {selected ? (
-              <span className="absolute right-4 bottom-4 flex size-6 items-center justify-center rounded-full bg-gray-1400 text-white">
-                <Check className="size-4" />
-                <span className="sr-only">Selected</span>
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function DetailsStep({
-  selectedCategories,
-  expandedRuleSet,
-  onToggleExpandedRule,
-  blockedOperationFamilies,
-  setBlockedOperationFamilies,
-  destinationText,
-  setDestinationText,
-  destinationCount,
-  invalidDestinations,
-  maxTransferAmount,
-  setMaxTransferAmount,
-  maxDailyAmount,
-  setMaxDailyAmount,
-  approvalFamilies,
-  setApprovalFamilies,
-  advancedDeniedFamilies,
-  setAdvancedDeniedFamilies,
-}: {
-  selectedCategories: RestrictionCategoryId[];
-  expandedRuleSet: Set<RestrictionCategoryId>;
-  onToggleExpandedRule: (category: RestrictionCategoryId) => void;
-  blockedOperationFamilies: WalletOperationFamily[];
-  setBlockedOperationFamilies: (value: WalletOperationFamily[]) => void;
-  destinationText: string;
-  setDestinationText: (value: string) => void;
-  destinationCount: number;
-  invalidDestinations: string[];
-  maxTransferAmount: string;
-  setMaxTransferAmount: (value: string) => void;
-  maxDailyAmount: string;
-  setMaxDailyAmount: (value: string) => void;
-  approvalFamilies: WalletOperationFamily[];
-  setApprovalFamilies: (value: WalletOperationFamily[]) => void;
-  advancedDeniedFamilies: AdvancedFamily[];
-  setAdvancedDeniedFamilies: (value: AdvancedFamily[]) => void;
-}) {
-  const selected = RESTRICTION_CATEGORIES.filter((category) =>
-    selectedCategories.includes(category.id)
-  );
-
-  return (
-    <div className="border-y border-border-light">
-      {selected.map((category) => {
-        const expanded = expandedRuleSet.has(category.id);
-
-        return (
-          <RuleSection
-            key={category.id}
-            category={category}
-            expanded={expanded}
-            summary={getRuleSummary({
-              categoryId: category.id,
-              blockedOperationFamilies,
-              destinationCount,
-              maxTransferAmount,
-              maxDailyAmount,
-              approvalFamilies,
-              advancedDeniedFamilies,
-            })}
-            onToggle={() => onToggleExpandedRule(category.id)}
-          >
-            {category.id === "operations" ? (
-              <OperationRuleEditor
-                blockedOperationFamilies={blockedOperationFamilies}
-                setBlockedOperationFamilies={setBlockedOperationFamilies}
-              />
-            ) : null}
-            {category.id === "destinations" ? (
-              <DestinationRuleEditor
-                destinationText={destinationText}
-                setDestinationText={setDestinationText}
-                invalidDestinations={invalidDestinations}
-              />
-            ) : null}
-            {category.id === "limits" ? (
-              <LimitRuleEditor
-                maxTransferAmount={maxTransferAmount}
-                setMaxTransferAmount={setMaxTransferAmount}
-                maxDailyAmount={maxDailyAmount}
-                setMaxDailyAmount={setMaxDailyAmount}
-              />
-            ) : null}
-            {category.id === "approvals" ? (
-              <ApprovalRuleEditor
-                approvalFamilies={approvalFamilies}
-                setApprovalFamilies={setApprovalFamilies}
-              />
-            ) : null}
-            {category.id === "advanced" ? (
-              <AdvancedRuleEditor
-                advancedDeniedFamilies={advancedDeniedFamilies}
-                setAdvancedDeniedFamilies={setAdvancedDeniedFamilies}
-              />
-            ) : null}
-          </RuleSection>
-        );
-      })}
-    </div>
-  );
-}
-
-function RuleSection({
-  category,
-  expanded,
-  summary,
-  onToggle,
+function FormSection({
+  title,
+  description,
+  trailing,
   children,
 }: {
-  category: RestrictionCategory;
-  expanded: boolean;
-  summary: string;
-  onToggle: () => void;
+  title: string;
+  description: string;
+  trailing?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="border-t border-border-light first:border-t-0">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className="flex w-full items-start justify-between gap-4 py-3.5 pr-2 text-left"
-      >
-        <span className="min-w-0">
-          <span className="block text-base font-semibold text-text-extra-high">
-            {category.title}
-          </span>
-          <span className="mt-1 block text-sm leading-5 text-text-medium">{summary}</span>
-        </span>
-        <span className="flex size-6 shrink-0 items-center justify-center text-text-low">
-          <ChevronDown
-            aria-hidden="true"
-            className={cn("size-4 transition-transform duration-200", expanded && "rotate-180")}
-          />
-          <span className="sr-only">{expanded ? "Collapse" : "Expand"}</span>
-        </span>
-      </button>
-      {expanded ? <div className="pb-4 pr-2">{children}</div> : null}
+    <section>
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="text-base font-semibold text-primary">{title}</h2>
+        {trailing}
+      </div>
+      <p className="mt-1 text-sm leading-5 text-secondary">{description}</p>
+      <div className="mt-5">{children}</div>
     </section>
   );
 }
 
-function OptionGrid<TValue extends string>({
-  options,
-  values,
-  onChange,
+function IntentStep({
+  state,
+  setPolicyState,
+  error,
 }: {
-  options: readonly { id: TValue; label: string }[];
-  values: TValue[];
-  onChange: (value: TValue[]) => void;
+  state: PolicyAuthoringState;
+  setPolicyState: (update: (current: PolicyAuthoringState) => PolicyAuthoringState) => void;
+  error?: "restriction_required";
 }) {
+  const t = useTranslations();
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {options.map((option) => {
-        const selected = values.includes(option.id);
+    <div className="space-y-8">
+      <FormSection
+        title={t("DashboardCustody.policyDefaultAction")}
+        description={t("DashboardCustody.policyDefaultActionDescription")}
+      >
+        <Select
+          ariaLabel={t("DashboardCustody.policyDefaultAction")}
+          value={state.defaultAction}
+          onValueChange={(value) => {
+            if (!value) return;
+            setPolicyState((current) => ({
+              ...current,
+              defaultAction: value as AuthoringDefaultAction,
+            }));
+          }}
+          size="xl"
+          iconLeft={<ShieldCheck />}
+        >
+          {(Object.keys(DEFAULT_ACTION_LABEL_KEYS) as AuthoringDefaultAction[]).map((action) => (
+            <SelectItem key={action} value={action}>
+              {t(DEFAULT_ACTION_LABEL_KEYS[action])}
+            </SelectItem>
+          ))}
+        </Select>
+      </FormSection>
 
-        return (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={selected}
-            onClick={() => onChange(toggleValue(values, option.id))}
-            className={cn(
-              "min-h-11 rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors",
-              selected
-                ? "border-[rgba(28,28,29,0.72)] bg-[rgba(28,28,29,0.04)] text-text-extra-high"
-                : "border-border-light bg-white text-text-medium hover:bg-gray-100"
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
+      <FormSection
+        title={t("DashboardCustody.policyRestrictionCategories")}
+        description={t("DashboardCustody.policyRestrictionCategoriesDescription")}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {CATEGORY_OPTIONS.map((category) => {
+            const selected = state.categories.includes(category.id);
+            return (
+              <button
+                key={category.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() =>
+                  setPolicyState((current) => ({
+                    ...current,
+                    categories: toggleValue(current.categories, category.id),
+                  }))
+                }
+                className={cn(
+                  "relative min-h-28 rounded-lg border p-4 pr-12 text-left transition-colors",
+                  selected
+                    ? "border-primary bg-fill-subtle"
+                    : "border-border-default bg-surface-raised hover:bg-surface-sunken"
+                )}
+              >
+                <span className="block text-sm font-semibold text-primary">
+                  {t(category.titleKey)}
+                </span>
+                <span className="mt-1.5 block text-sm leading-5 text-secondary">
+                  {t(category.descriptionKey)}
+                </span>
+                <span
+                  className={cn(
+                    "absolute top-4 right-4 flex size-5 items-center justify-center rounded border",
+                    selected
+                      ? "border-primary bg-primary text-on-primary"
+                      : "border-border-strong bg-surface-raised text-transparent"
+                  )}
+                >
+                  <Check className="size-3.5" />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {error ? (
+          <p className="mt-3 text-sm text-error">
+            {t("DashboardCustody.policyRestrictionRequired")}
+          </p>
+        ) : null}
+      </FormSection>
     </div>
   );
 }
 
-function OperationRuleEditor({
-  blockedOperationFamilies,
-  setBlockedOperationFamilies,
+function LimitsAndAssetsStep({
+  state,
+  setPolicyState,
+  walletAssets,
+  errors,
 }: {
-  blockedOperationFamilies: WalletOperationFamily[];
-  setBlockedOperationFamilies: (value: WalletOperationFamily[]) => void;
+  state: PolicyAuthoringState;
+  setPolicyState: (update: (current: PolicyAuthoringState) => PolicyAuthoringState) => void;
+  walletAssets: WalletAssetOption[];
+  errors: ReturnType<typeof validatePolicyState>;
 }) {
-  return (
-    <div className="space-y-3">
-      <p className="text-sm leading-6 text-text-medium">
-        Selected families are denied before signing or execution. Unselected families continue to
-        use default allow unless another rule applies.
-      </p>
-      <OptionGrid
-        options={OPERATION_FAMILY_OPTIONS}
-        values={blockedOperationFamilies}
-        onChange={setBlockedOperationFamilies}
-      />
-    </div>
-  );
-}
+  const t = useTranslations();
+  const showLimits = state.categories.includes("limits");
+  const showAssets = state.categories.includes("assets");
 
-function DestinationRuleEditor({
-  destinationText,
-  setDestinationText,
-  invalidDestinations,
-}: {
-  destinationText: string;
-  setDestinationText: (value: string) => void;
-  invalidDestinations: string[];
-}) {
+  if (!showLimits && !showAssets) return <EmptyStepState />;
+
   return (
-    <div>
-      <p className="text-sm leading-6 text-text-medium">
-        Paste Solana addresses separated by line breaks, commas, semicolons, tabs, or a CSV column.
-      </p>
-      <textarea
-        value={destinationText}
-        onChange={(event) => setDestinationText(event.target.value)}
-        rows={6}
-        className="mt-2 min-h-[128px] w-full resize-y rounded-lg border border-border-light bg-white px-3 py-3 font-mono text-sm text-text-extra-high outline-none transition-colors placeholder:text-text-extra-low focus:border-gray-1400"
-        placeholder="address&#10;9xQeWvG816bUx9EPfuxEzHh9VY5k..."
-      />
-      {invalidDestinations.length > 0 ? (
-        <p className="mt-2 text-sm text-status-error-text">
-          Invalid address{invalidDestinations.length === 1 ? "" : "es"}:{" "}
-          {invalidDestinations.join(", ")}
-        </p>
+    <div className="space-y-8">
+      {showLimits ? (
+        <FormSection
+          title={t("DashboardCustody.policyTransferLimits")}
+          description={t("DashboardCustody.policyNoGenericLimit")}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <AmountField
+              id="policy-per-transaction"
+              label={t("DashboardCustody.policyPerTransaction")}
+              value={state.maxTransferAmount}
+              error={errors.maxTransferAmount}
+              onChange={(value) =>
+                setPolicyState((current) => ({ ...current, maxTransferAmount: value }))
+              }
+            />
+            <AmountField
+              id="policy-daily-total"
+              label={t("DashboardCustody.policyDailyTotal")}
+              value={state.maxDailyAmount}
+              error={errors.maxDailyAmount}
+              onChange={(value) =>
+                setPolicyState((current) => ({ ...current, maxDailyAmount: value }))
+              }
+            />
+          </div>
+        </FormSection>
+      ) : null}
+
+      {showAssets ? (
+        <AssetEditor
+          assets={state.assets}
+          walletAssets={walletAssets}
+          error={errors.assets}
+          onChange={(assets) => setPolicyState((current) => ({ ...current, assets }))}
+        />
       ) : null}
     </div>
   );
 }
 
-function LimitRuleEditor({
-  maxTransferAmount,
-  setMaxTransferAmount,
-  maxDailyAmount,
-  setMaxDailyAmount,
+function AmountField({
+  id,
+  label,
+  value,
+  error,
+  onChange,
 }: {
-  maxTransferAmount: string;
-  setMaxTransferAmount: (value: string) => void;
-  maxDailyAmount: string;
-  setMaxDailyAmount: (value: string) => void;
+  id: string;
+  label: string;
+  value: string;
+  error?: "invalid_decimal" | "daily_below_transaction";
+  onChange: (value: string) => void;
 }) {
+  const t = useTranslations();
   return (
-    <div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="space-y-2" htmlFor="wallet-policy-max-transfer-amount">
-          <span className="text-sm font-medium text-text-extra-high">Per transfer cap</span>
-          <Input
-            id="wallet-policy-max-transfer-amount"
-            value={maxTransferAmount}
-            onChange={(event) => setMaxTransferAmount(event.target.value)}
-            placeholder="1000"
-            inputMode="decimal"
-          />
-          {!isPositiveAmount(maxTransferAmount) ? (
-            <span className="block text-sm text-status-error-text">Enter a positive number.</span>
-          ) : null}
-        </label>
-        <label className="space-y-2" htmlFor="wallet-policy-max-daily-amount">
-          <span className="text-sm font-medium text-text-extra-high">Daily cap</span>
-          <Input
-            id="wallet-policy-max-daily-amount"
-            value={maxDailyAmount}
-            onChange={(event) => setMaxDailyAmount(event.target.value)}
-            placeholder="5000"
-            inputMode="decimal"
-          />
-          {!isPositiveAmount(maxDailyAmount) ? (
-            <span className="block text-sm text-status-error-text">Enter a positive number.</span>
-          ) : null}
-        </label>
+    <label htmlFor={id} className="block">
+      <span className="mb-2 block text-sm font-medium text-primary">{label}</span>
+      <Input
+        id={id}
+        value={value}
+        inputMode="decimal"
+        placeholder="0.00"
+        aria-invalid={Boolean(error)}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {error ? (
+        <span className="mt-2 block text-sm text-error">
+          {error === "daily_below_transaction"
+            ? t("DashboardCustody.policyDailyBelowTransaction")
+            : t("DashboardCustody.policyInvalidDecimal")}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
+function AssetEditor({
+  assets,
+  walletAssets,
+  error,
+  onChange,
+}: {
+  assets: string[];
+  walletAssets: WalletAssetOption[];
+  error?: "asset_required" | "invalid_asset";
+  onChange: (assets: string[]) => void;
+}) {
+  const t = useTranslations();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [inputError, setInputError] = useState<"invalid" | "duplicate" | null>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const uniqueWalletAssets = walletAssets.filter(
+    (asset, index, values) => values.findIndex((item) => item.mint === asset.mint) === index
+  );
+  const matchingWalletAssets = uniqueWalletAssets
+    .filter(
+      (asset) =>
+        !normalizedQuery ||
+        asset.token.toLowerCase().includes(normalizedQuery) ||
+        asset.mint.toLowerCase().includes(normalizedQuery)
+    )
+    .slice(0, 5);
+  const canAddCustomMint =
+    isValidSolanaAddress(query) &&
+    !assets.includes(query.trim()) &&
+    !matchingWalletAssets.some((asset) => asset.mint === query.trim());
+
+  function addAsset(mint: string) {
+    const normalized = mint.trim();
+    if (assets.includes(normalized)) {
+      setInputError("duplicate");
+      return;
+    }
+    if (!isValidSolanaAddress(normalized)) {
+      setInputError("invalid");
+      return;
+    }
+    onChange([...assets, normalized]);
+    setQuery("");
+    setOpen(false);
+    setInputError(null);
+  }
+
+  function toggleWalletAsset(mint: string) {
+    onChange(assets.includes(mint) ? assets.filter((asset) => asset !== mint) : [...assets, mint]);
+    setQuery("");
+    setOpen(false);
+    setInputError(null);
+  }
+
+  function submitSearch() {
+    if (matchingWalletAssets.length === 1) {
+      toggleWalletAsset(matchingWalletAssets[0].mint);
+      return;
+    }
+    if (canAddCustomMint) {
+      addAsset(query);
+      return;
+    }
+    if (query.trim()) setInputError("invalid");
+  }
+
+  return (
+    <FormSection
+      title={t("DashboardCustody.policyAllowedAssets")}
+      description={t("DashboardCustody.policyAllowedAssetsDescription")}
+      trailing={
+        <span className="shrink-0 text-xs font-medium text-muted">
+          {t("DashboardCustody.policySelectedAssetCount", { count: assets.length })}
+        </span>
+      }
+    >
+      <fieldset
+        className="relative min-w-0"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+        }}
+      >
+        <legend className="sr-only">{t("DashboardCustody.policyAllowedAssets")}</legend>
+        <Input
+          value={query}
+          iconLeft={<Search />}
+          placeholder={t("DashboardCustody.policySearchAssets")}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="policy-wallet-asset-options"
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+            setInputError(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submitSearch();
+            }
+            if (event.key === "Escape") setOpen(false);
+          }}
+        />
+
+        {open ? (
+          <div
+            id="policy-wallet-asset-options"
+            role="listbox"
+            aria-multiselectable="true"
+            className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-border-default bg-surface-raised shadow-lg"
+          >
+            {matchingWalletAssets.length > 0 ? (
+              matchingWalletAssets.map((asset) => {
+                const selected = assets.includes(asset.mint);
+                return (
+                  <button
+                    key={asset.mint}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className="flex w-full items-center gap-3 border-b border-border-default px-3 py-2.5 text-left last:border-b-0 hover:bg-surface-sunken"
+                    onClick={() => toggleWalletAsset(asset.mint)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-primary">{asset.token}</span>
+                      <span className="block truncate text-xs text-muted">{asset.mint}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-secondary">{asset.uiAmount}</span>
+                    <span
+                      className={cn(
+                        "flex size-5 shrink-0 items-center justify-center rounded border",
+                        selected
+                          ? "border-primary bg-primary text-on-primary"
+                          : "border-border-strong bg-surface-raised text-transparent"
+                      )}
+                    >
+                      <Check className="size-3.5" />
+                    </span>
+                  </button>
+                );
+              })
+            ) : query.trim() && !canAddCustomMint ? (
+              <p className="px-3 py-4 text-sm text-muted">
+                {t("DashboardCustody.policyNoMatchingAssets")}
+              </p>
+            ) : null}
+            {canAddCustomMint ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 border-t border-border-default px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-surface-sunken first:border-t-0"
+                onClick={() => addAsset(query)}
+              >
+                <Plus className="size-4" />
+                <span className="min-w-0 flex-1">
+                  <span className="block">{t("DashboardCustody.policyAddCustomMint")}</span>
+                  <span className="block truncate text-xs font-normal text-muted">
+                    {query.trim()}
+                  </span>
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </fieldset>
+
+      {inputError ? (
+        <p className="mt-2 text-sm text-error">
+          {t(
+            inputError === "duplicate"
+              ? "DashboardCustody.policyDuplicateAsset"
+              : "DashboardCustody.policyInvalidMint"
+          )}
+        </p>
+      ) : null}
+
+      {assets.length > 0 ? (
+        <div className="mt-5">
+          <p className="text-xs font-medium text-muted">
+            {t("DashboardCustody.policySelectedAssets")}
+          </p>
+          <div className="mt-2 divide-y divide-border-default border-y border-border-default">
+            {assets.map((mint) => {
+              const walletAsset = uniqueWalletAssets.find((asset) => asset.mint === mint);
+              const label = walletAsset?.token ?? t("DashboardCustody.policyCustomMint");
+              return (
+                <div key={mint} className="flex min-h-14 items-center gap-3 py-2.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-primary">{label}</span>
+                    <span className="block truncate text-xs text-muted" title={mint}>
+                      {mint}
+                    </span>
+                  </span>
+                  {walletAsset ? (
+                    <span className="shrink-0 text-xs text-secondary">{walletAsset.uiAmount}</span>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("DashboardCustody.policyRemoveAsset", { asset: label })}
+                    onClick={() => onChange(assets.filter((asset) => asset !== mint))}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="mt-3 text-sm text-error">
+          {t(
+            error === "invalid_asset"
+              ? "DashboardCustody.policyInvalidMint"
+              : "DashboardCustody.policyAssetRequired"
+          )}
+        </p>
+      ) : null}
+    </FormSection>
+  );
+}
+
+function DestinationsAndOperationsStep({
+  state,
+  setPolicyState,
+  destinationParse,
+  errors,
+}: {
+  state: PolicyAuthoringState;
+  setPolicyState: (update: (current: PolicyAuthoringState) => PolicyAuthoringState) => void;
+  destinationParse: ReturnType<typeof parseDestinationText>;
+  errors: ReturnType<typeof validatePolicyState>;
+}) {
+  const showDestinations = state.categories.includes("destinations");
+  const showOperations = state.categories.includes("operations");
+
+  if (!showDestinations && !showOperations) return <EmptyStepState />;
+
+  return (
+    <div className="space-y-5">
+      {showDestinations ? (
+        <DestinationEditor
+          state={state}
+          parsed={destinationParse}
+          error={errors.destinations}
+          setPolicyState={setPolicyState}
+        />
+      ) : null}
+      {showOperations ? (
+        <OperationEditor state={state} error={errors.operations} setPolicyState={setPolicyState} />
+      ) : null}
+    </div>
+  );
+}
+
+function DestinationEditor({
+  state,
+  parsed,
+  error,
+  setPolicyState,
+}: {
+  state: PolicyAuthoringState;
+  parsed: ReturnType<typeof parseDestinationText>;
+  error?: "destination_required" | "invalid_destination";
+  setPolicyState: (update: (current: PolicyAuthoringState) => PolicyAuthoringState) => void;
+}) {
+  const t = useTranslations();
+  return (
+    <FormSection
+      title={t("DashboardCustody.policyDestinationControls")}
+      description={t("DashboardCustody.policyDestinationControlsDescription")}
+    >
+      <div className="grid max-w-sm grid-cols-2 rounded-full bg-fill p-1">
+        {DESTINATION_MODES.map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            aria-pressed={state.destinationMode === mode}
+            className={cn(
+              "h-9 rounded-full text-sm font-semibold transition-colors",
+              state.destinationMode === mode
+                ? "bg-surface-raised text-primary shadow-sm"
+                : "text-secondary hover:text-primary"
+            )}
+            onClick={() => setPolicyState((current) => ({ ...current, destinationMode: mode }))}
+          >
+            {t(
+              mode === "allowlist"
+                ? "DashboardCustody.policyAllowList"
+                : "DashboardCustody.policyBlockList"
+            )}
+          </button>
+        ))}
       </div>
-    </div>
+      <label className="mt-5 block" htmlFor="policy-destinations">
+        <span className="mb-2 block text-sm font-medium text-primary">
+          {t("DashboardCustody.policyWalletAddresses")}
+        </span>
+        <textarea
+          id="policy-destinations"
+          rows={7}
+          value={state.destinationText}
+          onChange={(event) =>
+            setPolicyState((current) => ({ ...current, destinationText: event.target.value }))
+          }
+          aria-invalid={Boolean(error)}
+          className="min-h-40 w-full resize-y rounded-lg border border-border-default bg-surface-raised px-3 py-3 text-sm leading-6 text-primary outline-none transition-colors placeholder:text-muted focus:border-primary"
+          placeholder={t("DashboardCustody.policyWalletAddressesPlaceholder")}
+        />
+      </label>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="text-muted">{t("DashboardCustody.policyCommaSeparatedAddresses")}</span>
+        <span className="font-medium text-secondary">
+          {t("DashboardCustody.policyValidAddressCount", { count: parsed.valid.length })}
+        </span>
+      </div>
+      {parsed.invalid.length > 0 ? (
+        <div className="mt-3 space-y-1.5">
+          {parsed.invalid.map((entry) => (
+            <p key={`${entry.position}-${entry.value}`} className="text-sm text-error">
+              {t("DashboardCustody.policyInvalidAddressEntry", {
+                position: entry.position,
+                address: entry.value,
+              })}
+            </p>
+          ))}
+        </div>
+      ) : error ? (
+        <p className="mt-3 text-sm text-error">{t("DashboardCustody.policyDestinationRequired")}</p>
+      ) : null}
+    </FormSection>
   );
 }
 
-function ApprovalRuleEditor({
-  approvalFamilies,
-  setApprovalFamilies,
+function OperationEditor({
+  state,
+  error,
+  setPolicyState,
 }: {
-  approvalFamilies: WalletOperationFamily[];
-  setApprovalFamilies: (value: WalletOperationFamily[]) => void;
+  state: PolicyAuthoringState;
+  error?: "operation_required" | "invalid_operation_type";
+  setPolicyState: (update: (current: PolicyAuthoringState) => PolicyAuthoringState) => void;
 }) {
+  const t = useTranslations();
+
+  function toggleFamily(family: WalletOperationFamily) {
+    setPolicyState((current) => {
+      const nextActions = { ...current.familyActions };
+      if (nextActions[family]) delete nextActions[family];
+      else nextActions[family] = "deny";
+      return { ...current, familyActions: nextActions };
+    });
+  }
+
   return (
-    <div className="space-y-3">
-      <p className="text-sm leading-6 text-text-medium">
-        Selected families pause with an approval-required policy decision. Approval inbox routing is
-        handled by the follow-up approval workflow.
-      </p>
-      <OptionGrid
-        options={APPROVAL_FAMILY_OPTIONS}
-        values={approvalFamilies}
-        onChange={setApprovalFamilies}
-      />
-    </div>
+    <FormSection
+      title={t("DashboardCustody.policyOperationControls")}
+      description={t("DashboardCustody.policyOperationControlsDescription")}
+    >
+      <h3 className="text-sm font-semibold text-primary">
+        {t("DashboardCustody.policyOperationFamilies")}
+      </h3>
+      <div className="mt-3 divide-y divide-border-default border-y border-border-default">
+        {WALLET_OPERATION_FAMILIES.map((family) => {
+          const action = state.familyActions[family];
+          return (
+            <div key={family} className="flex min-h-[60px] items-center gap-3 py-2.5">
+              <button
+                type="button"
+                aria-label={t(FAMILY_LABEL_KEYS[family])}
+                aria-pressed={Boolean(action)}
+                onClick={() => toggleFamily(family)}
+                className={cn(
+                  "flex size-5 shrink-0 items-center justify-center rounded border",
+                  action
+                    ? "border-primary bg-primary text-on-primary"
+                    : "border-border-strong bg-surface-raised text-transparent"
+                )}
+              >
+                <Check className="size-3.5" />
+              </button>
+              <span className="min-w-0 flex-1 text-sm font-medium text-primary">
+                {t(FAMILY_LABEL_KEYS[family])}
+              </span>
+              {action ? (
+                <Select
+                  ariaLabel={t(FAMILY_LABEL_KEYS[family])}
+                  value={action}
+                  onValueChange={(value) => {
+                    if (!value) return;
+                    setPolicyState((current) => ({
+                      ...current,
+                      familyActions: {
+                        ...current.familyActions,
+                        [family]: value as AuthoringRuleAction,
+                      },
+                    }));
+                  }}
+                  className="w-48"
+                >
+                  {AUTHORING_RULE_ACTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {t(RULE_ACTION_LABEL_KEYS[option])}
+                    </SelectItem>
+                  ))}
+                </Select>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <p className="mt-3 text-sm text-error">
+          {t(
+            error === "invalid_operation_type"
+              ? "DashboardCustody.policyOperationTypeTooLong"
+              : "DashboardCustody.policyOperationRequired"
+          )}
+        </p>
+      ) : null}
+    </FormSection>
   );
 }
 
-function AdvancedRuleEditor({
-  advancedDeniedFamilies,
-  setAdvancedDeniedFamilies,
-}: {
-  advancedDeniedFamilies: AdvancedFamily[];
-  setAdvancedDeniedFamilies: (value: AdvancedFamily[]) => void;
-}) {
+function EmptyStepState() {
+  const t = useTranslations();
   return (
-    <div className="space-y-3">
-      <p className="text-sm leading-6 text-text-medium">
-        These controls are intentionally strict because they can bypass high-level payment intent.
-      </p>
-      <OptionGrid
-        options={ADVANCED_FAMILY_OPTIONS}
-        values={advancedDeniedFamilies}
-        onChange={setAdvancedDeniedFamilies}
-      />
+    <div className="rounded-lg bg-surface-sunken px-5 py-8 text-center text-sm text-secondary">
+      {t("DashboardCustody.policyNoStepControls")}
     </div>
   );
-}
-
-function getRuleSummary({
-  categoryId,
-  blockedOperationFamilies,
-  destinationCount,
-  maxTransferAmount,
-  maxDailyAmount,
-  approvalFamilies,
-  advancedDeniedFamilies,
-}: {
-  categoryId: RestrictionCategoryId;
-  blockedOperationFamilies: WalletOperationFamily[];
-  destinationCount: number;
-  maxTransferAmount: string;
-  maxDailyAmount: string;
-  approvalFamilies: WalletOperationFamily[];
-  advancedDeniedFamilies: AdvancedFamily[];
-}) {
-  if (categoryId === "operations") {
-    return blockedOperationFamilies.length > 0
-      ? `Block ${formatFamilyList(blockedOperationFamilies)}`
-      : "Choose operation families to block.";
-  }
-
-  if (categoryId === "destinations") {
-    return destinationCount > 0
-      ? formatCount(destinationCount, "address", "addresses")
-      : "Paste approved Solana addresses or a CSV address column.";
-  }
-
-  if (categoryId === "limits") {
-    const parts = [
-      maxTransferAmount.trim() ? `Per transfer ${maxTransferAmount.trim()}` : null,
-      maxDailyAmount.trim() ? `Daily ${maxDailyAmount.trim()}` : null,
-    ].filter(Boolean);
-    return parts.length > 0 ? parts.join(" / ") : "Set a per-transfer cap, daily cap, or both.";
-  }
-
-  if (categoryId === "approvals") {
-    return approvalFamilies.length > 0
-      ? `Require approval for ${formatFamilyList(approvalFamilies)}`
-      : "Choose operation families that should pause for approval.";
-  }
-
-  if (categoryId === "advanced") {
-    return advancedDeniedFamilies.length > 0
-      ? `Block ${formatFamilyList(advancedDeniedFamilies)}`
-      : "Block raw signing, program interactions, or both.";
-  }
-
-  return "";
 }
 
 function ReviewStep({
-  selectedCategories,
-  blockedOperationFamilies,
-  destinationCount,
-  invalidDestinationCount,
-  maxTransferAmount,
-  maxDailyAmount,
-  approvalFamilies,
-  advancedDeniedFamilies,
-  controlProfile,
+  state,
+  onEdit,
 }: {
-  selectedCategories: RestrictionCategoryId[];
-  blockedOperationFamilies: WalletOperationFamily[];
-  destinationCount: number;
-  invalidDestinationCount: number;
-  maxTransferAmount: string;
-  maxDailyAmount: string;
-  approvalFamilies: WalletOperationFamily[];
-  advancedDeniedFamilies: AdvancedFamily[];
-  controlProfile: PaymentWalletPolicy["controlProfile"] | null;
+  state: PolicyAuthoringState;
+  onEdit: (step: PolicyFlowStep, category?: RestrictionCategory) => void;
 }) {
-  const selected = RESTRICTION_CATEGORIES.filter((category) =>
-    selectedCategories.includes(category.id)
-  );
+  const t = useTranslations();
+  const destinations = parseDestinationText(state.destinationText).valid;
+  const limitParts = [
+    state.maxTransferAmount
+      ? t("DashboardCustody.policyReviewPerTransaction", { amount: state.maxTransferAmount })
+      : null,
+    state.maxDailyAmount
+      ? t("DashboardCustody.policyReviewDailyTotal", { amount: state.maxDailyAmount })
+      : null,
+  ].filter((value): value is string => Boolean(value));
+  const reviewRows = [
+    {
+      label: t("DashboardCustody.policyDefaultAction"),
+      value: t(DEFAULT_ACTION_LABEL_KEYS[state.defaultAction]),
+      step: "intent" as const,
+    },
+    {
+      label: t("DashboardCustody.policyReviewTransferLimits"),
+      value: limitParts.join(" / "),
+      step: "limits-assets" as const,
+      category: "limits" as const,
+    },
+    {
+      label: t("DashboardCustody.policyReviewAllowedAssets"),
+      value: state.assets.length
+        ? t("DashboardCustody.policyReviewAssetCount", { count: state.assets.length })
+        : "",
+      step: "limits-assets" as const,
+      category: "assets" as const,
+    },
+    {
+      label: t("DashboardCustody.policyReviewDestinationControls"),
+      value: destinations.length
+        ? t("DashboardCustody.policyReviewDestinationCount", {
+            count: destinations.length,
+            mode: t(
+              state.destinationMode === "allowlist"
+                ? "DashboardCustody.policyAllowList"
+                : "DashboardCustody.policyBlockList"
+            ).toLowerCase(),
+          })
+        : "",
+      step: "destinations-operations" as const,
+      category: "destinations" as const,
+    },
+    {
+      label: t("DashboardCustody.policyReviewOperationControls"),
+      value: operationControlCount(state)
+        ? t("DashboardCustody.policyReviewOperationCount", {
+            count: operationControlCount(state),
+          })
+        : "",
+      step: "destinations-operations" as const,
+      category: "operations" as const,
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-border-light bg-white p-4">
-        <p className="text-sm font-semibold text-text-extra-high">Activation outcome</p>
-        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-          <div>
-            <dt className="text-text-extra-low">Default</dt>
-            <dd className="mt-1 font-medium text-text-extra-high">Allow unmatched operations</dd>
+    <div className="overflow-hidden">
+      {reviewRows.map((row) => (
+        <div
+          key={row.label}
+          className="flex items-start justify-between gap-5 border-t border-border-default px-5 py-4 first:border-t-0"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-primary">{row.label}</p>
+            <p className="mt-1 text-sm leading-5 text-secondary">
+              {row.value || t("DashboardCustody.policyNotConfigured")}
+            </p>
           </div>
-          <div>
-            <dt className="text-text-extra-low">Revision</dt>
-            <dd className="mt-1 font-medium text-text-extra-high">
-              {controlProfile?.revisionNumber ? `#${controlProfile.revisionNumber}` : "New"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-text-extra-low">Provider mapping</dt>
-            <dd className="mt-1 font-medium text-text-extra-high">
-              {controlProfile
-                ? formatProviderMappingStatus(controlProfile.providerMappingStatus)
-                : "SDP enforced"}
-            </dd>
-          </div>
-        </dl>
-      </div>
-      <div className="overflow-hidden rounded-lg border border-border-light bg-white">
-        {selected.length > 0 ? (
-          selected.map((category) => (
-            <ReviewCategory
-              key={category.id}
-              category={category}
-              blockedOperationFamilies={blockedOperationFamilies}
-              destinationCount={destinationCount}
-              invalidDestinationCount={invalidDestinationCount}
-              maxTransferAmount={maxTransferAmount}
-              maxDailyAmount={maxDailyAmount}
-              approvalFamilies={approvalFamilies}
-              advancedDeniedFamilies={advancedDeniedFamilies}
-            />
-          ))
-        ) : (
-          <div className="p-4 text-sm text-text-medium">No restriction category selected.</div>
-        )}
-      </div>
+          {row.step ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() => onEdit(row.step, row.category)}
+            >
+              {t("DashboardCustody.policyEdit")}
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      {state.passthroughRules.length > 0 ? (
+        <div className="border-t border-border-default bg-surface-sunken px-5 py-3 text-xs text-secondary">
+          {t("DashboardCustody.policyReviewPreservedRules", {
+            count: state.passthroughRules.length,
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function ReviewCategory({
-  category,
-  blockedOperationFamilies,
+function PolicySummaryRail({
+  wallet,
+  policy,
+  state,
+  stepIndex,
   destinationCount,
-  invalidDestinationCount,
-  maxTransferAmount,
-  maxDailyAmount,
-  approvalFamilies,
-  advancedDeniedFamilies,
 }: {
-  category: RestrictionCategory;
-  blockedOperationFamilies: WalletOperationFamily[];
+  wallet: WalletPolicyStartingProfileFlowProps["wallet"];
+  policy: PaymentWalletPolicy;
+  state: PolicyAuthoringState;
+  stepIndex: number;
   destinationCount: number;
-  invalidDestinationCount: number;
-  maxTransferAmount: string;
-  maxDailyAmount: string;
-  approvalFamilies: WalletOperationFamily[];
-  advancedDeniedFamilies: AdvancedFamily[];
 }) {
-  let value = "";
-  if (category.id === "operations") {
-    value =
-      blockedOperationFamilies.length > 0
-        ? `Deny ${formatFamilyList(blockedOperationFamilies)}`
-        : "No operation families blocked";
+  const t = useTranslations();
+  const status = policy.controlProfile?.status ?? null;
+  const limits = [
+    state.maxTransferAmount
+      ? t("DashboardCustody.policyReviewPerTransaction", { amount: state.maxTransferAmount })
+      : null,
+    state.maxDailyAmount
+      ? t("DashboardCustody.policyReviewDailyTotal", { amount: state.maxDailyAmount })
+      : null,
+  ].filter((value): value is string => Boolean(value));
+  const rows: Array<{ label: string; value: string }> = [
+    { label: t("DashboardCustody.policySummaryStatus"), value: formatProfileStatus(status, t) },
+    {
+      label: t("DashboardCustody.policyRevision"),
+      value: policy.controlProfile?.revisionNumber
+        ? `#${policy.controlProfile.revisionNumber}`
+        : t("DashboardCustody.policyStatusNotActivated"),
+    },
+    {
+      label: t("DashboardCustody.policySummaryDefaultAction"),
+      value: t(DEFAULT_ACTION_LABEL_KEYS[state.defaultAction]),
+    },
+    {
+      label: t("DashboardCustody.policySummaryControlAreas"),
+      value: t("DashboardCustody.policySummarySelectedCount", {
+        count: state.categories.length,
+      }),
+    },
+  ];
+
+  if (stepIndex >= 1 && state.categories.includes("limits")) {
+    rows.push({
+      label: t("DashboardCustody.policyReviewTransferLimits"),
+      value: limits.join(" / ") || t("DashboardCustody.policyNotConfigured"),
+    });
   }
-  if (category.id === "destinations") {
-    value =
-      invalidDestinationCount > 0
-        ? `${invalidDestinationCount} invalid`
-        : destinationCount > 0
-          ? `${destinationCount} allowed`
-          : "No addresses";
+  if (stepIndex >= 1 && state.categories.includes("assets")) {
+    rows.push({
+      label: t("DashboardCustody.policySummaryAllowedAssets"),
+      value: String(state.assets.length),
+    });
   }
-  if (category.id === "limits") {
-    const parts = [
-      maxTransferAmount ? `Per transfer ${maxTransferAmount}` : null,
-      maxDailyAmount ? `Daily ${maxDailyAmount}` : null,
-    ].filter(Boolean);
-    value = parts.length > 0 ? parts.join(" / ") : "No cap";
+  if (stepIndex >= 2 && state.categories.includes("destinations")) {
+    rows.push({
+      label: t("DashboardCustody.policySummaryDestinations"),
+      value: String(destinationCount),
+    });
   }
-  if (category.id === "approvals") {
-    value =
-      approvalFamilies.length > 0
-        ? `Approval required for ${formatFamilyList(approvalFamilies)}`
-        : "No approval checks";
+  if (stepIndex >= 2 && state.categories.includes("operations")) {
+    rows.push({
+      label: t("DashboardCustody.policyReviewOperationControls"),
+      value: String(operationControlCount(state)),
+    });
   }
-  if (category.id === "advanced") {
-    value =
-      advancedDeniedFamilies.length > 0
-        ? `Deny ${formatFamilyList(advancedDeniedFamilies)}`
-        : "No advanced signing controls";
+
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(wallet.publicKey);
+      toast.success(t("DashboardCustody.policyAddressCopied"), { position: "bottom-right" });
+    } catch {
+      // Clipboard availability depends on browser permissions; the full address remains in the tooltip.
+    }
   }
 
   return (
-    <div className="border-t border-border-light p-4 first:border-t-0">
-      <p className="text-sm font-semibold text-text-extra-high">{category.title}</p>
-      <p className="mt-1 text-sm leading-6 text-text-medium">{value}</p>
-    </div>
+    <aside className="h-fit rounded-lg border border-border-default bg-surface-raised p-5 lg:sticky lg:top-0">
+      <h2 className="text-base font-semibold text-primary">
+        {t("DashboardCustody.policySummary")}
+      </h2>
+      <dl className="mt-4 divide-y divide-border-default">
+        <div className="flex items-center justify-between gap-4 py-3">
+          <dt className="text-sm text-muted">{t("DashboardCustody.policySummaryWallet")}</dt>
+          <dd className="max-w-48 truncate text-right text-sm font-medium text-primary">
+            {wallet.label || wallet.walletId}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-4 py-3">
+          <dt className="text-sm text-muted">{t("DashboardCustody.policySummaryAddress")}</dt>
+          <dd className="flex min-w-0 items-center gap-1.5">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={copyAddress}
+                    className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-primary"
+                    aria-label={t("DashboardCustody.policyCopyAddress")}
+                  >
+                    <span className="max-w-40 truncate">{wallet.publicKey}</span>
+                    <Copy className="size-3.5 shrink-0 text-muted" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{wallet.publicKey}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </dd>
+        </div>
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-4 py-3">
+            <dt className="text-sm text-muted">{row.label}</dt>
+            <dd className="max-w-48 text-right text-sm font-medium text-primary">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
   );
 }
 
-function formatProviderMappingStatus(
-  status: NonNullable<PaymentWalletPolicy["controlProfile"]>["providerMappingStatus"]
+function formatProfileStatus(
+  status: PolicyProfileStatus | null,
+  t: ReturnType<typeof useTranslations>
 ): string {
+  if (!status) return t("DashboardCustody.policyStatusDefaultAllow");
   const labels = {
-    not_applicable: "SDP enforced",
-    pending: "Provider mapping pending",
-    synced: "Provider mapped",
-    partial: "Partially provider mapped",
-    failed: "Provider mapping failed",
-  } satisfies Record<
-    NonNullable<PaymentWalletPolicy["controlProfile"]>["providerMappingStatus"],
-    string
-  >;
-  return labels[status];
+    active: "DashboardCustody.policyStatusActive",
+    draft: "DashboardCustody.policyStatusDraft",
+    disabled: "DashboardCustody.policyStatusDisabled",
+    archived: "DashboardCustody.policyStatusArchived",
+  } as const;
+  return t(labels[status]);
+}
+
+function DisableControlsDialog({
+  open,
+  walletName,
+  submitting,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  walletName: string;
+  submitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const t = useTranslations();
+  return (
+    <Modal
+      isOpen={open}
+      ariaLabel={t("DashboardCustody.policyDisableTitle")}
+      onClose={onClose}
+      closeDisabled={submitting}
+      size="sm"
+    >
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-primary">
+          {t("DashboardCustody.policyDisableTitle")}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-secondary">
+          {t("DashboardCustody.policyDisableConfirmation", { wallet: walletName })}
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
+            {t("DashboardCustody.policyCancel")}
+          </Button>
+          <Button type="button" variant="destructive" onClick={onConfirm} disabled={submitting}>
+            {t("DashboardCustody.policyConfirmDisable")}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
 }

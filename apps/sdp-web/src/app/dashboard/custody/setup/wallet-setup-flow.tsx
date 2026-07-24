@@ -1,9 +1,7 @@
 "use client";
 
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type FormEvent, useMemo, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   createCustodySetupWalletAction,
   initializeCustodySetupAction,
@@ -14,12 +12,54 @@ import {
   type KnownCustodyProvider,
 } from "@/app/dashboard/custody/provider-catalog";
 import { WalletProviderMark } from "@/app/dashboard/custody/wallet-provider-mark";
+import { DashboardNavigationLink as Link } from "@/components/dashboard-navigation-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { ProviderSelectionCard } from "@/components/ui/provider-selection-card";
+import { WizardStepProgress } from "@/components/ui/wizard-step-progress";
+import { useTranslations } from "@/i18n/provider";
+import { useDashboardRouter } from "@/lib/use-dashboard-router";
 
 type SetupStep = "provider" | "details";
+
+const SETUP_STEPS = ["provider", "details"] as const satisfies readonly SetupStep[];
+const PROVIDER_FORM_ID = "wallet-provider-form";
+const DETAILS_FORM_ID = "wallet-details-form";
+
+// Keep Enter available to controls that own it (newlines, option selection,
+// navigation, and action buttons). The already-selected provider card opts in
+// because selecting it again is a no-op and the next useful action is Continue.
+function ignoresEnterToSubmit(target: HTMLElement): boolean {
+  if (target.closest('[data-wallet-enter-advance="true"]')) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tagName = target.tagName;
+  if (
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT" ||
+    tagName === "A" ||
+    tagName === "SUMMARY" ||
+    tagName === "BUTTON"
+  ) {
+    return true;
+  }
+  const role = target.getAttribute("role");
+  if (
+    role === "button" ||
+    role === "combobox" ||
+    role === "listbox" ||
+    role === "option" ||
+    role === "menu" ||
+    role === "menuitem"
+  ) {
+    return true;
+  }
+  return target.getAttribute("aria-haspopup") !== null;
+}
 
 interface WalletSetupFlowProps {
   connectedProviders: KnownCustodyProvider[];
@@ -66,6 +106,7 @@ function ProviderStep({
   providers: CustodyProviderCatalogEntry[];
   selectedProvider: KnownCustodyProvider | null;
 }) {
+  const t = useTranslations();
   const connectedProviderSet = new Set(connectedProviders);
 
   return (
@@ -75,37 +116,22 @@ function ProviderStep({
         const isConnected = connectedProviderSet.has(provider.id);
 
         return (
-          <button
+          <ProviderSelectionCard
             key={provider.id}
-            type="button"
-            onClick={() => onSelect(provider.id)}
-            className={cn(
-              "group w-full cursor-pointer rounded-2xl border px-5 py-5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(28,28,29,0.18)] focus-visible:ring-offset-2",
-              isSelected
-                ? "border-gray-1400 bg-border-extra-light"
-                : "border-border-light bg-white hover:bg-border-extra-light"
-            )}
-            aria-pressed={isSelected}
-          >
-            <div className="flex items-start gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-border-light text-text-extra-high">
-                <WalletProviderMark provider={provider.id} size="sm" />
-              </span>
-              <span className="min-w-0 flex-1 space-y-1">
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="relative inline-block text-[22px] leading-none font-medium text-text-extra-high after:absolute after:left-0 after:-bottom-1 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-current after:transition-transform after:duration-200 group-hover:after:scale-x-100 group-focus-visible:after:scale-x-100 motion-reduce:after:transition-none">
-                    {provider.label}
-                  </span>
-                  {isConnected ? (
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-medium ring-1 ring-border-extra-light">
-                      Active
-                    </span>
-                  ) : null}
+            onSelect={() => onSelect(provider.id)}
+            isSelected={isSelected}
+            advanceOnEnter={isSelected}
+            icon={<WalletProviderMark provider={provider.id} size="sm" />}
+            title={provider.label}
+            description={t(provider.descriptionKey)}
+            badge={
+              isConnected ? (
+                <span className="rounded-full bg-surface-raised px-3 py-1 text-xs font-medium text-secondary ring-1 ring-border-subtle">
+                  {t("DashboardCustody.active")}
                 </span>
-                <span className="block text-sm text-text-low">{provider.description}</span>
-              </span>
-            </div>
-          </button>
+              ) : undefined
+            }
+          />
         );
       })}
     </div>
@@ -117,7 +143,8 @@ export function WalletSetupFlow({
   enabledProviders,
   initialProvider = null,
 }: WalletSetupFlowProps) {
-  const router = useRouter();
+  const t = useTranslations();
+  const router = useDashboardRouter();
   const [isPending, startTransition] = useTransition();
   const enabledProviderEntries = useMemo(
     () => getEnabledProviderEntries(enabledProviders),
@@ -137,6 +164,7 @@ export function WalletSetupFlow({
   );
   const [walletLabel, setWalletLabel] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const submissionInFlightRef = useRef(false);
 
   const connectedProviderSet = useMemo(() => new Set(connectedProviders), [connectedProviders]);
   const selectedProviderEntry = useMemo(
@@ -168,91 +196,153 @@ export function WalletSetupFlow({
     router.push("/dashboard/wallets");
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleProviderSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    continueFromProvider();
   };
 
-  const handleCreateWallet = () => {
-    const form = document.getElementById("wallet-details-form");
-    if (!(form instanceof HTMLFormElement)) {
+  const handleCreateWallet = (form: HTMLFormElement) => {
+    if (
+      submissionInFlightRef.current ||
+      !form.reportValidity() ||
+      !canProvisionWallet ||
+      isPending ||
+      !selectedProviderEntry
+    ) {
       return;
     }
 
-    if (!form.reportValidity() || !canProvisionWallet || isPending || !selectedProviderEntry) {
-      return;
-    }
-
+    submissionInFlightRef.current = true;
     const formData = new FormData(form);
     setErrorMessage(null);
 
     startTransition(async () => {
-      const result = await formAction(formData);
+      try {
+        const result = await formAction(formData);
 
-      if (result.status === "error") {
-        setErrorMessage(result.message);
-        return;
+        if (result.status === "error") {
+          setErrorMessage(result.message);
+          return;
+        }
+
+        router.refresh();
+        router.push("/dashboard/wallets");
+      } finally {
+        submissionInFlightRef.current = false;
       }
-
-      router.refresh();
-      router.push("/dashboard/wallets");
     });
   };
 
+  const handleDetailsSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    handleCreateWallet(event.currentTarget);
+  };
+
+  const currentStepSubmitRef = useRef<() => void>(() => {});
+  currentStepSubmitRef.current = () => {
+    const formId = currentStep === "provider" ? PROVIDER_FORM_ID : DETAILS_FORM_ID;
+    const form = document.getElementById(formId);
+    if (form instanceof HTMLFormElement) {
+      form.requestSubmit();
+    }
+  };
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.key !== "Enter" ||
+        event.repeat ||
+        event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing ||
+        event.defaultPrevented
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (
+        !(target instanceof HTMLElement) ||
+        !target.closest("[data-wallet-setup-flow]") ||
+        ignoresEnterToSubmit(target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      currentStepSubmitRef.current();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   if (enabledProviderEntries.length === 0) {
     return (
-      <div className="mx-auto max-w-3xl rounded-lg border border-[rgba(28,28,29,0.1)] bg-white p-6">
-        <p className="text-lg font-medium text-[#1c1c1d]">No wallet providers enabled</p>
-        <p className="mt-2 text-sm leading-6 text-[rgba(28,28,29,0.62)]">
-          Wallet creation is available after a custody provider is enabled for this organization.
-        </p>
-        <Button asChild variant="secondary" className="mt-5">
-          <Link href="/dashboard/wallets">Back to wallets</Link>
-        </Button>
+      <div className="h-full overflow-y-auto px-4 py-6 md:px-6">
+        <div className="mx-auto max-w-3xl rounded-lg border border-border-default bg-surface-raised p-6">
+          <p className="text-lg font-medium text-primary">
+            {t("DashboardCustody.noWalletProvidersEnabled")}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-secondary">
+            {t("DashboardCustody.walletCreationAvailable")}
+          </p>
+          <Button asChild variant="secondary" className="mt-5">
+            <Link href="/dashboard/wallets">{t("DashboardCustody.backToWallets")}</Link>
+          </Button>
+        </div>
       </div>
     );
   }
 
-  const heading = currentStep === "provider" ? "Choose provider" : "Wallet details";
+  const heading =
+    currentStep === "provider"
+      ? t("DashboardCustody.chooseProvider")
+      : t("DashboardCustody.walletDetails");
   const canContinue = Boolean(selectedProviderEntry);
+  const stepIndex = SETUP_STEPS.indexOf(currentStep);
 
   const formContent = (
     <>
       <input type="hidden" name="provider" value={selectedProviderEntry?.id ?? ""} />
       <div className="space-y-2">
-        <Label htmlFor="wallet-label">Wallet label</Label>
+        <Label htmlFor="wallet-label">{t("DashboardCustody.walletLabel")}</Label>
         <Input
           id="wallet-label"
           name={isConnected ? "label" : "walletLabel"}
           value={walletLabel}
           onChange={(event) => setWalletLabel(event.currentTarget.value)}
-          placeholder="Treasury"
-          className="h-12 rounded-2xl border-border-light bg-white px-4 shadow-none"
+          placeholder={t("DashboardCustody.walletLabelPlaceholder")}
+          className="h-12 rounded-2xl border-border-default bg-surface-raised px-4 shadow-none"
           required
         />
       </div>
       <div className="space-y-2">
-        <Label>Project</Label>
-        <div className="flex h-12 items-center rounded-2xl border border-border-light bg-border-extra-light px-4 text-sm font-medium text-text-extra-high">
-          Default Project
+        <Label>{t("DashboardCustody.project")}</Label>
+        <div className="flex h-12 items-center rounded-2xl border border-border-default bg-fill-subtle px-4 text-sm font-medium text-primary">
+          {t("DashboardCustody.projectValue")}
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Environment</Label>
-        <div className="flex h-12 items-center rounded-2xl border border-border-light bg-border-extra-light px-4 text-sm font-medium text-text-extra-high">
-          Sandbox
+        <Label>{t("DashboardCustody.environment")}</Label>
+        <div className="flex h-12 items-center rounded-2xl border border-border-default bg-fill-subtle px-4 text-sm font-medium text-primary">
+          {t("DashboardCustody.sandbox")}
         </div>
       </div>
       {!canProvisionWallet ? (
-        <div className="rounded-2xl border border-border-light bg-border-extra-light px-4 py-3 text-sm leading-6 text-text-low">
+        <div className="rounded-2xl border border-border-default bg-fill-subtle px-4 py-3 text-sm leading-6 text-tertiary">
           {selectedProviderEntry
-            ? `${selectedProviderEntry.label} uses its existing configured wallet in this flow.`
-            : "Choose an enabled provider to continue."}
+            ? t("DashboardCustody.connectedProviderDescription", {
+                provider: selectedProviderEntry.label,
+              })
+            : t("DashboardCustody.chooseEnabledProvider")}
         </div>
       ) : null}
       {errorMessage ? (
         <div
           role="alert"
-          className="rounded-2xl border border-status-error-border bg-status-error-bg px-4 py-3 text-sm text-status-error-text"
+          className="rounded-2xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error"
         >
           {errorMessage}
         </div>
@@ -260,84 +350,88 @@ export function WalletSetupFlow({
     </>
   );
 
-  if (currentStep === "provider") {
-    return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 py-6">
-        <div className="mx-auto w-full max-w-3xl space-y-6">
-          <div className="text-center">
-            <p className="text-[28px] leading-tight font-medium text-text-extra-high">{heading}</p>
-          </div>
-
-          <ProviderStep
-            connectedProviders={connectedProviders}
-            onSelect={(provider) => {
-              setSelectedProvider(provider);
-              setErrorMessage(null);
-            }}
-            providers={enabledProviderEntries}
-            selectedProvider={selectedProvider}
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-wallet-setup-flow="true">
+      <div className="shrink-0 px-4 pt-2 pb-6 md:px-6">
+        <div className="mx-auto w-full max-w-3xl">
+          <WizardStepProgress
+            data-wallet-setup-stepper="true"
+            currentStep={stepIndex}
+            progressLabel={t("DashboardCustody.stepOf", {
+              current: stepIndex + 1,
+              total: SETUP_STEPS.length,
+            })}
+            steps={SETUP_STEPS}
           />
         </div>
-
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 sm:flex-row sm:justify-between">
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-14 rounded-full text-base"
-            onClick={goBack}
-            iconLeft={<ArrowLeft className="h-4 w-4" />}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            className="h-14 rounded-full text-base"
-            onClick={continueFromProvider}
-            disabled={!canContinue}
-            iconRight={<ArrowRight className="h-4 w-4" />}
-          >
-            Continue
-          </Button>
-        </div>
       </div>
-    );
-  }
 
-  if (currentStep === "details") {
-    return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 py-6">
-        <div className="mx-auto w-full max-w-3xl space-y-6">
-          <div className="text-center">
-            <p className="text-[28px] leading-tight font-medium text-text-extra-high">{heading}</p>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6"
+        data-wallet-setup-scroll-region="true"
+      >
+        <div className="mx-auto w-full max-w-3xl pb-8">
+          <div className="space-y-6">
+            <h2 className="text-2xl font-medium tracking-tight text-primary">{heading}</h2>
+
+            {currentStep === "provider" ? (
+              <form id={PROVIDER_FORM_ID} onSubmit={handleProviderSubmit}>
+                <ProviderStep
+                  connectedProviders={connectedProviders}
+                  onSelect={(provider) => {
+                    setSelectedProvider(provider);
+                    setErrorMessage(null);
+                  }}
+                  providers={enabledProviderEntries}
+                  selectedProvider={selectedProvider}
+                />
+              </form>
+            ) : (
+              <form id={DETAILS_FORM_ID} onSubmit={handleDetailsSubmit} className="grid gap-4">
+                {formContent}
+              </form>
+            )}
           </div>
-
-          <form id="wallet-details-form" onSubmit={handleSubmit} className="grid gap-4">
-            {formContent}
-          </form>
         </div>
+      </div>
 
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 sm:flex-row sm:justify-between">
+      <footer
+        className="shrink-0 border-t border-border-default bg-surface-raised/95 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:px-6"
+        data-wallet-setup-actions="true"
+      >
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
           <Button
             type="button"
             variant="secondary"
-            className="h-14 rounded-full text-base"
             onClick={goBack}
-            iconLeft={<ArrowLeft className="h-4 w-4" />}
+            disabled={isPending}
+            iconLeft={currentStep === "details" ? <ArrowLeft className="size-4" /> : undefined}
           >
-            Previous
+            {currentStep === "provider" ? t("DashboardCustody.cancel") : t("DashboardCustody.back")}
           </Button>
-          <Button
-            type="button"
-            className="h-14 rounded-full text-base"
-            disabled={!canProvisionWallet || isPending}
-            onClick={handleCreateWallet}
-          >
-            {isPending ? "Creating..." : "Create wallet"}
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
-  return null;
+          {currentStep === "provider" ? (
+            <Button
+              type="submit"
+              form={PROVIDER_FORM_ID}
+              disabled={!canContinue}
+              iconRight={<ArrowRight className="size-4" />}
+            >
+              {t("DashboardCustody.next")}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              form={DETAILS_FORM_ID}
+              disabled={!canProvisionWallet || isPending}
+            >
+              {isPending
+                ? t("DashboardCustody.createWalletPending")
+                : t("DashboardCustody.createWallet")}
+            </Button>
+          )}
+        </div>
+      </footer>
+    </div>
+  );
 }

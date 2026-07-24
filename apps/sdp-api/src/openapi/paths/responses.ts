@@ -5,12 +5,17 @@ import {
   addressScreeningResponseSchema,
   allowlistEntriesResponseSchema,
   allowlistEntrySchema,
+  apiKeyControlProfileActivationResponseSchema,
+  apiKeyControlProfileResponseSchema,
+  apiKeyControlProfileRevisionResponseSchema,
   apiKeyDetailSchema,
+  apiKeyPolicyBindingsResponseSchema,
   apiKeyResponseSchema,
   assetProfileFieldOptionsResponseSchema,
   assetProfileResponseSchema,
   counterpartyAccountResponseSchema,
   counterpartyFieldOptionsResponseSchema,
+  counterpartyRequirementsResponseSchema,
   counterpartyResponseSchema,
   currentUserResponseSchema,
   custodyConfigResponseSchema,
@@ -41,6 +46,7 @@ import {
   listSessionsResponseSchema,
   listTemplatesResponseSchema,
   offrampCurrenciesResponseSchema,
+  onboardingCompleteResponseSchema,
   onboardingStatusResponseSchema,
   onrampCurrenciesResponseSchema,
   onrampQuoteResponseSchema,
@@ -55,6 +61,7 @@ import {
   paymentSubscriptionPlanListResponseSchema,
   paymentSubscriptionPlanResponseSchema,
   paymentSubscriptionResponseSchema,
+  policyControlInventoryResponseSchema,
   prepareBurnResponseSchema,
   prepareDeployMetadataResponseSchema,
   prepareDeployResponseSchema,
@@ -89,7 +96,12 @@ import {
   transferBatchSchema,
   transferResponseSchema,
   transferSchema,
+  walletApprovalRequestResponseSchema,
+  walletApprovalRequestsResponseSchema,
   walletBalancesResponseSchema,
+  walletControlProfileRevisionHistorySchema,
+  walletPolicyEvaluationDetailSchema,
+  walletPolicyEvaluationResponseSchema,
   walletPolicyResponseSchema,
 } from "../schemas";
 
@@ -104,6 +116,18 @@ export const apiKeyDetailResponse = successResponseSchema(apiKeyDetailSchema);
 export const apiKeyCreateResponse = successResponseSchema(apiKeyResponseSchema);
 export const apiKeyRotateResponse = successResponseSchema(rotateApiKeyResponseSchema);
 export const apiKeyRevokeResponse = successResponseSchema(revokeApiKeyResponseSchema);
+export const apiKeyControlProfileResponse = successResponseSchema(
+  apiKeyControlProfileResponseSchema
+);
+export const apiKeyControlProfileRevisionResponse = successResponseSchema(
+  apiKeyControlProfileRevisionResponseSchema
+);
+export const apiKeyControlProfileActivationResponse = successResponseSchema(
+  apiKeyControlProfileActivationResponseSchema
+);
+export const apiKeyPolicyBindingsResponse = successResponseSchema(
+  apiKeyPolicyBindingsResponseSchema
+);
 
 export const assetProfileResponse = successResponseSchema(assetProfileResponseSchema);
 export const assetProfileFieldOptionsResponse = successResponseSchema(
@@ -114,6 +138,9 @@ export const listAssetProfilesResponse = successResponseSchema(listAssetProfiles
 export const counterpartyResponse = successResponseSchema(counterpartyResponseSchema);
 export const counterpartyFieldOptionsResponse = successResponseSchema(
   counterpartyFieldOptionsResponseSchema
+);
+export const counterpartyRequirementsResponse = successResponseSchema(
+  counterpartyRequirementsResponseSchema
 );
 export const listCounterpartiesResponse = successResponseSchema(listCounterpartiesResponseSchema);
 export const counterpartyAccountResponse = successResponseSchema(counterpartyAccountResponseSchema);
@@ -140,6 +167,22 @@ export const tokenAllowlistListResponse = paginatedResponseSchema(tokenAllowlist
 export const tokenAllowlistResponse = successResponseSchema(tokenAllowlistResponseSchema);
 export const frozenAccountResponse = successResponseSchema(frozenAccountResponseSchema);
 export const frozenAccountListResponse = paginatedResponseSchema(frozenAccountSchema);
+
+const assetAuditEventSchema = z
+  .object({
+    id: z.string(),
+    action: z.string().openapi({ example: "freeze" }),
+    resourceType: z.string().openapi({ example: "frozen_account" }),
+    resourceId: z.string().nullable(),
+    actorType: z.enum(["user", "api_key", "system"]).openapi({ example: "user" }),
+    actorLabel: z.string().openapi({ example: "Jordan Lee" }),
+    status: z.enum(["success", "failure"]).openapi({ example: "success" }),
+    createdAt: z.string().openapi({ example: "2026-07-19T12:00:00.000Z" }),
+    metadata: z.record(z.string(), z.unknown()).nullable(),
+  })
+  .openapi({ description: "A single audit event scoped to an asset." });
+
+export const assetAuditListResponse = paginatedResponseSchema(assetAuditEventSchema);
 
 export const prepareDeployResponse = successResponseSchema(prepareDeployResponseSchema);
 export const prepareDeployMetadataResponse = successResponseSchema(
@@ -177,6 +220,12 @@ export const custodySignerCheckResponse = successResponseSchema(signerCheckRespo
 export const custodySwitchOptionsResponse = successResponseSchema(
   switchProviderOptionsResponseSchema
 );
+export const walletApprovalRequestResponse = successResponseSchema(
+  walletApprovalRequestResponseSchema
+);
+export const walletApprovalRequestsResponse = successResponseSchema(
+  walletApprovalRequestsResponseSchema
+);
 export const addressScreeningResponse = successResponseSchema(addressScreeningResponseSchema);
 
 export const allowlistEntriesResponse = successResponseSchema(allowlistEntriesResponseSchema);
@@ -188,8 +237,21 @@ export const tokenTemplateResponse = successResponseSchema(tokenTemplateResponse
 export const listTemplatesResponse = successResponseSchema(listTemplatesResponseSchema);
 
 export const onboardingStatusResponse = successResponseSchema(onboardingStatusResponseSchema);
+export const onboardingCompleteResponse = successResponseSchema(onboardingCompleteResponseSchema);
 export const walletBalancesResponse = successResponseSchema(walletBalancesResponseSchema);
 export const walletPolicyResponse = successResponseSchema(walletPolicyResponseSchema);
+export const policyControlInventoryResponse = successResponseSchema(
+  policyControlInventoryResponseSchema
+);
+export const walletControlProfileRevisionHistoryResponse = successResponseSchema(
+  walletControlProfileRevisionHistorySchema
+);
+export const walletPolicyEvaluationListResponse = paginatedResponseSchema(
+  walletPolicyEvaluationDetailSchema
+);
+export const walletPolicyEvaluationResponse = successResponseSchema(
+  walletPolicyEvaluationResponseSchema
+);
 export const transferResponse = successResponseSchema(transferResponseSchema);
 export const transferListResponse = paginatedResponseSchema(transferSchema);
 export const transferBatchResponse = successResponseSchema(transferBatchResponseSchema);

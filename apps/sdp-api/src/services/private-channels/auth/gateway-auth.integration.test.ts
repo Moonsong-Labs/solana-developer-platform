@@ -16,7 +16,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { getDb } from "@/db";
 import { createPrivateChannelUserRepository } from "@/db/repositories";
 import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
-import { createKVStoreSet } from "@/runtime/factory";
+import { createKVStoreSet } from "@/runtime/kv-redis";
 import { generateEncryptionKey } from "@/services/encryption.service";
 import {
   openSpcAuthContext,

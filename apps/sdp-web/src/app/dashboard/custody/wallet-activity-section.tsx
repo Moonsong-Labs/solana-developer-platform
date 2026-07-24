@@ -1,12 +1,17 @@
 "use client";
 
 import { ExternalLink, RefreshCwIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import useSWR from "swr";
 import {
   fetchWalletActivity,
   type WalletActivityPayload,
   type WalletActivityRow,
 } from "@/app/dashboard/custody/wallet-activity.data";
+import {
+  WALLET_ACTIVITY_HEADING_ID,
+  WalletActivitySkeleton,
+} from "@/app/dashboard/custody/wallet-activity-skeleton";
 import { getDevnetExplorerUrl } from "@/app/dashboard/payments/payments-workspace.data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,14 +24,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLocale, useTranslations } from "@/i18n/provider";
 import { formatDisplayAmount } from "../payments/payments-overview.utils";
 
 interface WalletActivitySectionProps {
+  isVisible?: boolean;
   walletId: string;
-  initialActivity: WalletActivityPayload;
 }
 
-function formatTimestamp(value: string | undefined): string {
+const EMPTY_WALLET_ACTIVITY: WalletActivityPayload = {
+  activityRows: [],
+  activityError: null,
+  activityNotice: null,
+};
+
+function formatTimestamp(value: string | undefined, locale: string): string {
   if (!value) {
     return "—";
   }
@@ -36,7 +48,7 @@ function formatTimestamp(value: string | undefined): string {
     return value;
   }
 
-  return date.toLocaleString("en-US", {
+  return date.toLocaleString(locale, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -46,14 +58,14 @@ function formatTimestamp(value: string | undefined): string {
 
 function statusClassName(status: string): string {
   if (status === "confirmed") {
-    return "border-[rgba(12,128,76,0.18)] bg-[rgba(12,128,76,0.08)] text-[#0c804c]";
+    return "border-success-border bg-success-bg text-success";
   }
 
   if (status === "failed") {
-    return "border-[rgba(199,31,55,0.16)] bg-[rgba(199,31,55,0.08)] text-[#9e2b38]";
+    return "border-destructive-border bg-destructive-bg text-destructive-strong";
   }
 
-  return "border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.04)] text-[rgba(28,28,29,0.72)]";
+  return "border-border-default bg-fill-subtle text-secondary";
 }
 
 function TruncatedText({ value, className }: { value: string; className?: string }) {
@@ -69,23 +81,45 @@ function TruncatedText({ value, className }: { value: string; className?: string
   );
 }
 
-export function WalletActivitySection({ walletId, initialActivity }: WalletActivitySectionProps) {
+export function WalletActivitySection({ walletId, isVisible = true }: WalletActivitySectionProps) {
+  const t = useTranslations();
+  const locale = useLocale();
   const {
     data: swrActivity,
     error: requestError,
     isValidating,
     mutate,
   } = useSWR(`wallet-activity-${walletId}`, () => fetchWalletActivity(walletId), {
-    fallbackData: initialActivity,
-    revalidateOnFocus: true,
-    refreshInterval: 20_000,
+    revalidateOnFocus: isVisible,
+    revalidateOnReconnect: isVisible,
+    refreshWhenHidden: false,
+    refreshInterval: isVisible ? 20_000 : 0,
   });
-  const liveActivity = swrActivity ?? initialActivity;
+  const previousIsVisible = useRef(isVisible);
+
+  useEffect(() => {
+    if (isVisible && !previousIsVisible.current) {
+      void mutate();
+    }
+    previousIsVisible.current = isVisible;
+  }, [isVisible, mutate]);
+
+  if (!swrActivity && !requestError) {
+    return (
+      <WalletActivitySkeleton
+        title={t("DashboardCustody.recentActivity")}
+        description={t("DashboardCustody.recentActivityDescription")}
+        headingId={WALLET_ACTIVITY_HEADING_ID}
+      />
+    );
+  }
+
+  const liveActivity = swrActivity ?? EMPTY_WALLET_ACTIVITY;
   const liveRows = Array.isArray(liveActivity.activityRows) ? liveActivity.activityRows : [];
   const requestErrorMessage = requestError
     ? requestError instanceof Error
-      ? requestError.message
-      : "Unable to load wallet activity."
+      ? requestError.message || t("DashboardCustody.walletActivityUnavailable")
+      : t("DashboardCustody.unableToLoadWallets")
     : null;
   const liveActivityError =
     requestErrorMessage && liveRows.length === 0 ? requestErrorMessage : liveActivity.activityError;
@@ -93,11 +127,16 @@ export function WalletActivitySection({ walletId, initialActivity }: WalletActiv
     requestErrorMessage && liveRows.length > 0 ? requestErrorMessage : liveActivity.activityNotice;
 
   return (
-    <Card className="min-w-0 overflow-hidden">
+    <Card
+      aria-labelledby={WALLET_ACTIVITY_HEADING_ID}
+      className="min-h-[22rem] min-w-0 overflow-hidden"
+    >
       <CardHeader className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <CardTitle>Recent activity</CardTitle>
-          <CardDescription>Transfer and token operation activity for this wallet.</CardDescription>
+          <CardTitle>
+            <h3 id={WALLET_ACTIVITY_HEADING_ID}>{t("DashboardCustody.recentActivity")}</h3>
+          </CardTitle>
+          <CardDescription>{t("DashboardCustody.recentActivityDescription")}</CardDescription>
         </div>
         <Button
           type="button"
@@ -107,47 +146,55 @@ export function WalletActivitySection({ walletId, initialActivity }: WalletActiv
           onClick={() => void mutate()}
           disabled={isValidating}
         >
-          {isValidating ? "Refreshing..." : "Refresh"}
+          {isValidating ? t("DashboardCustody.refreshing") : t("DashboardCustody.refresh")}
         </Button>
       </CardHeader>
       <CardContent>
         {liveActivityError ? (
-          <p className="text-sm text-[#9e2b38]">{liveActivityError}</p>
+          <p className="text-sm text-destructive-strong">{liveActivityError}</p>
         ) : liveRows.length === 0 ? (
           <div className="space-y-2">
-            <p className="text-sm text-[rgba(28,28,29,0.72)]">No wallet activity found yet.</p>
+            <p className="text-sm text-secondary">{t("DashboardCustody.noWalletActivity")}</p>
             {liveActivityNotice ? (
-              <p className="text-xs text-[rgba(28,28,29,0.56)]">{liveActivityNotice}</p>
+              <p className="text-xs text-tertiary">{liveActivityNotice}</p>
             ) : null}
           </div>
         ) : (
           <TooltipProvider>
             <div className="min-w-0 space-y-3">
               {liveActivityNotice ? (
-                <p className="text-xs text-[rgba(28,28,29,0.56)]">{liveActivityNotice}</p>
+                <p className="text-xs text-tertiary">{liveActivityNotice}</p>
               ) : null}
               <Table className="[&_table]:table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[9rem]">Status</TableHead>
+                    <TableHead className="w-[9rem]">{t("DashboardCustody.status")}</TableHead>
                     <TableHead className="w-[calc(100%-9rem)] md:w-[22%]">
-                      <span className="md:hidden">Activity</span>
-                      <span className="hidden md:inline">Asset</span>
+                      <span className="md:hidden">{t("DashboardCustody.activity")}</span>
+                      <span className="hidden md:inline">{t("DashboardCustody.asset")}</span>
                     </TableHead>
-                    <TableHead className="hidden w-[8rem] md:table-cell">Direction</TableHead>
-                    <TableHead className="hidden w-[26%] md:table-cell">Counterparty</TableHead>
-                    <TableHead className="hidden w-[22%] md:table-cell">Signature</TableHead>
-                    <TableHead className="hidden w-[10rem] md:table-cell">Created</TableHead>
+                    <TableHead className="hidden w-[8rem] md:table-cell">
+                      {t("DashboardCustody.direction")}
+                    </TableHead>
+                    <TableHead className="hidden w-[26%] md:table-cell">
+                      {t("DashboardCustody.counterparty")}
+                    </TableHead>
+                    <TableHead className="hidden w-[22%] md:table-cell">
+                      {t("DashboardCustody.signature")}
+                    </TableHead>
+                    <TableHead className="hidden w-[10rem] md:table-cell">
+                      {t("DashboardCustody.created")}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {liveRows.map((row: WalletActivityRow) => {
                     const assetLabel =
                       row.amount && row.token
-                        ? formatDisplayAmount(row.amount, row.token)
-                        : (row.token ?? "Unknown asset");
-                    const createdLabel = formatTimestamp(row.createdAt);
-                    const address = row.address ?? "Unknown";
+                        ? formatDisplayAmount(row.amount, row.token, locale)
+                        : (row.token ?? t("DashboardCustody.unknownAsset"));
+                    const createdLabel = formatTimestamp(row.createdAt, locale);
+                    const address = row.address ?? t("DashboardCustody.unknown");
 
                     return (
                       <TableRow key={row.id}>
@@ -161,17 +208,17 @@ export function WalletActivitySection({ walletId, initialActivity }: WalletActiv
                         <TableCell className="min-w-0 font-medium">
                           <div className="min-w-0">
                             <TruncatedText value={assetLabel} className="truncate" />
-                            <div className="mt-1 text-xs font-normal text-[rgba(28,28,29,0.56)] md:hidden">
+                            <div className="mt-1 text-xs font-normal text-tertiary md:hidden">
                               <span>{row.operationLabel}</span>
                               <span className="mx-1.5">·</span>
                               <span>{createdLabel}</span>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="hidden text-[rgba(28,28,29,0.72)] md:table-cell">
+                        <TableCell className="hidden text-secondary md:table-cell">
                           {row.operationLabel}
                         </TableCell>
-                        <TableCell className="hidden min-w-0 font-mono text-xs text-[rgba(28,28,29,0.72)] md:table-cell">
+                        <TableCell className="hidden min-w-0 font-mono text-xs text-secondary md:table-cell">
                           <TruncatedText value={address} className="truncate" />
                         </TableCell>
                         <TableCell className="hidden min-w-0 font-mono text-xs md:table-cell">
@@ -182,7 +229,7 @@ export function WalletActivitySection({ walletId, initialActivity }: WalletActiv
                                   href={getDevnetExplorerUrl(row.signature)}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="flex min-w-0 items-center gap-1 text-[#1c1c1d] underline underline-offset-2"
+                                  className="flex min-w-0 items-center gap-1 text-primary underline underline-offset-2"
                                 >
                                   <span className="block min-w-0 truncate">{row.signature}</span>
                                   <ExternalLink className="size-3 shrink-0" />
@@ -197,10 +244,10 @@ export function WalletActivitySection({ walletId, initialActivity }: WalletActiv
                               </TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="text-[rgba(28,28,29,0.52)]">Pending</span>
+                            <span className="text-tertiary">{t("DashboardCustody.pending")}</span>
                           )}
                         </TableCell>
-                        <TableCell className="hidden text-[rgba(28,28,29,0.72)] md:table-cell">
+                        <TableCell className="hidden text-secondary md:table-cell">
                           {createdLabel}
                         </TableCell>
                       </TableRow>

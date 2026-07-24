@@ -7,12 +7,16 @@ interface TokenValidationMessageProps {
   // that restate an error already announced elsewhere (e.g. a field's own validation
   // message) so screen readers don't announce the same text twice.
   announce?: boolean;
+  // Lets a field point its input's aria-describedby at this message so screen
+  // readers read the error when the field is focused, not only when it appears.
+  id?: string;
 }
 
 export function TokenValidationMessage({
   message,
   reserveSpace = true,
   announce = true,
+  id,
 }: TokenValidationMessageProps) {
   if (!reserveSpace && !message) {
     return null;
@@ -20,11 +24,12 @@ export function TokenValidationMessage({
 
   return (
     <p
+      id={id}
       aria-live={announce && message ? "polite" : undefined}
       className={[
         reserveSpace ? "min-h-5" : "",
         "text-sm leading-5",
-        message ? "text-[#9e2b38]" : "invisible text-transparent",
+        message ? "text-destructive-strong" : "invisible text-transparent",
       ].join(" ")}
     >
       {message ?? "\u00A0"}

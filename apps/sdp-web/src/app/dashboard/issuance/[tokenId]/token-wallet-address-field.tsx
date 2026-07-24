@@ -4,7 +4,9 @@ import type { PaymentsDashboardWallet } from "@sdp/types";
 import { ChevronDown, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { useTranslations } from "@/i18n/provider";
 import { TokenValidationMessage } from "./token-validation-message";
+import { useInlineValidationMessage } from "./use-inline-validation-message";
 
 interface TokenWalletAddressFieldProps {
   label: string;
@@ -16,6 +18,9 @@ interface TokenWalletAddressFieldProps {
   title?: string;
   placeholder?: string;
   error?: string | null;
+  // Hides the "Type to filter…" helper line under the input. The asset-profiles
+  // surfaces opt in to a cleaner, hint-free form; the legacy card keeps it.
+  hideFilterHint?: boolean;
 }
 
 export function TokenWalletAddressField({
@@ -28,8 +33,13 @@ export function TokenWalletAddressField({
   title,
   placeholder,
   error,
+  hideFilterHint = false,
 }: TokenWalletAddressFieldProps) {
+  const t = useTranslations();
   const inputId = useId();
+  const errorId = useId();
+  const { message: nativeError, onInvalid, revalidate } = useInlineValidationMessage(label);
+  const hasError = Boolean(error) || nativeError !== null;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const availableWallets = walletOptions.filter((wallet) => wallet.publicKey.trim());
@@ -67,7 +77,7 @@ export function TokenWalletAddressField({
     <div className="space-y-2">
       <label
         htmlFor={inputId}
-        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-[rgba(28,28,29,0.68)]"
+        className="block text-[12px] leading-5 font-medium tracking-[0.02em] text-secondary"
       >
         {label}
       </label>
@@ -79,9 +89,11 @@ export function TokenWalletAddressField({
           required={required}
           pattern={pattern}
           title={title}
-          placeholder={placeholder ?? "Choose a wallet or paste a Solana address"}
+          placeholder={placeholder ?? t("DashboardIssuance.wallet.chooseOrPaste")}
           autoComplete="off"
-          aria-invalid={Boolean(error)}
+          aria-invalid={hasError}
+          aria-describedby={hasError ? errorId : undefined}
+          onInvalid={onInvalid}
           onFocus={() => {
             if (availableWallets.length > 0) {
               setIsOpen(true);
@@ -89,21 +101,22 @@ export function TokenWalletAddressField({
           }}
           onChange={(event) => {
             onChange(event.currentTarget.value);
+            revalidate(event.currentTarget);
             if (availableWallets.length > 0) {
               setIsOpen(true);
             }
           }}
-          className="h-11 rounded-[12px] border-[rgba(28,28,29,0.12)] bg-white pr-20 shadow-none"
+          className="h-11 rounded-[12px] border-border-default bg-surface-raised pr-20 shadow-none"
         />
         {value.trim() ? (
           <button
             type="button"
-            aria-label={`Clear ${label.toLowerCase()}`}
+            aria-label={t("DashboardIssuance.wallet.clear", { label: label.toLowerCase() })}
             onClick={() => {
               onChange("");
               setIsOpen(false);
             }}
-            className="absolute top-1/2 right-11 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[8px] text-[rgba(28,28,29,0.5)] transition-colors hover:bg-[rgba(28,28,29,0.06)] hover:text-[#1c1c1d]"
+            className="absolute top-1/2 right-11 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-fill hover:text-primary"
           >
             <X className="h-4 w-4" />
           </button>
@@ -111,9 +124,9 @@ export function TokenWalletAddressField({
         {availableWallets.length > 0 ? (
           <button
             type="button"
-            aria-label="Select an existing wallet"
+            aria-label={t("DashboardIssuance.wallet.selectExisting")}
             onClick={() => setIsOpen((current) => !current)}
-            className="absolute top-1/2 right-3 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[8px] text-[rgba(28,28,29,0.62)] transition-colors hover:bg-[rgba(28,28,29,0.06)] hover:text-[#1c1c1d]"
+            className="absolute top-1/2 right-3 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[8px] text-secondary transition-colors hover:bg-fill hover:text-primary"
           >
             <ChevronDown
               className={["h-4 w-4 transition-transform", isOpen ? "rotate-180" : ""].join(" ")}
@@ -121,7 +134,7 @@ export function TokenWalletAddressField({
           </button>
         ) : null}
         {visibleWallets.length > 0 ? (
-          <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-[14px] border border-[rgba(28,28,29,0.12)] bg-white py-2 shadow-[0_16px_40px_rgba(28,28,29,0.12)]">
+          <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-[14px] border border-border-default bg-surface-raised py-2 shadow-[0_16px_40px_rgba(28,28,29,0.12)]">
             {visibleWallets.map((wallet) => (
               <button
                 key={wallet.id}
@@ -130,25 +143,21 @@ export function TokenWalletAddressField({
                   onChange(wallet.publicKey);
                   setIsOpen(false);
                 }}
-                className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left transition-colors hover:bg-[rgba(28,28,29,0.04)]"
+                className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left transition-colors hover:bg-fill-subtle"
               >
-                <span className="text-sm font-medium text-[#1c1c1d]">
+                <span className="text-sm font-medium text-primary">
                   {wallet.label?.trim() || wallet.walletId}
                 </span>
-                <span className="font-mono text-xs text-[rgba(28,28,29,0.62)]">
-                  {wallet.publicKey}
-                </span>
+                <span className="font-mono text-xs text-secondary">{wallet.publicKey}</span>
               </button>
             ))}
           </div>
         ) : null}
       </div>
-      {availableWallets.length > 0 ? (
-        <p className="text-sm text-[rgba(28,28,29,0.64)]">
-          Type to filter existing wallets, use the dropdown, or paste any Solana address.
-        </p>
+      {!hideFilterHint && availableWallets.length > 0 ? (
+        <p className="text-sm text-secondary">{t("DashboardIssuance.wallet.filterHint")}</p>
       ) : null}
-      <TokenValidationMessage message={error ?? null} />
+      <TokenValidationMessage id={errorId} message={error ?? nativeError} />
     </div>
   );
 }

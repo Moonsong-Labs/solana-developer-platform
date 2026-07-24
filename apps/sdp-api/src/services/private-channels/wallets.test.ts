@@ -1,9 +1,9 @@
+import { SigningError } from "@sdp/custody/signing";
 import { PrivateChannelError } from "@sdp/private-channels";
 import * as authPkg from "@sdp/private-channels/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as repositories from "@/db/repositories";
 import type { ApiKeyContext } from "@/lib/auth";
-import { SigningError } from "@/services/ports";
 import * as solana from "@/services/solana";
 import type { Env } from "@/types/env";
 import * as gatewayAuth from "./auth/gateway-auth";

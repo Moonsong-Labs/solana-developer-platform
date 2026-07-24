@@ -1,6 +1,6 @@
+import { LightsparkRampClient } from "@sdp/payments/ramps/providers/lightspark/client";
+import { lightsparkPayoutAccountKey } from "@sdp/payments/ramps/providers/lightspark/provider-data";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LightsparkRampClient } from "./client";
-import { lightsparkPayoutAccountKey } from "./provider-data";
 
 const LIGHTSPARK_GRID_API_BASE_URL = "https://api.lightspark.com/grid/2025-10-13";
 const LIGHTSPARK_CONTEXT = {
@@ -391,6 +391,61 @@ describe("LightsparkRampClient", () => {
     );
     expect(listUrl.searchParams.get("customerId")).toBe("Customer:cus_123");
     expect(account).toEqual({ id: "ExternalAccount:acc_existing_123", status: "ACTIVE" });
+  });
+
+  it("submits a customer for verification and returns the outcome", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "Verification:ver_123",
+          customerId: "Customer:cus_123",
+          verificationStatus: "RESOLVE_ERRORS",
+          errors: [
+            {
+              type: "MISSING_FIELD",
+              field: "businessInfo.address",
+              reason: "Business address is required",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const client = new LightsparkRampClient();
+    const verification = await client.submitVerification(LIGHTSPARK_CONTEXT, {
+      customerId: "Customer:cus_123",
+    });
+
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+      `${LIGHTSPARK_GRID_API_BASE_URL}/verifications`
+    );
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+      customerId: "Customer:cus_123",
+    });
+    expect(verification.verificationStatus).toBe("RESOLVE_ERRORS");
+    expect(verification.errors.map((error) => error.reason)).toEqual([
+      "Business address is required",
+    ]);
+  });
+
+  it("treats a replayed verification for an approved customer as approved", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: "INVALID_INPUT",
+          reason: "Customer KYC status is already APPROVED",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const client = new LightsparkRampClient();
+    const verification = await client.submitVerification(LIGHTSPARK_CONTEXT, {
+      customerId: "Customer:cus_123",
+    });
+
+    expect(verification).toEqual({ verificationStatus: "APPROVED", errors: [] });
   });
 
   it("derives content-addressed payout account keys", async () => {

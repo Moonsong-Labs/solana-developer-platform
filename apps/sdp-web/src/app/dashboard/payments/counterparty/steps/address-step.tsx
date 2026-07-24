@@ -5,11 +5,13 @@ import { useMemo } from "react";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslations } from "@/i18n/provider";
 import { AddressAutocomplete } from "../components/address-autocomplete";
 import { useCounterpartyCreate } from "../counterparty-create-context";
 import { useCounterpartyMetadata } from "../use-counterparty-metadata";
 
 export function AddressStep() {
+  const t = useTranslations();
   const { address } = useCounterpartyCreate();
   const { values, setField, errors } = address;
   const { metadata, loading, error } = useCounterpartyMetadata();
@@ -49,49 +51,55 @@ export function AddressStep() {
         }}
       />
       <div className="space-y-2">
-        <Label htmlFor="line1">Line 1</Label>
+        <Label htmlFor="line1">{t("DashboardPayments.counterparty.line1")}</Label>
         <Input
           size="xl"
           id="line1"
           iconLeft={<MapPinIcon />}
-          placeholder="123 Main St"
+          placeholder={t("DashboardPayments.counterparty.line1Placeholder")}
           value={values.line1}
           onChange={(e) => setField("line1", e.target.value)}
         />
-        {errors.line1 && <p className="mt-1 text-xs text-status-error-text">{errors.line1}</p>}
+        {errors.line1 && <p className="mt-1 text-xs text-error">{errors.line1}</p>}
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="line2">
-          Line 2 <span className="font-normal text-text-extra-low">(optional)</span>
+          {t("DashboardPayments.counterparty.line2")}{" "}
+          <span className="font-normal text-muted">
+            {t("DashboardPayments.counterparty.optional")}
+          </span>
         </Label>
         <Input
           size="xl"
           id="line2"
           iconLeft={<MapPinIcon />}
-          placeholder="Suite 400"
+          placeholder={t("DashboardPayments.counterparty.line2Placeholder")}
           value={values.line2}
           onChange={(e) => setField("line2", e.target.value)}
         />
-        {errors.line2 && <p className="mt-1 text-xs text-status-error-text">{errors.line2}</p>}
+        {errors.line2 && <p className="mt-1 text-xs text-error">{errors.line2}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="city">City</Label>
+          <Label htmlFor="city">{t("DashboardPayments.counterparty.city")}</Label>
           <Input
             size="xl"
             id="city"
             iconLeft={<Building2Icon />}
-            placeholder="New York"
+            placeholder={t("DashboardPayments.counterparty.cityPlaceholder")}
             value={values.city}
             onChange={(e) => setField("city", e.target.value)}
           />
-          {errors.city && <p className="mt-1 text-xs text-status-error-text">{errors.city}</p>}
+          {errors.city && <p className="mt-1 text-xs text-error">{errors.city}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="postalCode">
-            Postal code <span className="font-normal text-text-extra-low">(optional)</span>
+            {t("DashboardPayments.counterparty.postalCode")}{" "}
+            <span className="font-normal text-muted">
+              {t("DashboardPayments.counterparty.optional")}
+            </span>
           </Label>
           <Input
             size="xl"
@@ -101,38 +109,34 @@ export function AddressStep() {
             value={values.postalCode}
             onChange={(e) => setField("postalCode", e.target.value)}
           />
-          {errors.postalCode && (
-            <p className="mt-1 text-xs text-status-error-text">{errors.postalCode}</p>
-          )}
+          {errors.postalCode && <p className="mt-1 text-xs text-error">{errors.postalCode}</p>}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Combobox
-            label="Country"
+            label={t("DashboardPayments.counterparty.country")}
             value={values.countryCode || null}
             onChange={(next) => setField("countryCode", next)}
             options={countryOptions}
-            placeholder="Select country"
-            searchPlaceholder="Search countries…"
+            placeholder={t("DashboardPayments.counterparty.selectCountry")}
+            searchPlaceholder={t("DashboardPayments.counterparty.searchCountries")}
             icon={<GlobeIcon />}
             isLoading={loading}
             error={error ?? undefined}
           />
-          {errors.countryCode && (
-            <p className="mt-1 text-xs text-status-error-text">{errors.countryCode}</p>
-          )}
+          {errors.countryCode && <p className="mt-1 text-xs text-error">{errors.countryCode}</p>}
         </div>
         <div className="space-y-2">
           {isUnitedStates ? (
             <Combobox
-              label="State"
+              label={t("DashboardPayments.counterparty.state")}
               value={values.subdivisionCode || null}
               onChange={(next) => setField("subdivisionCode", next)}
               options={usStateOptions}
-              placeholder="Select state"
-              searchPlaceholder="Search states…"
+              placeholder={t("DashboardPayments.counterparty.selectState")}
+              searchPlaceholder={t("DashboardPayments.counterparty.searchStates")}
               icon={<MapIcon />}
               isLoading={loading}
               error={error ?? undefined}
@@ -140,20 +144,23 @@ export function AddressStep() {
           ) : (
             <>
               <Label htmlFor="subdivisionCode">
-                State / Province <span className="font-normal text-text-extra-low">(optional)</span>
+                {t("DashboardPayments.counterparty.stateProvince")}{" "}
+                <span className="font-normal text-muted">
+                  {t("DashboardPayments.counterparty.optional")}
+                </span>
               </Label>
               <Input
                 size="xl"
                 id="subdivisionCode"
                 iconLeft={<MapIcon />}
-                placeholder="NY"
+                placeholder={t("DashboardPayments.counterparty.statePlaceholder")}
                 value={values.subdivisionCode}
                 onChange={(e) => setField("subdivisionCode", e.target.value)}
               />
             </>
           )}
           {errors.subdivisionCode && (
-            <p className="mt-1 text-xs text-status-error-text">{errors.subdivisionCode}</p>
+            <p className="mt-1 text-xs text-error">{errors.subdivisionCode}</p>
           )}
         </div>
       </div>

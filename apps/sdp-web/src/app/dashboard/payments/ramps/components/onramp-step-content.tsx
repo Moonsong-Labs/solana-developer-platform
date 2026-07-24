@@ -1,12 +1,16 @@
 "use client";
 
 import { isMuralSandboxPayinCurrency } from "@sdp/types";
+import { getCryptoRailAssetLabel } from "@sdp/types/payment-rails";
 import { DollarSignIcon } from "lucide-react";
+import { useTranslations } from "@/i18n/provider";
 import { hasEnabledRampProvider } from "@/lib/provider-availability";
 import { toRampCryptoToken } from "@/lib/ramps";
 import type { OnrampWizard } from "../hooks/use-onramp-wizard";
+import { CoinbaseQuoteSummary } from "./coinbase/quote-summary";
 import { CoinbaseRampFrame } from "./coinbase/ramp-frame";
 import { ManualInstructionsQuote } from "./manual-instructions-quote";
+import { MoneygramRampWidget } from "./moneygram-ramp-widget";
 import { MoonpayRampFrame } from "./moonpay-ramp-frame";
 import { hasOnboardingLifecycle, simulateActionLabels } from "./providers";
 import { RampCompleteScreen } from "./ramp-complete-screen";
@@ -18,6 +22,7 @@ import { RequirementsFields } from "./requirements-fields";
 import { StripeOnrampFrame } from "./stripe-onramp-frame";
 
 export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
+  const t = useTranslations();
   const {
     currentStepId,
     rampProviderAccess,
@@ -40,13 +45,14 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
     collectedData,
     setCollectedField,
     requirementsBlocker,
+    refreshQuote,
   } = wizard;
 
   if (currentStepId === "DEPOSIT") {
     if (!hasEnabledRampProvider(rampProviderAccess)) {
       return (
-        <div className="rounded-2xl border border-border-light bg-border-extra-light px-5 py-5 text-sm text-text-low">
-          No deposit providers are enabled for this organization.
+        <div className="rounded-2xl border border-border-default bg-fill-subtle px-5 py-5 text-sm text-tertiary">
+          {t("DashboardPayments.ramps.noDepositProviders")}
         </div>
       );
     }
@@ -71,7 +77,7 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
           onProviderSelect={(nextProvider) => setField("provider", nextProvider)}
         />
         {requirementsBlocker ? (
-          <div className="rounded-2xl border border-status-error-border bg-status-error-bg px-4 py-3 text-sm text-status-error-text">
+          <div className="rounded-2xl border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
             {requirementsBlocker}
           </div>
         ) : null}
@@ -111,7 +117,33 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
           clientSecret={quote.clientSecret}
           publishableKey={quote.publishableKey}
         />
-        <div className="border-t border-border-light pt-5">
+        <div className="border-t border-border-default pt-5">
+          <RampStatusPanel direction="onramp" transfer={transferStatus} />
+        </div>
+      </div>
+    );
+  }
+
+  if (currentStepId === "PROVIDER" && quote?.provider === "moneygram") {
+    if (!selectedWallet) {
+      return <RampQuoteSkeleton />;
+    }
+    return (
+      <div className="space-y-6">
+        <MoneygramRampWidget
+          direction="onramp"
+          quote={quote}
+          counterparty={selectedCounterparty}
+          sourceWalletId={fields.walletId}
+          sourceWalletName={selectedWallet.label ?? selectedWallet.walletId}
+          sourceWalletAddress={selectedWallet.publicKey}
+          sourceTokenMint={null}
+          cryptoAsset={getCryptoRailAssetLabel(selectedRampPair.assetRail)}
+          cryptoAmount={fields.amount.trim()}
+          fiatCurrency={selectedRampPair.fiatCurrency}
+          onSessionExpiring={refreshQuote}
+        />
+        <div className="border-t border-border-default pt-5">
           <RampStatusPanel direction="onramp" transfer={transferStatus} />
         </div>
       </div>
@@ -122,11 +154,17 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
     return (
       <div className="space-y-6">
         {quote.provider === "coinbase" ? (
-          <CoinbaseRampFrame orderId={quote.id} src={quote.hostedUrl} />
+          <>
+            <CoinbaseQuoteSummary quote={quote} />
+            <CoinbaseRampFrame orderId={quote.id} src={quote.hostedUrl} />
+          </>
         ) : (
-          <MoonpayRampFrame title={`${quote.provider} deposit`} src={quote.hostedUrl} />
+          <MoonpayRampFrame
+            title={t("DashboardPayments.ramps.providerDeposit", { provider: quote.provider })}
+            src={quote.hostedUrl}
+          />
         )}
-        <div className="border-t border-border-light pt-5">
+        <div className="border-t border-border-default pt-5">
           <RampStatusPanel direction="onramp" transfer={transferStatus} />
         </div>
       </div>
@@ -136,8 +174,8 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
   if (currentStepId === "PROVIDER" && quote?.deliveryMode === "manual_instructions") {
     if (!quote.paymentInstructions) {
       return (
-        <div className="rounded-2xl border border-status-error-border bg-status-error-bg px-5 py-5 text-sm text-status-error-text">
-          Ramp quote is missing payment instructions.
+        <div className="rounded-2xl border border-error-border bg-error-bg px-5 py-5 text-sm text-error">
+          {t("DashboardPayments.ramps.quoteMissingInstructions")}
         </div>
       );
     }
@@ -145,7 +183,7 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
     const labels =
       quote.provider === "mural" && !isMuralSandboxPayinCurrency(selectedRampPair.fiatCurrency)
         ? null
-        : simulateActionLabels(quote.provider);
+        : simulateActionLabels(quote.provider, t);
     const simulateAction = labels
       ? {
           loading: quoteSimulationLoading,
@@ -167,7 +205,7 @@ export function OnrampStepContent({ wizard }: { wizard: OnrampWizard }) {
           instructions={quote.paymentInstructions}
           action={simulateAction}
         />
-        <div className="border-t border-border-light pt-5">
+        <div className="border-t border-border-default pt-5">
           <RampStatusPanel direction="onramp" transfer={transferStatus} />
         </div>
       </div>

@@ -4,6 +4,7 @@ import type { AssetProfile, Token } from "@sdp/types";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "@/i18n/provider";
 import { buildIssuanceMetadata, getAssetDetailsErrors } from "../../create/draft-mapping";
 import type { DraftState } from "../../create/issuance-draft-wizard.types";
 import { updateAssetProfileAction } from "./actions";
@@ -22,6 +23,7 @@ export function useAssetProfileForm({
   token: Token;
   assetProfile: AssetProfile;
 }) {
+  const t = useTranslations();
   const router = useRouter();
   // The save action returns the updated profile; keep the freshest copy so the
   // baseline re-derives without waiting for a server re-render.
@@ -55,9 +57,9 @@ export function useAssetProfileForm({
     setDraft((previous) => ({ ...previous, ...patch }));
   };
 
-  const errors = getAssetDetailsErrors(draft);
+  const errors = getAssetDetailsErrors(draft, t);
   if (!draft.name.trim()) {
-    errors.name = "Asset name is required.";
+    errors.name = t("DashboardIssuance.errors.assetNameRequired");
   }
   const errorCount = Object.keys(errors).length;
 
@@ -72,7 +74,7 @@ export function useAssetProfileForm({
     }
     if (errorCount > 0) {
       setShowErrors(true);
-      toast.error("Fix the highlighted fields before saving.");
+      toast.error(t("DashboardIssuance.assetProfileForm.fixHighlightedFields"));
       return;
     }
 
@@ -88,9 +90,15 @@ export function useAssetProfileForm({
           description: draft.description.trim() || null,
           uri: draft.metadataUri.trim() || null,
           imageUrl: draft.imageUrl.trim() || null,
-          // Access-control enforcement can only change while undeployed; the
-          // API rejects the field after deploy.
-          ...(isDeployed ? {} : { requiresAllowlist: draft.accessControl === "allowlist" }),
+          // Symbol, decimals, and access-control are baked into the mint at
+          // deploy — editable only while undeployed; the API rejects them after.
+          ...(isDeployed
+            ? {}
+            : {
+                symbol: draft.symbol.trim(),
+                decimals: Number(draft.decimals),
+                requiresAllowlist: draft.accessControl === "allowlist",
+              }),
         },
       });
 
@@ -149,6 +157,8 @@ export function useAssetProfileForm({
 function draftTokenPatch(draft: DraftState): Partial<Token> {
   return {
     name: draft.name.trim(),
+    symbol: draft.symbol.trim(),
+    decimals: Number(draft.decimals),
     description: draft.description.trim() || null,
     uri: draft.metadataUri.trim() || null,
     imageUrl: draft.imageUrl.trim() || null,

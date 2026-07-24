@@ -22,9 +22,10 @@ import {
   Type,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useTranslations } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
-import { accessControlLabel, getCategorySections, getPegSummary } from "../asset-details-config";
-import { getAssetTypeLabel, getCategoryLabel } from "../asset-taxonomy";
+import { detailSectionsHaveField, getPegSummary } from "../asset-details-config";
+import { getAssetTypeLabel, getCategoryLabelKey } from "../asset-taxonomy";
 import { safeLinkHref } from "../draft-mapping";
 import type { DraftState, WizardStep } from "../issuance-draft-wizard.types";
 import { useIssuanceDraft } from "../use-issuance-draft";
@@ -47,69 +48,100 @@ interface Section {
   fields: Field[];
 }
 
-function accessControlHint(mode: DraftState["accessControl"]): string | undefined {
+type Translate = ReturnType<typeof useTranslations>;
+
+function accessControlHint(mode: DraftState["accessControl"], t: Translate): string | undefined {
   switch (mode) {
     case "allowlist":
-      return "Only approved addresses can hold or transfer.";
+      return t("DashboardIssuance.review.allowlistHint");
     case "blocklist":
-      return "Blocked addresses cannot hold or transfer.";
+      return t("DashboardIssuance.review.blocklistHint");
     default:
       return undefined;
   }
 }
 
+function accessControlReviewLabel(mode: DraftState["accessControl"], t: Translate): string | null {
+  switch (mode) {
+    case "allowlist":
+      return t("DashboardIssuance.review.allowlist");
+    case "blocklist":
+      return t("DashboardIssuance.review.blocklist");
+    case "disabled":
+      return t("DashboardIssuance.review.none");
+    default:
+      return null;
+  }
+}
+
 export function StepReview() {
+  const t = useTranslations();
   const { draft, goToStep } = useIssuanceDraft();
 
-  const categoryLabel = getCategoryLabel(draft.assetCategory);
-  const typeLabel = getAssetTypeLabel(draft.assetCategory, draft.assetType);
+  const categoryLabelKey = getCategoryLabelKey(draft.assetCategory);
+  const categoryLabel = categoryLabelKey ? t(categoryLabelKey) : null;
+  const typeLabel = getAssetTypeLabel(draft.assetCategory, draft.assetType, t);
   const transferRestrictionsEnabled =
     draft.accessControl === "allowlist" ||
     draft.accessControl === "blocklist" ||
-    draft.capacities.transferApprovals;
+    draft.capacities.transferApprovals.enabled;
   const website = draft.website.trim();
   const logo = draft.imageUrl.trim();
   // Issuer name is only collected for categories whose detail form includes it
   // (stablecoins & tokenized securities), so only surface it when it applies.
-  const collectsIssuerName = getCategorySections(draft.assetCategory).some((section) =>
-    section.fields.some((field) => field.key === "issuerName")
+  const collectsIssuerName = detailSectionsHaveField(
+    draft.assetCategory,
+    draft.assetType,
+    "issuerName"
   );
   const pegSummary = getPegSummary(draft);
 
   const sections: Section[] = [
     {
       icon: FileText,
-      title: "Asset",
-      description: "The asset and how it will be represented.",
+      title: t("DashboardIssuance.review.assetTitle"),
+      description: t("DashboardIssuance.review.assetDescription"),
       editStep: "classification",
       fields: [
-        { icon: Layers, label: "Asset category", value: categoryLabel },
-        { icon: Tag, label: "Asset type", value: typeLabel },
-        { icon: Type, label: "Name", value: draft.name },
-        { icon: DollarSign, label: "Symbol", value: draft.symbol },
+        { icon: Layers, label: t("DashboardIssuance.review.assetCategory"), value: categoryLabel },
+        { icon: Tag, label: t("DashboardIssuance.review.assetType"), value: typeLabel },
+        { icon: Type, label: t("DashboardIssuance.review.name"), value: draft.name },
+        { icon: DollarSign, label: t("DashboardIssuance.review.symbol"), value: draft.symbol },
       ],
     },
     {
       icon: Info,
-      title: "Asset details",
-      description: "Key information about the asset.",
+      title: t("DashboardIssuance.review.assetDetailsTitle"),
+      description: t("DashboardIssuance.review.assetDetailsDescription"),
       editStep: "asset-details",
       fields: [
-        { icon: AlignLeft, label: "Description", value: draft.description },
+        {
+          icon: AlignLeft,
+          label: t("DashboardIssuance.review.description"),
+          value: draft.description,
+        },
         ...(collectsIssuerName
           ? [
               {
                 icon: Building2,
-                label: "Issuer name",
+                label: t("DashboardIssuance.review.issuerName"),
                 value: draft.issuerName.trim() || null,
               },
             ]
           : []),
-        ...(pegSummary ? [{ icon: Anchor, label: "Pegged to", value: pegSummary }] : []),
-        { icon: Hash, label: "Decimals", value: draft.decimals },
+        ...(pegSummary
+          ? [
+              {
+                icon: Anchor,
+                label: t("DashboardIssuance.summary.peggedTo"),
+                value: pegSummary,
+              },
+            ]
+          : []),
+        { icon: Hash, label: t("DashboardIssuance.review.decimals"), value: draft.decimals },
         {
           icon: Globe,
-          label: "Website",
+          label: t("DashboardIssuance.review.website"),
           value: website || null,
           href: safeLinkHref(website) ?? null,
         },
@@ -117,50 +149,62 @@ export function StepReview() {
     },
     {
       icon: ShieldCheck,
-      title: "Compliance & access",
-      description: "How the asset will be controlled and who can interact with it.",
+      title: t("DashboardIssuance.review.complianceAccessTitle"),
+      description: t("DashboardIssuance.review.complianceAccessDescription"),
       editStep: "asset-details",
       fields: [
         {
           icon: KeyRound,
-          label: "Access control",
-          value: accessControlLabel(draft.accessControl),
-          hint: accessControlHint(draft.accessControl),
+          label: t("DashboardIssuance.review.accessControl"),
+          value: accessControlReviewLabel(draft.accessControl, t),
+          hint: accessControlHint(draft.accessControl, t),
         },
         {
           icon: ArrowLeftRight,
-          label: "Transfer restrictions",
-          value: transferRestrictionsEnabled ? "Enabled" : "Disabled",
+          label: t("DashboardIssuance.review.transferRestrictions"),
+          value: transferRestrictionsEnabled
+            ? t("DashboardIssuance.review.enabled")
+            : t("DashboardIssuance.review.disabled"),
           hint: transferRestrictionsEnabled
-            ? "Transfers limited to approved participants."
+            ? t("DashboardIssuance.review.transferRestrictionsHint")
             : undefined,
         },
         {
           icon: ClipboardList,
-          label: "Investor reporting",
-          value: draft.capacities.investorReporting ? "Enabled" : "Disabled",
-          hint: draft.capacities.investorReporting
-            ? "Activity reports available for investors and stakeholders."
+          label: t("DashboardIssuance.review.investorReporting"),
+          value: draft.capacities.investorReporting.enabled
+            ? t("DashboardIssuance.review.enabled")
+            : t("DashboardIssuance.review.disabled"),
+          hint: draft.capacities.investorReporting.enabled
+            ? t("DashboardIssuance.review.investorReportingHint")
             : undefined,
         },
       ],
     },
     {
       icon: Globe,
-      title: "Public information",
-      description: "The safe information that will be visible to anyone.",
+      title: t("DashboardIssuance.review.publicInformationTitle"),
+      description: t("DashboardIssuance.review.publicInformationDescription"),
       editStep: "public-info",
       fields: [
-        { icon: Type, label: "Public name", value: draft.name },
-        { icon: DollarSign, label: "Public symbol", value: draft.symbol },
+        { icon: Type, label: t("DashboardIssuance.review.publicName"), value: draft.name },
+        {
+          icon: DollarSign,
+          label: t("DashboardIssuance.review.publicSymbol"),
+          value: draft.symbol,
+        },
         {
           icon: ImageIcon,
-          label: "Logo",
+          label: t("DashboardIssuance.review.logo"),
           value: logo || null,
           href: safeLinkHref(logo) ?? null,
           preview: logo || null,
         },
-        { icon: AlignLeft, label: "Description (public)", value: draft.description },
+        {
+          icon: AlignLeft,
+          label: t("DashboardIssuance.review.publicDescription"),
+          value: draft.description,
+        },
       ],
     },
   ];
@@ -185,30 +229,31 @@ export function StepReview() {
 }
 
 function ReviewSection({ section, onEdit }: { section: Section; onEdit: () => void }) {
+  const t = useTranslations();
   const Icon = section.icon;
   return (
-    <div className="overflow-hidden rounded-2xl border border-[rgba(28,28,29,0.1)] bg-white">
-      <div className="flex items-start justify-between gap-4 border-b border-[rgba(28,28,29,0.07)] px-5 py-4">
+    <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-raised">
+      <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
         <div className="flex items-start gap-3.5">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[rgba(28,28,29,0.05)] text-[#1c1c1d]">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-fill-subtle text-primary">
             <Icon className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <p className="text-base font-medium text-[#1c1c1d]">{section.title}</p>
-            <p className="mt-0.5 text-sm text-[rgba(28,28,29,0.55)]">{section.description}</p>
+            <p className="text-base font-medium text-primary">{section.title}</p>
+            <p className="mt-0.5 text-sm text-tertiary">{section.description}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onEdit}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[rgba(28,28,29,0.12)] px-3 py-1.5 text-sm font-medium text-[rgba(28,28,29,0.75)] transition-colors hover:bg-[rgba(28,28,29,0.04)] hover:text-[#1c1c1d]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-fill-subtle hover:text-primary"
         >
           <Pencil className="h-3.5 w-3.5" />
-          Edit
+          {t("DashboardIssuance.review.edit")}
         </button>
       </div>
 
-      <dl className="divide-y divide-[rgba(28,28,29,0.06)] px-5 py-1">
+      <dl className="divide-y divide-border-subtle px-5 py-1">
         {section.fields.map((field) => (
           <FieldRow key={field.label} field={field} />
         ))}
@@ -218,13 +263,14 @@ function ReviewSection({ section, onEdit }: { section: Section; onEdit: () => vo
 }
 
 function FieldRow({ field }: { field: Field }) {
+  const t = useTranslations();
   const Icon = field.icon;
   const hasValue = field.value !== null && field.value.trim().length > 0;
   const showPreview = hasValue && Boolean(field.preview?.trim());
   return (
     <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-4">
-      <dt className="flex shrink-0 items-center gap-2 text-sm text-[rgba(28,28,29,0.52)] sm:w-52 sm:pt-0.5">
-        <Icon className="h-4 w-4 shrink-0 text-[rgba(28,28,29,0.38)]" />
+      <dt className="flex shrink-0 items-center gap-2 text-sm text-tertiary sm:w-52 sm:pt-0.5">
+        <Icon className="h-4 w-4 shrink-0 text-muted" />
         {field.label}
       </dt>
       <dd className="min-w-0 flex-1">
@@ -233,14 +279,14 @@ function FieldRow({ field }: { field: Field }) {
           <img
             src={field.preview ?? undefined}
             alt=""
-            className="h-10 w-10 shrink-0 rounded-lg bg-white object-cover ring-1 ring-black/5"
+            className="h-10 w-10 shrink-0 rounded-lg border border-border-default bg-fill-subtle object-cover"
           />
         ) : hasValue && field.href ? (
           <a
             href={field.href}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-w-0 items-center gap-1 break-all text-sm font-normal text-[#1c1c1d] hover:underline"
+            className="inline-flex min-w-0 items-center gap-1 break-all text-sm font-normal text-primary hover:underline"
           >
             {field.value}
             <ExternalLink className="h-3 w-3 shrink-0" />
@@ -249,13 +295,13 @@ function FieldRow({ field }: { field: Field }) {
           <p
             className={cn(
               "break-words text-sm font-normal",
-              hasValue ? "text-[#1c1c1d]" : "text-[rgba(28,28,29,0.4)]"
+              hasValue ? "text-primary" : "text-muted"
             )}
           >
-            {hasValue ? field.value : "—"}
+            {hasValue ? field.value : t("DashboardIssuance.review.notProvided")}
           </p>
         )}
-        {field.hint ? <p className="mt-1 text-xs text-[rgba(28,28,29,0.5)]">{field.hint}</p> : null}
+        {field.hint ? <p className="mt-1 text-xs text-tertiary">{field.hint}</p> : null}
       </dd>
     </div>
   );

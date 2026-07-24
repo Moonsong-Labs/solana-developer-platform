@@ -12,24 +12,23 @@ import {
   removeProjectMember,
   updateProjectMember,
 } from "./handlers/members";
-import {
-  archiveProject,
-  createProject,
-  getProject,
-  listProjects,
-  updateProject,
-} from "./handlers/projects";
+import { archiveProject, getProject, listProjects, updateProject } from "./handlers/projects";
+import { apiKeyProjectAccessMiddleware } from "./project-access";
 
 const projects = new Hono<{ Bindings: Env }>();
 
 // All routes require authentication
 projects.use("*", unifiedAuthMiddleware({ allowClerk: true, allowSession: true }));
 
+// API keys are bound to one project. Apply this at the router boundary so
+// every current and future path-scoped project handler inherits the check.
+projects.use("/:projectId", apiKeyProjectAccessMiddleware());
+projects.use("/:projectId/*", apiKeyProjectAccessMiddleware());
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Project CRUD
 // ═══════════════════════════════════════════════════════════════════════════
 
-projects.post("/", requirePermissions("projects:write"), createProject);
 projects.get("/", requirePermissions("projects:read"), listProjects);
 projects.get("/:projectId", requirePermissions("projects:read"), getProject);
 projects.patch("/:projectId", requirePermissions("projects:write"), updateProject);

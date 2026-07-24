@@ -1,12 +1,18 @@
-import type { PaymentTransferSummary, TokenTransaction } from "@sdp/types";
+import type {
+  PaymentTransferSummary,
+  TokenTransaction,
+  TokenTransactionListItem,
+} from "@sdp/types";
+import type { MessageKey, TranslationValues } from "@/i18n/messages";
 import type { SdpApiClient } from "@/lib/sdp-api";
 import { parseErrorMessage, readTransactionParam, toTitleCase } from "./activity-format-utils";
 import type { FetchResult } from "./payments/payments-page.data";
 
-interface HomeIssuanceToken {
-  id: string;
-  name: string;
-  symbol: string;
+type Translate = (key: MessageKey, values?: TranslationValues) => string;
+
+export interface HomeActivityExplorerRef {
+  kind: "tx" | "address";
+  value: string;
 }
 
 export interface HomeActivityRow {
@@ -16,6 +22,7 @@ export interface HomeActivityRow {
   token: string;
   amount: string;
   address: string;
+  explorer: HomeActivityExplorerRef | null;
   sourceKind: "payments" | "issuance";
 }
 
@@ -45,16 +52,16 @@ function resolveIssuanceAddress(transaction: TokenTransaction): string {
   return "—";
 }
 
-function resolvePaymentsType(transfer: PaymentTransferSummary): string {
+function resolvePaymentsType(transfer: PaymentTransferSummary, t: Translate): string {
   if (transfer.direction === "outbound") {
-    return "Send";
+    return t("Shared.homeWorkspace.send");
   }
 
   if (transfer.direction === "inbound") {
-    return "Receive";
+    return t("Shared.homeWorkspace.receive");
   }
 
-  return transfer.type ? toTitleCase(transfer.type) : "Transfer";
+  return transfer.type ? toTitleCase(transfer.type) : t("Shared.homeWorkspace.transfer");
 }
 
 function resolvePaymentsAddress(transfer: PaymentTransferSummary): string {
@@ -67,6 +74,34 @@ function resolvePaymentsAddress(transfer: PaymentTransferSummary): string {
   }
 
   return transfer.destination ?? transfer.source ?? "—";
+}
+
+// Prefer the counterparty address (what the row shows) and fall back to the tx signature so the
+// row is still linkable before an address is known. Cluster is applied later, in the client.
+function resolvePaymentsExplorer(transfer: PaymentTransferSummary): HomeActivityExplorerRef | null {
+  const address = resolvePaymentsAddress(transfer);
+  if (address !== "—") {
+    return { kind: "address", value: address };
+  }
+  if (transfer.signature) {
+    return { kind: "tx", value: transfer.signature };
+  }
+  return null;
+}
+
+function resolveIssuanceExplorer(transaction: TokenTransaction): HomeActivityExplorerRef | null {
+  const destination = readTransactionParam(transaction.params, "destination");
+  if (destination !== null) {
+    return { kind: "address", value: String(destination) };
+  }
+  const source = readTransactionParam(transaction.params, "source");
+  if (source !== null) {
+    return { kind: "address", value: String(source) };
+  }
+  if (transaction.signature) {
+    return { kind: "tx", value: transaction.signature };
+  }
+  return null;
 }
 
 export function computeTodaysVolume(transfers: PaymentTransferSummary[]): number | null {
@@ -98,11 +133,8 @@ export function computeTodaysVolume(transfers: PaymentTransferSummary[]): number
 
 export function buildHomeActivityRows(
   transfers: PaymentTransferSummary[],
-  issuanceTransactions: Array<{
-    tokenName: string;
-    tokenSymbol: string;
-    transaction: TokenTransaction;
-  }>
+  issuanceTransactions: TokenTransactionListItem[],
+  t: Translate
 ): HomeActivityRow[] {
   const paymentRows = transfers
     .filter(
@@ -112,10 +144,11 @@ export function buildHomeActivityRows(
     .map((transfer) => ({
       id: `payment-${transfer.id}`,
       createdAt: transfer.createdAt,
-      type: resolvePaymentsType(transfer),
+      type: resolvePaymentsType(transfer, t),
       token: transfer.token ?? "—",
       amount: transfer.amount ?? "—",
       address: resolvePaymentsAddress(transfer),
+      explorer: resolvePaymentsExplorer(transfer),
       sourceKind: "payments" as const,
     }));
 
@@ -127,13 +160,14 @@ export function buildHomeActivityRows(
         transaction: TokenTransaction & { createdAt: string };
       } => typeof entry.transaction.createdAt === "string" && entry.transaction.createdAt.length > 0
     )
-    .map(({ tokenName, tokenSymbol, transaction }) => ({
+    .map(({ token, transaction }) => ({
       id: `issuance-${transaction.id}`,
       createdAt: transaction.createdAt,
       type: toTitleCase(transaction.type),
-      token: tokenSymbol || tokenName || "—",
+      token: token.symbol || token.name || "—",
       amount: resolveIssuanceAmount(transaction),
       address: resolveIssuanceAddress(transaction),
+      explorer: resolveIssuanceExplorer(transaction),
       sourceKind: "issuance" as const,
     }));
 
@@ -144,13 +178,14 @@ export function buildHomeActivityRows(
     .slice(0, 10);
 }
 
-export async function fetchIssuanceTokens(
+export async function fetchOrgIssuanceActivity(
   request: SdpApiClient["request"],
-  pageSize = 100
-): Promise<FetchResult<HomeIssuanceToken[]>> {
+  t: Translate,
+  pageSize = 20
+): Promise<FetchResult<TokenTransactionListItem[]>> {
   try {
     const response = await request(
-      `/v1/issuance/tokens?${new URLSearchParams({
+      `/v1/issuance/transactions?${new URLSearchParams({
         page: "1",
         pageSize: String(pageSize),
       }).toString()}`
@@ -164,94 +199,15 @@ export async function fetchIssuanceTokens(
       };
     }
 
-    const json = (await response.json()) as {
-      data?: Array<{
-        id?: string;
-        name?: string;
-        symbol?: string;
-      }>;
-    };
-
-    const tokens = (json?.data ?? [])
-      .filter(
-        (
-          token
-        ): token is {
-          id: string;
-          name?: string;
-          symbol?: string;
-        } => typeof token?.id === "string"
-      )
-      .map((token) => ({
-        id: token.id,
-        name: token.name ?? "Untitled token",
-        symbol: token.symbol ?? "—",
-      }));
-
-    return { ok: true, data: tokens };
+    const json = (await response.json()) as { data?: TokenTransactionListItem[] };
+    return { ok: true, data: json.data ?? [] };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load issuance tokens",
+      error:
+        error instanceof Error
+          ? error.message
+          : t("Shared.homeWorkspace.issuanceActivityUnavailable"),
     };
   }
-}
-
-export async function fetchOrgIssuanceActivity(
-  request: SdpApiClient["request"],
-  tokens: HomeIssuanceToken[]
-): Promise<{
-  rows: Array<{
-    tokenName: string;
-    tokenSymbol: string;
-    transaction: TokenTransaction;
-  }>;
-  error: string | null;
-}> {
-  const settledTransactions = await Promise.allSettled(
-    tokens.map(async (token) => {
-      const response = await request(
-        `/v1/issuance/tokens/${token.id}/transactions?${new URLSearchParams({
-          page: "1",
-          pageSize: "10",
-        }).toString()}`
-      );
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(parseErrorMessage(body));
-      }
-
-      const json = (await response.json()) as {
-        data?: TokenTransaction[];
-      };
-
-      return (json.data ?? []).map((transaction) => ({
-        tokenName: token.name,
-        tokenSymbol: token.symbol,
-        transaction,
-      }));
-    })
-  );
-
-  const rows: Array<{
-    tokenName: string;
-    tokenSymbol: string;
-    transaction: TokenTransaction;
-  }> = [];
-  let hasFailure = false;
-
-  for (const result of settledTransactions) {
-    if (result.status === "fulfilled") {
-      rows.push(...result.value);
-      continue;
-    }
-
-    hasFailure = true;
-  }
-
-  return {
-    rows,
-    error: hasFailure ? "Some issuance activity could not be loaded." : null,
-  };
 }

@@ -1,11 +1,11 @@
+import { hashString } from "@sdp/payments/hash";
 import type { CachedApiKey } from "@sdp/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
 import app from "@/index";
-import { hashString } from "@/lib/hash";
 import { env } from "@/test/helpers/env";
 import { clearTestDatabase, seedTestDatabase } from "@/test/mocks/db";
-import { clearKVNamespaces, seedCachedApiKey } from "@/test/mocks/kv";
+import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
 
 const TEST_ORG = {
   id: "org_custody_multi_provider",
@@ -206,7 +206,7 @@ describe("Custody multi-provider routes", () => {
   afterEach(async () => {
     env.PARA_API_KEY = originalParaApiKey;
     await clearTestDatabase(env);
-    await clearKVNamespaces(env);
+    await clearKVStores(env);
   });
 
   it("switches default provider without deactivating other active providers", async () => {
