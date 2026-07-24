@@ -3,7 +3,7 @@
  *
  * Drives the SPC auth handshake for one SDP custody wallet:
  *   1. resolve the connected (auth-enabled) instance + the acting member's SPC user
- *   2. get an SPC session JWT (decrypt credential → login; see ./auth/spc-session)
+ *   2. open an SPC JWT handle (KV-cached via ./auth/gateway-auth)
  *   3. `challenge-wallet` → sign the challenge with THAT wallet → `verify-wallet`
  *   4. persist the verification (idempotent per (user, instance, pubkey))
  *
@@ -32,7 +32,7 @@ import type { ApiKeyContext } from "@/lib/auth";
 import { AppError, badRequest, forbidden, providerNotConfigured } from "@/lib/errors";
 import { createOrgSigner } from "@/services/solana";
 import type { Env } from "@/types/env";
-import { getSpcSession, type SpcSession } from "./auth/spc-session";
+import { openSpcAuthContext, type SpcAuthContext, withSpcAuth } from "./auth/gateway-auth";
 
 const base58 = getBase58Codec();
 
@@ -57,13 +57,13 @@ interface WalletSession {
   instance: PrivateChannelInstanceRow;
   pcUser: PrivateChannelUserRow;
   client: SpcAuthClient;
-  session: SpcSession;
+  spcAuth: SpcAuthContext;
 }
 
 /**
  * Shared preamble for the verify/delete write paths: require a user identity,
  * resolve the connected auth-enabled instance and the acting member's SPC user,
- * and mint an SPC session JWT.
+ * and open a cached SPC JWT handle.
  */
 async function resolveWalletSession(
   env: Env,
@@ -89,13 +89,9 @@ async function resolveWalletSession(
   }
 
   const client = createAuthClient(instance.auth_url as string, { timeoutMs: SPC_AUTH_TIMEOUT_MS });
-  // TODO: refactor SPC user-auth JWT management so we don't log in on every SPC
-  // endpoint call. getSpcSession currently mints a fresh 24h JWT per request (see
-  // ./auth/spc-session); cache/persist the token per SPC user (e.g. KV, keyed by
-  // pcUser.id, with refresh-before-expiry) and reuse it here across verify/delete.
-  const session = await getSpcSession(env, auth.organizationId, pcUser, client);
+  const spcAuth = await openSpcAuthContext(env, auth.organizationId, instance.id, pcUser, client);
 
-  return { scope, instance, pcUser, client, session };
+  return { scope, instance, pcUser, client, spcAuth };
 }
 
 /**
@@ -142,53 +138,62 @@ export async function verifyPrivateChannelWallet(
   projectId: string,
   walletId: string
 ): Promise<{ row: PrivateChannelVerifiedWalletRow; instance: PrivateChannelInstanceRow }> {
-  const { scope, instance, pcUser, client, session } = await resolveWalletSession(
+  const { scope, instance, pcUser, client, spcAuth } = await resolveWalletSession(
     env,
     auth,
     projectId
   );
 
   // Resolve the wallet to a signer BEFORE the SPC challenge, so an
-  // invalid/unsignable wallet fails without minting a nonce.
+  // invalid/unsignable wallet fails without minting a nonce. Kept outside
+  // withSpcAuth so a 401 retry does not re-derive the signer.
   const signer = await createOrgSigner(env, auth.organizationId, projectId, walletId);
   if (!isMessagePartialSigner(signer)) {
     throw new AppError("SIGNING_FAILED", "This wallet cannot sign verification messages.");
   }
   const pubkey = signer.address;
 
-  const challenge = await client.challengeWallet(session.token);
+  // Retry unit is challenge → sign → verify (restarted from challenge on 401).
+  // The nonce is challenge-scoped; never retry verify alone with a fresh token.
+  await withSpcAuth(spcAuth, async (token) => {
+    const challenge = await client.challengeWallet(token);
 
-  let signature: string;
-  try {
-    const [signatures] = await signer.signMessages([createSignableMessage(challenge.message)]);
-    const signatureBytes = signatures[pubkey];
-    if (!signatureBytes) {
-      throw new AppError("SIGNING_FAILED", "Signing did not produce a signature for the wallet.");
+    let signature: string;
+    try {
+      const [signatures] = await signer.signMessages([createSignableMessage(challenge.message)]);
+      const signatureBytes = signatures[pubkey];
+      if (!signatureBytes) {
+        throw new AppError("SIGNING_FAILED", "Signing did not produce a signature for the wallet.");
+      }
+      signature = base58.decode(signatureBytes);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        "SIGNING_FAILED",
+        "The wallet failed to sign the verification challenge.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        }
+      );
     }
-    signature = base58.decode(signatureBytes);
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    throw new AppError("SIGNING_FAILED", "The wallet failed to sign the verification challenge.", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
-  }
 
-  // SPC enforces UNIQUE(user_id, pubkey) and returns 409 on re-verify. Treat that
-  // as success and fall through to the upsert so the SDP mirror stays in sync —
-  // makes verify idempotent and self-heals a missing mirror row.
-  try {
-    await client.verifyWallet(session.token, {
-      pubkey,
-      nonce: challenge.nonce,
-      signature,
-    });
-  } catch (error) {
-    if (!(error instanceof PrivateChannelError) || error.code !== "CONFLICT") {
-      throw error;
+    // SPC enforces UNIQUE(user_id, pubkey) and returns 409 on re-verify. Treat that
+    // as success and fall through to the upsert so the SDP mirror stays in sync —
+    // makes verify idempotent and self-heals a missing mirror row.
+    try {
+      await client.verifyWallet(token, {
+        pubkey,
+        nonce: challenge.nonce,
+        signature,
+      });
+    } catch (error) {
+      if (!(error instanceof PrivateChannelError) || error.code !== "CONFLICT") {
+        throw error;
+      }
     }
-  }
+  });
 
   const row = await createPrivateChannelVerifiedWalletRepository(env).upsert({
     ...scope,
@@ -211,20 +216,22 @@ export async function deletePrivateChannelWallet(
   projectId: string,
   pubkey: string
 ): Promise<{ instance: PrivateChannelInstanceRow; deleted: boolean }> {
-  const { instance, pcUser, client, session } = await resolveWalletSession(env, auth, projectId);
+  const { instance, pcUser, client, spcAuth } = await resolveWalletSession(env, auth, projectId);
 
   // SPC's delete returns 400 ("wallet not associated with this user") when the
   // pubkey is already unlinked or never existed — the only non-401/500 status that
   // endpoint emits, so it's unambiguous (SPC never 404s here). Treat that 400 as
   // already-revoked and still drop the SDP mirror row so the two systems converge;
-  // rethrow real failures (auth, unavailable, …).
-  try {
-    await client.deleteWallet(session.token, pubkey);
-  } catch (error) {
-    if (!(error instanceof PrivateChannelError) || error.code !== "BAD_REQUEST") {
-      throw error;
+  // rethrow other failures (auth, unavailable, …).
+  await withSpcAuth(spcAuth, async (token) => {
+    try {
+      await client.deleteWallet(token, pubkey);
+    } catch (error) {
+      if (!(error instanceof PrivateChannelError) || error.code !== "BAD_REQUEST") {
+        throw error;
+      }
     }
-  }
+  });
 
   const deleted = await createPrivateChannelVerifiedWalletRepository(
     env

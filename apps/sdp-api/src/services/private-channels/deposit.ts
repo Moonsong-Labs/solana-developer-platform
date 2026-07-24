@@ -50,6 +50,7 @@ import { AppError, badRequest } from "@/lib/errors";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
+import type { SpcAuthContext } from "./auth/gateway-auth";
 import { getChannelBalance } from "./balance";
 import { confirmAndPersistDeposit } from "./deposit-confirm";
 import { emitDepositEvent } from "./deposit-events";
@@ -72,11 +73,11 @@ export interface CreateChannelDepositInput {
   /** Address credited in the channel; defaults to the depositor. */
   recipient?: string;
   /**
-   * SPC bearer token for the gateway baseline read. Required when the connected
-   * instance has auth enabled (the gateway JWT-gates balance reads); resolved by
-   * the handler via `resolveGatewayAuthToken`.
+   * SPC JWT handle for the baseline gateway balance read. Required when the
+   * connected instance has auth enabled; resolved by the handler via
+   * `resolveGatewayAuth`.
    */
-  gatewayAuthToken?: string;
+  gatewayAuth?: SpcAuthContext;
 }
 
 /**
@@ -170,7 +171,7 @@ export async function createChannelDeposit(
     instance,
     owner: recipient,
     mint,
-    authToken: input.gatewayAuthToken,
+    auth: input.gatewayAuth,
   });
 
   const repo = createPrivateChannelDepositRepository(env);

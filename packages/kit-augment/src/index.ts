@@ -25,5 +25,3 @@ declare module "@solana/kit" {
   // extendClient(client, ext) returns the client with `ext` merged in (ext keys win).
   export type ExtendedClient<TClient, TExtensions> = Omit<TClient, keyof TExtensions> & TExtensions;
 }
-
-export {};
