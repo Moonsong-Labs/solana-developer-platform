@@ -20,11 +20,17 @@ vi.mock("@/services/private-channels", () => ({ getChannelBalance }));
 const { emitDepositEvent } = vi.hoisted(() => ({ emitDepositEvent: vi.fn() }));
 vi.mock("@/services/private-channels/deposit-events", () => ({ emitDepositEvent }));
 
-// Gateway auth for the cron: resolved from the recipient's verified wallet. Default
-// to an auth-less instance ("open"); individual tests override to assert behaviour.
+// Gateway auth for the cron: resolved from the recipient's verified wallet.
+// Auth is always required, so the default mock returns a valid token; individual
+// tests override to assert unavailable/error paths.
 const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
   resolveOwnerGatewayAuth: vi.fn(
-    async () => ({ kind: "open" }) as { kind: string; context?: unknown; reason?: string }
+    async () =>
+      ({ kind: "token", context: { current: "jwt-default", refresh: vi.fn() } }) as {
+        kind: string;
+        context?: unknown;
+        reason?: string;
+      }
   ),
 }));
 vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveOwnerGatewayAuth }));
@@ -65,7 +71,10 @@ function depositRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resolveOwnerGatewayAuth.mockResolvedValue({ kind: "open" });
+  resolveOwnerGatewayAuth.mockResolvedValue({
+    kind: "token",
+    context: { current: "jwt-default", refresh: vi.fn() },
+  });
   depositRepo.listDepositsForRecipient.mockResolvedValue([]);
   depositRepo.updateDeposit.mockImplementation(async (input: Record<string, unknown>) => ({
     ...input,
@@ -133,7 +142,7 @@ describe("trackPendingDeposits", () => {
     expect(emitDepositEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("passes the recipient's SPC token to the gateway read on an auth-enabled instance", async () => {
+  it("passes the recipient's SPC token to the gateway read", async () => {
     const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
     depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
     depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);

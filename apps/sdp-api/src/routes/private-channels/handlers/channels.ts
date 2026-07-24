@@ -1,10 +1,15 @@
 import type { PrivateChannelRow } from "@sdp/private-channels/channels";
 import { validatePrivateChannelName } from "@sdp/private-channels/channels";
 import { PRIVATE_CHANNEL_EVENT_TYPES, type PrivateChannelDto } from "@sdp/types";
+import { getAuth } from "@/lib/auth";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { created, noContent, success } from "@/lib/response";
-import { type AppContext, getPrivateChannelRepository } from "../context";
-import { emitLifecycle, requireActiveInstance } from "../helpers";
+import {
+  type AppContext,
+  getPrivateChannelRepository,
+  getPrivateChannelUserRepository,
+} from "../context";
+import { emitLifecycle, emitMember, requireActiveInstance } from "../helpers";
 import { createChannelBodySchema } from "../schemas";
 
 function toPrivateChannelDto(row: PrivateChannelRow): PrivateChannelDto {
@@ -19,29 +24,17 @@ function toPrivateChannelDto(row: PrivateChannelRow): PrivateChannelDto {
   };
 }
 
-/** GET /channels — ensure the default channel exists, then list all (newest first). */
+/** GET /channels — list all channels in the active instance (newest first). */
 export async function listChannels(c: AppContext) {
   const instance = await requireActiveInstance(c);
-  const scope = {
-    instanceId: instance.id,
-    organizationId: instance.organization_id,
-    projectId: instance.project_id,
-  };
-  const repo = getPrivateChannelRepository(c);
-  const { channel: defaultChannel, created } = await repo.getOrCreateDefault(scope);
-  if (created) {
-    await emitLifecycle(c, instance, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
-      channelId: defaultChannel.id,
-      payload: { name: defaultChannel.name, isDefault: true },
-    });
-  }
-  const channels = await repo.listChannels({ instanceId: instance.id });
+  const channels = await getPrivateChannelRepository(c).listChannels({ instanceId: instance.id });
   return success(c, { channels: channels.map(toPrivateChannelDto) });
 }
 
 /** POST /channels — create a named channel in the active instance. */
 export async function createChannel(c: AppContext) {
   const instance = await requireActiveInstance(c);
+  const auth = getAuth(c);
 
   const body = await c.req.json().catch(() => null);
   const parsed = createChannelBodySchema.safeParse(body);
@@ -70,6 +63,43 @@ export async function createChannel(c: AppContext) {
     channelId: channel.id,
     payload: { name: channel.name },
   });
+
+  // Auto-join the creator to the channel they just made when they are a real
+  // user (Clerk/session). The instance-connect flow onboards every human
+  // connector as a workspace member, so this lookup succeeds for anyone who
+  // connected via the UI. Skipped for API-key auth: no user identity to
+  // attribute, and the API key's owner can add themselves via /memberships.
+  if (auth.userId) {
+    const userRepo = getPrivateChannelUserRepository(c);
+    const creator = await userRepo.findByProjectAndUser(
+      { organizationId: instance.organization_id, projectId: instance.project_id },
+      auth.userId
+    );
+    if (creator) {
+      const membership = await userRepo.addMembership({
+        channelId: channel.id,
+        privateChannelUserId: creator.id,
+        addedBy: auth.userId,
+      });
+      await emitMember(
+        c,
+        {
+          organizationId: instance.organization_id,
+          projectId: instance.project_id,
+          instanceId: instance.id,
+        },
+        PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ADDED,
+        {
+          channelId: channel.id,
+          payload: {
+            privateChannelUserId: creator.id,
+            targetUserId: creator.user_id,
+            membershipId: membership.id,
+          },
+        }
+      );
+    }
+  }
 
   return created(c, toPrivateChannelDto(channel));
 }

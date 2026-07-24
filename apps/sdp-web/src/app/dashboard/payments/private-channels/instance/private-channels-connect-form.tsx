@@ -48,7 +48,6 @@ function toValues(instance: PrivateChannelInstance | null): FormValues {
     escrowProgramId: instance.escrowProgramId,
     withdrawProgramId: instance.withdrawProgramId,
     escrowInstanceAddr: instance.escrowInstanceAddr,
-    useAuth: instance.useAuth,
     authUrl: instance.authUrl,
   };
 }
@@ -59,6 +58,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [gatewayResult, setGatewayResult] = useState<ConnectionProbeResult["gateway"] | null>(null);
   const [rpcResult, setRpcResult] = useState<ConnectionProbeResult["rpc"] | null>(null);
+  const [authResult, setAuthResult] = useState<ConnectionProbeResult["auth"] | null>(null);
   const [isTesting, startTesting] = useTransition();
   const [isConnecting, startConnecting] = useTransition();
   const [isDisconnecting, startDisconnecting] = useTransition();
@@ -82,6 +82,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
     // Any edit invalidates the last probe result.
     setGatewayResult(null);
     setRpcResult(null);
+    setAuthResult(null);
   };
 
   const applyConnectResult = (result: ConnectPrivateChannelResult) => {
@@ -91,6 +92,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
       setErrors({});
       setGatewayResult(null);
       setRpcResult(null);
+      setAuthResult(null);
       toast.success("Private channel connected.");
       return;
     }
@@ -101,6 +103,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
     if (result.kind === "probe") {
       setGatewayResult(result.probe.gateway);
       setRpcResult(result.probe.rpc);
+      setAuthResult(result.probe.auth);
       toast.error(result.message);
       return;
     }
@@ -123,9 +126,11 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
       const result = await testConnectionAction({
         gatewayUrl: values.gatewayUrl,
         chainRpcUrl: values.chainRpcUrl,
+        authUrl: values.authUrl,
       });
       setGatewayResult(result.gateway);
       setRpcResult(result.rpc);
+      setAuthResult(result.auth);
     });
   };
 
@@ -157,6 +162,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         setValues({ ...SANDBOX_DEFAULTS });
         setGatewayResult(null);
         setRpcResult(null);
+        setAuthResult(null);
         setShowDelete(false);
         toast.success("Private channel instance deleted.");
       } else {
@@ -189,6 +195,17 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         status={rpcStatus(rpcResult)}
       />
 
+      <UrlField
+        id="auth-url"
+        label="Auth URL"
+        placeholder="http://auth.example:8903"
+        value={values.authUrl}
+        error={errors.authUrl}
+        disabled={isLocked}
+        onChange={(v) => update("authUrl", v)}
+        status={authStatus(authResult)}
+      />
+
       <div className="grid gap-2 sm:grid-cols-2">
         <TextField
           id="escrow-program-id"
@@ -216,34 +233,6 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         disabled={isLocked}
         onChange={(v) => update("escrowInstanceAddr", v)}
       />
-
-      <div className="grid gap-2">
-        <label
-          className="inline-flex items-center gap-2 text-sm font-medium text-text-high"
-          htmlFor="use-auth"
-        >
-          <input
-            id="use-auth"
-            type="checkbox"
-            checked={values.useAuth}
-            onChange={(e) => update("useAuth", e.currentTarget.checked)}
-            disabled={isLocked}
-            className="h-4 w-4"
-          />
-          Use auth
-        </label>
-        {values.useAuth ? (
-          <UrlField
-            id="auth-url"
-            label="Auth URL"
-            placeholder="http://auth.example:8903"
-            value={values.authUrl}
-            error={errors.authUrl}
-            disabled={isLocked}
-            onChange={(v) => update("authUrl", v)}
-          />
-        ) : null}
-      </div>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button type="button" variant="secondary" onClick={runTest} disabled={busy || isLocked}>
@@ -328,6 +317,24 @@ function rpcStatus(rpcResult: ConnectionProbeResult["rpc"] | null): StatusIndica
     dotClass: GATEWAY_DOT.unreachable,
     textClass: GATEWAY_TEXT.unreachable,
     detail: rpcResult.error,
+  };
+}
+
+function authStatus(authResult: ConnectionProbeResult["auth"] | null): StatusIndicator | null {
+  if (!authResult) return null;
+  if (authResult.ok) {
+    return {
+      label: "Ready",
+      dotClass: GATEWAY_DOT.ready,
+      textClass: GATEWAY_TEXT.ready,
+      detail: `${authResult.latencyMs} ms`,
+    };
+  }
+  return {
+    label: "Failed",
+    dotClass: GATEWAY_DOT.unreachable,
+    textClass: GATEWAY_TEXT.unreachable,
+    detail: authResult.error,
   };
 }
 

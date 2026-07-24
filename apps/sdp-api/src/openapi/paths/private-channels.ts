@@ -463,7 +463,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     summary: "Verify a custody wallet with the SPC auth service",
     operationId: "verifyPrivateChannelWallet",
     description:
-      "Runs the SPC challenge → sign → verify handshake for a custody wallet (any SDP provider), then records the verification. A member may verify many wallets; idempotent per (member, instance, wallet). Requires the connected instance to have auth enabled and the caller to be an invited member.",
+      "Runs the SPC challenge → sign → verify handshake for a custody wallet (any SDP provider), then records the verification. A member may verify many wallets; idempotent per (member, instance, wallet). Requires the caller to be an invited member of the connected instance.",
     security: [{ apiKeyAuth: [] }],
     request: { headers: projectScopeHeaders, params: privateChannelVerifyWalletParamSchema },
     responses: {
@@ -484,7 +484,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     summary: "Revoke a verified wallet",
     operationId: "deletePrivateChannelVerifiedWallet",
     description:
-      "Revokes a wallet verification with the SPC auth service and removes the SDP mirror row. Requires the connected instance to have auth enabled and the caller to be an invited member.",
+      "Revokes a wallet verification with the SPC auth service and removes the SDP mirror row. Requires the caller to be an invited member of the connected instance.",
     security: [{ apiKeyAuth: [] }],
     request: { headers: projectScopeHeaders, params: privateChannelDeleteWalletParamSchema },
     responses: {

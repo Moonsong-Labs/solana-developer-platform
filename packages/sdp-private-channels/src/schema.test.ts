@@ -8,8 +8,7 @@ describe("privateChannelInstanceInputSchema", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.gatewayUrl).toBe(SANDBOX_DEFAULTS.gatewayUrl);
-    expect(result.data.useAuth).toBe(false);
-    expect(result.data.authUrl).toBe("");
+    expect(result.data.authUrl).toBe(SANDBOX_DEFAULTS.authUrl);
   });
 
   it("rejects an empty gateway URL", () => {
@@ -43,10 +42,9 @@ describe("privateChannelInstanceInputSchema", () => {
     expect(result.error.flatten().fieldErrors.escrowProgramId?.[0]).toMatch(/base58/i);
   });
 
-  it("requires authUrl when useAuth is true", () => {
+  it("requires a non-empty auth URL", () => {
     const result = privateChannelInstanceInputSchema.safeParse({
       ...SANDBOX_DEFAULTS,
-      useAuth: true,
       authUrl: "",
     });
     expect(result.success).toBe(false);
@@ -54,27 +52,14 @@ describe("privateChannelInstanceInputSchema", () => {
     expect(result.error.flatten().fieldErrors.authUrl?.[0]).toMatch(/required/i);
   });
 
-  it("normalizes authUrl to empty string when useAuth is false", () => {
+  it("rejects a non-http protocol for the auth URL", () => {
     const result = privateChannelInstanceInputSchema.safeParse({
       ...SANDBOX_DEFAULTS,
-      useAuth: false,
-      authUrl: "http://ignored:8903",
+      authUrl: "ftp://auth.example",
     });
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.data.authUrl).toBe("");
-  });
-
-  it("accepts a valid useAuth + authUrl pair", () => {
-    const result = privateChannelInstanceInputSchema.safeParse({
-      ...SANDBOX_DEFAULTS,
-      useAuth: true,
-      authUrl: "http://auth.test:8903",
-    });
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.data.useAuth).toBe(true);
-    expect(result.data.authUrl).toBe("http://auth.test:8903");
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.flatten().fieldErrors.authUrl?.[0]).toMatch(/http\/https/i);
   });
 
   it("trims whitespace-only values into empty errors", () => {

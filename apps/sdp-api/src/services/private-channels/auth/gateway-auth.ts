@@ -5,11 +5,11 @@
  * gates both Auth REST (challenge/verify/delete) and Gateway JSON-RPC (balances,
  * burns, tx lookups). See `./spc-session` for KV caching per (instance, SPC user).
  *
- * Callers hold an `SpcAuthContext` and run work through `withGatewayRpc` or
- * `withSpcAuth`, each of which retries ONCE on a strict 401 with a re-minted
- * token. Returns `undefined` from `resolveGatewayAuth` when the instance has
- * auth DISABLED. When auth IS enabled the caller must have a user identity and
- * an invited membership — we fail with a clear error rather than an opaque 401.
+ * An SPC instance always has an auth service (enforced at connect time), so the
+ * caller must have a user identity and an invited membership — we fail with a
+ * clear error rather than letting the gateway answer an opaque 401. Callers hold
+ * an `SpcAuthContext` and run work through `withGatewayRpc` or `withSpcAuth`, each
+ * of which retries ONCE on a strict 401 with a re-minted token.
  */
 
 import { createChannelGatewayRpc, PrivateChannelError } from "@sdp/private-channels";
@@ -30,20 +30,16 @@ import { getSpcSession } from "./spc-session";
 /** Cap below the auth client's default so a degraded auth service can't stall a request. */
 const SPC_AUTH_TIMEOUT_MS = 8_000;
 
-/** The instance fields needed to decide on, and mint, a gateway token. */
+/** The instance fields needed to mint a gateway token. */
 export interface GatewayAuthInstance {
   /** Instance id — the SPC-session cache is scoped per (instance, SPC user). */
   id: string;
-  useAuth: boolean;
-  /** Null/empty when the auth service isn't part of the deployment. */
-  authUrl: string | null;
+  authUrl: string;
 }
 
 /**
  * A live SPC bearer token that can re-mint itself. `current` is the token to
  * send; `refresh()` re-logins (evicting the cached entry) and updates `current`.
- * `undefined` in place of a context (from `resolveGatewayAuth`) means the
- * instance is open (no auth).
  */
 export interface SpcAuthContext {
   current: string;
@@ -92,21 +88,17 @@ export async function openSpcAuthContext(
 }
 
 /**
- * Resolve an SPC auth context for a request, or `undefined` when the instance
- * doesn't use auth. Throws a descriptive `FORBIDDEN` when auth is required but no
- * SPC session can be minted for the caller.
+ * Resolve an SPC auth context for a request. Auth is always required, so this
+ * throws a descriptive `FORBIDDEN` when no SPC session can be minted for the
+ * caller (no user identity, or not an invited member).
  */
 export async function resolveGatewayAuth(
   env: Env,
   { instance, organizationId, projectId, userId }: ResolveGatewayAuthInput
-): Promise<SpcAuthContext | undefined> {
-  if (!instance.useAuth || !instance.authUrl) {
-    return undefined; // Gateway is open on this deployment.
-  }
-
+): Promise<SpcAuthContext> {
   if (!userId) {
     throw forbidden(
-      "This Private Channels instance requires authentication; reading channel data needs a user identity and is not available for API-key auth."
+      "Reading Private Channels data needs a user identity and is not available for API-key auth."
     );
   }
 
@@ -124,9 +116,9 @@ export async function resolveGatewayAuth(
   return openSpcAuthContext(env, organizationId, instance.id, pcUser, client);
 }
 
-/** Build the gateway RPC options for a (possibly absent) bearer token. */
-function gatewayAuthOptions(token: string | undefined) {
-  return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+/** Build the gateway RPC options for a bearer token. */
+function gatewayAuthOptions(token: string) {
+  return { headers: { Authorization: `Bearer ${token}` } };
 }
 
 function isUnauthorizedAuthError(error: unknown): boolean {
@@ -150,15 +142,15 @@ function isUnauthorizedAuthError(error: unknown): boolean {
 export async function withGatewayRpc<T>(
   env: Env,
   gatewayUrl: string,
-  context: SpcAuthContext | undefined,
+  context: SpcAuthContext,
   run: (rpc: SolanaRpc) => Promise<T>
 ): Promise<T> {
-  const attempt = (token: string | undefined) =>
+  const attempt = (token: string) =>
     run(createChannelGatewayRpc(env, gatewayUrl, gatewayAuthOptions(token)));
   try {
-    return await attempt(context?.current);
+    return await attempt(context.current);
   } catch (error) {
-    if (!context || !isUnauthorizedRpcError(error)) {
+    if (!isUnauthorizedRpcError(error)) {
       throw error;
     }
     return await attempt(await context.refresh());
@@ -194,7 +186,6 @@ export async function withSpcAuth<T>(
  * (it would just re-throw every cron tick).
  */
 export type OwnerGatewayAuth =
-  | { kind: "open" }
   | { kind: "token"; context: SpcAuthContext }
   | { kind: "unavailable"; reason: string };
 
@@ -220,10 +211,10 @@ export interface ResolveOwnerGatewayAuthInput {
  * recipient is an external/unverified address. The caller should skip that group
  * and leave the deposits for manual resolution rather than fail the whole tick.
  *
- * NOTE: `use_auth`/`auth_url` come from the instance's CURRENT row, not the
- * deposit's snapshot (the snapshot pins the chain/gateway, and carries no auth
- * endpoint). Authenticating against the current auth service is the desired
- * behaviour; if that ever needs pinning too, add it to the snapshot.
+ * NOTE: `auth_url` comes from the instance's CURRENT row, not the deposit's
+ * snapshot (the snapshot pins the chain/gateway, and carries no auth endpoint).
+ * Authenticating against the current auth service is the desired behaviour; if
+ * that ever needs pinning too, add it to the snapshot.
  */
 export async function resolveOwnerGatewayAuth(
   env: Env,
@@ -232,9 +223,6 @@ export async function resolveOwnerGatewayAuth(
   const instance = await createPrivateChannelInstanceRepository(env).getById(instanceId);
   if (!instance) {
     return { kind: "unavailable", reason: `instance ${instanceId} no longer exists` };
-  }
-  if (!instance.use_auth || !instance.auth_url) {
-    return { kind: "open" };
   }
 
   const scope = { organizationId, projectId };

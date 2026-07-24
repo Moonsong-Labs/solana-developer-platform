@@ -111,6 +111,10 @@ function successProbe() {
       latencyMs: 33,
       version: "1.18.4",
     },
+    auth: {
+      ok: true as const,
+      latencyMs: 15,
+    },
   };
 }
 
@@ -162,7 +166,6 @@ describe("Private Channels routes", () => {
       organizationId: string;
       projectId: string;
       gatewayUrl: string;
-      useAuth: boolean;
       authUrl: string;
       isActive: boolean;
     };
@@ -170,8 +173,7 @@ describe("Private Channels routes", () => {
     expect(instance.organizationId).toBe(TEST_ORG.id);
     expect(instance.projectId).toBe(TEST_PROJECT.id);
     expect(instance.gatewayUrl).toBe(SANDBOX_DEFAULTS.gatewayUrl);
-    expect(instance.useAuth).toBe(false);
-    expect(instance.authUrl).toBe("");
+    expect(instance.authUrl).toBe(SANDBOX_DEFAULTS.authUrl);
     expect(instance.isActive).toBe(true);
 
     const getRes = await app.request(
@@ -338,6 +340,7 @@ describe("Private Channels routes", () => {
         reason: "upstream",
       },
       rpc: { ok: true, latencyMs: 11, version: "1.18.4" },
+      auth: { ok: true, latencyMs: 15 },
     });
 
     const res = await app.request(
@@ -367,6 +370,7 @@ describe("Private Channels routes", () => {
         ready: { status: 200, ok: true, body: { status: "ready" } },
       },
       rpc: { ok: false, latencyMs: 5000, error: "Timed out after 5000 ms." },
+      auth: { ok: true, latencyMs: 15 },
     });
 
     const res = await app.request(

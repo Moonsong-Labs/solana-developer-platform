@@ -17,6 +17,5 @@ export const SANDBOX_DEFAULTS: PrivateChannelInstanceConfig = {
   withdrawProgramId: "J231K9UEpS4y4KAPwGc4gsMNCjKFRMYcQBcjVW7vBhVi",
   // biome-ignore lint/security/noSecrets: Public Solana account address.
   escrowInstanceAddr: "7C1Pu8mbHaDDTFnGH8YTqemNDofqXP3XEotzSo6TbwHz",
-  useAuth: false,
-  authUrl: "",
+  authUrl: "http://34.71.147.163:8903",
 };

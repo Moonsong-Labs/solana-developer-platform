@@ -75,10 +75,19 @@ async function seedAuth(): Promise<void> {
       .prepare(
         `INSERT INTO private_channel_instances
            (id, organization_id, project_id, gateway_url, chain_rpc_url,
-            escrow_program_id, withdraw_program_id, escrow_instance_addr, is_active)
-         VALUES (?, ?, ?, 'http://gw', 'http://rpc', 'prog1', 'prog2', 'escrow1', true)`
+            escrow_program_id, withdraw_program_id, escrow_instance_addr, auth_url, is_active)
+         VALUES (?, ?, ?, 'http://gw', 'http://rpc', 'prog1', 'prog2', 'escrow1', 'http://auth', true)`
       )
       .bind(TEST_INSTANCE_ID, TEST_ORG.id, TEST_PROJECT.id),
+    // Connecting an instance auto-provisions its default channel (instance connect →
+    // getOrCreateDefault). We seed the instance via raw SQL, so mirror that here.
+    getDb(env)
+      .prepare(
+        `INSERT INTO private_channels
+           (id, organization_id, project_id, instance_id, name, is_default)
+         VALUES (?, ?, ?, ?, 'Default', true)`
+      )
+      .bind("pch_pc_test_default", TEST_ORG.id, TEST_PROJECT.id, TEST_INSTANCE_ID),
   ]);
 }
 
@@ -112,7 +121,7 @@ describe("Private Channels — channel routes", () => {
     expect(res.status).toBe(503);
   });
 
-  it("GET /channels ensures + returns the default channel", async () => {
+  it("GET /channels returns the default channel", async () => {
     const res = await app.request("/v1/private-channels/channels", { headers: authHeaders() }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { channels: PrivateChannelDto[] } };
@@ -163,7 +172,8 @@ describe("Private Channels — channel routes", () => {
     );
     expect(del.status).toBe(204);
 
-    // Fetch the default (ensured by the earlier list is not guaranteed here, so ensure via list).
+    // The default channel is provisioned at instance-connect time (seeded above);
+    // fetch it via the list to get its id.
     const list = await app.request(
       "/v1/private-channels/channels",
       { headers: authHeaders() },

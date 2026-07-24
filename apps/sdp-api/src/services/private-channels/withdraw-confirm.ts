@@ -36,8 +36,8 @@ export async function confirmAndPersistWithdrawal(
     withdrawalId: string;
     gatewayUrl: string;
     signature: Signature;
-    /** SPC JWT handle — the gateway JWT-gates signature reads. */
-    gatewayAuth?: SpcAuthContext;
+    /** SPC auth context — the gateway JWT-gates signature reads. */
+    gatewayAuth: SpcAuthContext;
   }
 ): Promise<PrivateChannelWithdrawalRow | null> {
   try {

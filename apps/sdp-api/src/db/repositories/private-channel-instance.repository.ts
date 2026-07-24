@@ -14,8 +14,7 @@ export interface PrivateChannelInstanceRow {
   escrow_program_id: string;
   withdraw_program_id: string;
   escrow_instance_addr: string;
-  use_auth: boolean;
-  auth_url: string | null;
+  auth_url: string;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -73,8 +72,7 @@ export function mapPrivateChannelInstanceRow(
     escrowProgramId: row.escrow_program_id,
     withdrawProgramId: row.withdraw_program_id,
     escrowInstanceAddr: row.escrow_instance_addr,
-    useAuth: row.use_auth,
-    authUrl: row.auth_url ?? "",
+    authUrl: row.auth_url,
     isActive: row.is_active,
     createdBy: row.created_by,
     createdAt: row.created_at,

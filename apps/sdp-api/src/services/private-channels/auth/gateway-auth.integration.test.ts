@@ -36,7 +36,7 @@ const AUTH_URL = "http://auth.example:8903";
 const GATEWAY_URL = "https://gateway.example";
 const CACHE_KEY = `spc-session:${INSTANCE_ID}:${PCU_ID}`;
 
-const instance = { id: INSTANCE_ID, useAuth: true, authUrl: AUTH_URL };
+const instance = { id: INSTANCE_ID, authUrl: AUTH_URL };
 const resolveInput = {
   instance,
   organizationId: TEST_ORG.id,
@@ -180,16 +180,12 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
       { organizationId: TEST_ORG.id, projectId: PROJECT_ID },
       PCU_ID
     );
-    expect(pcUser).toBeTruthy();
+    if (!pcUser) {
+      throw new Error("test setup: expected the seeded private channel user to exist");
+    }
     const client = spcAuth.createAuthClient(AUTH_URL);
 
-    const walletAuth = await openSpcAuthContext(
-      testEnv,
-      TEST_ORG.id,
-      INSTANCE_ID,
-      pcUser!,
-      client
-    );
+    const walletAuth = await openSpcAuthContext(testEnv, TEST_ORG.id, INSTANCE_ID, pcUser, client);
     expect(loginMock).toHaveBeenCalledTimes(1);
 
     const gatewayAuth = await resolveGatewayAuth(testEnv, resolveInput);
@@ -200,10 +196,10 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
   it("on Auth REST UNAUTHORIZED, evicts + re-mints via withSpcAuth and retries once", async () => {
     const auth = await resolveGatewayAuth(testEnv, resolveInput);
     expect(loginMock).toHaveBeenCalledTimes(1);
-    const firstToken = auth!.current;
+    const firstToken = auth.current;
 
     let attempts = 0;
-    const result = await withSpcAuth(auth!, async (token) => {
+    const result = await withSpcAuth(auth, async (token) => {
       attempts += 1;
       if (attempts === 1) {
         throw new PrivateChannelError("UNAUTHORIZED", "stale");
@@ -214,6 +210,6 @@ describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", 
     expect(attempts).toBe(2);
     expect(loginMock).toHaveBeenCalledTimes(2);
     expect(result).not.toBe(firstToken);
-    expect(auth!.current).toBe(result);
+    expect(auth.current).toBe(result);
   });
 });

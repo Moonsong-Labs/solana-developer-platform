@@ -32,39 +32,16 @@ const base58Address = (label: string) =>
  * Single source of truth for validating the private-channel connect form.
  * The API handler and the client form both call `.safeParse` on this schema.
  *
- * `authUrl` is required and must be a valid http/https URL only when
- * `useAuth === true`; when false, `authUrl` is normalized to the empty string.
+ * `authUrl` is required — SPC's member and wallet-verification model both
+ * depend on the auth service, so an instance without one is not permitted.
  */
-export const privateChannelInstanceInputSchema = z
-  .object({
-    gatewayUrl: httpUrl("Gateway URL"),
-    chainRpcUrl: httpUrl("Chain RPC URL"),
-    escrowProgramId: base58Address("Escrow program ID"),
-    withdrawProgramId: base58Address("Withdraw program ID"),
-    escrowInstanceAddr: base58Address("Escrow instance address"),
-    useAuth: z.boolean(),
-    authUrl: z.string().trim().default(""),
-  })
-  .superRefine((value, ctx) => {
-    if (value.useAuth) {
-      if (!value.authUrl) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["authUrl"],
-          message: "Auth URL is required when Use auth is enabled.",
-        });
-      } else if (!isHttpUrl(value.authUrl)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["authUrl"],
-          message: "Auth URL must be a valid http/https URL.",
-        });
-      }
-    }
-  })
-  .transform((value) => ({
-    ...value,
-    authUrl: value.useAuth ? value.authUrl : "",
-  })) satisfies z.ZodType<PrivateChannelInstanceInput>;
+export const privateChannelInstanceInputSchema = z.object({
+  gatewayUrl: httpUrl("Gateway URL"),
+  chainRpcUrl: httpUrl("Chain RPC URL"),
+  escrowProgramId: base58Address("Escrow program ID"),
+  withdrawProgramId: base58Address("Withdraw program ID"),
+  escrowInstanceAddr: base58Address("Escrow instance address"),
+  authUrl: httpUrl("Auth URL"),
+}) satisfies z.ZodType<PrivateChannelInstanceInput>;
 
 export type PrivateChannelInstanceInputSchema = typeof privateChannelInstanceInputSchema;

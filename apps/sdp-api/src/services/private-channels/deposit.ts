@@ -73,11 +73,11 @@ export interface CreateChannelDepositInput {
   /** Address credited in the channel; defaults to the depositor. */
   recipient?: string;
   /**
-   * SPC JWT handle for the baseline gateway balance read. Required when the
-   * connected instance has auth enabled; resolved by the handler via
+   * SPC auth context for the baseline gateway balance read. Required — the
+   * gateway JWT-gates balance reads; resolved by the handler via
    * `resolveGatewayAuth`.
    */
-  gatewayAuth?: SpcAuthContext;
+  gatewayAuth: SpcAuthContext;
 }
 
 /**

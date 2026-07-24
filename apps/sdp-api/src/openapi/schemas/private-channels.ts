@@ -16,8 +16,7 @@ export const privateChannelInstanceSchema = z
     escrowProgramId: solanaAddressSchema,
     withdrawProgramId: solanaAddressSchema,
     escrowInstanceAddr: solanaAddressSchema,
-    useAuth: z.boolean().openapi({ description: "Whether the gateway enforces auth." }),
-    authUrl: z.string().openapi({ description: "Empty when useAuth=false." }),
+    authUrl: z.string().openapi({ description: "Base URL of the SPC auth service." }),
     isActive: z.boolean().openapi({ description: "True for the active instance." }),
     createdBy: z.string().nullable(),
     createdAt: z.string(),
@@ -32,7 +31,6 @@ export const privateChannelInstanceInputSchema = z
     escrowProgramId: solanaAddressSchema,
     withdrawProgramId: solanaAddressSchema,
     escrowInstanceAddr: solanaAddressSchema,
-    useAuth: z.boolean(),
     authUrl: z.string(),
     confirmReactivate: z.boolean().optional().openapi({
       description:
@@ -64,8 +62,9 @@ export const privateChannelProbeBodySchema = z
   .object({
     gatewayUrl: z.string().min(1),
     chainRpcUrl: z.string().min(1),
+    authUrl: z.string().min(1),
   })
-  .openapi({ description: "Probe request body: the two URLs the connect flow re-probes." });
+  .openapi({ description: "Probe request body: the three URLs the connect flow re-probes." });
 
 const gatewayProbeResponseSchema = z.object({
   status: z.number(),
@@ -101,7 +100,7 @@ export const privateChannelOverviewSchema = z
       z.object({ present: z.literal(true), executable: z.boolean() }),
       z.object({ present: z.literal(false), error: z.string() }),
     ]),
-    auth: z.object({ reachable: z.boolean(), error: z.string().nullable() }).nullable(),
+    auth: z.object({ reachable: z.boolean(), error: z.string().nullable() }),
   })
   .openapi({ description: "Post-connect instance overview." });
 
@@ -134,8 +133,12 @@ export const privateChannelProbeResultSchema = z
       z.object({ ok: z.literal(true), latencyMs: z.number(), version: z.string() }),
       z.object({ ok: z.literal(false), latencyMs: z.number(), error: z.string() }),
     ]),
+    auth: z.discriminatedUnion("ok", [
+      z.object({ ok: z.literal(true), latencyMs: z.number() }),
+      z.object({ ok: z.literal(false), latencyMs: z.number(), error: z.string() }),
+    ]),
   })
-  .openapi({ description: "Full connect-time probe result (gateway + chain RPC)." });
+  .openapi({ description: "Full connect-time probe result (gateway + chain RPC + auth)." });
 
 export const privateChannelSchema = z
   .object({

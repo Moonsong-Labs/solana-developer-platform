@@ -107,15 +107,6 @@ describe("withGatewayRpc", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("does NOT retry when there is no token (open instance)", async () => {
-    const run = vi.fn(async () => {
-      throw http401();
-    });
-
-    await expect(withGatewayRpc(ENV, URL, undefined, run)).rejects.toEqual(http401());
-    expect(run).toHaveBeenCalledTimes(1);
-  });
-
   it("retries at most once — a persistent 401 propagates", async () => {
     const h = context("stale", "fresh");
     const run = vi.fn(async () => {

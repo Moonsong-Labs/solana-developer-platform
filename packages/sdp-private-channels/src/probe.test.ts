@@ -18,13 +18,22 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const GATEWAY_URL = "http://gateway.test:8899";
+const CHAIN_RPC_URL = "https://api.devnet.solana.com";
+const AUTH_URL = "http://auth.test:8903";
+
+function baseInput() {
+  return { gatewayUrl: GATEWAY_URL, chainRpcUrl: CHAIN_RPC_URL, authUrl: AUTH_URL };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("probeConnection", () => {
-  it("returns ok:true when gateway is ready and RPC responds", async () => {
+  it("returns ok:true when gateway, RPC and auth all respond", async () => {
     stubFetch(async (url) => {
+      if (url.startsWith(AUTH_URL)) return jsonResponse({ status: "ok" });
       if (url.endsWith("/health")) return jsonResponse({ status: "ok" });
       if (url.endsWith("/ready")) return jsonResponse({ status: "ready" });
       return jsonResponse({
@@ -34,18 +43,17 @@ describe("probeConnection", () => {
       });
     });
 
-    const result = await probeConnection({
-      gatewayUrl: "http://gateway.test:8899",
-      chainRpcUrl: "https://api.devnet.solana.com",
-    });
+    const result = await probeConnection(baseInput());
 
     expect(result.ok).toBe(true);
     expect(result.gateway.status).toBe("ready");
     expect(result.rpc.ok).toBe(true);
+    expect(result.auth.ok).toBe(true);
   });
 
   it("returns ok:false when gateway is ready but RPC fails", async () => {
     stubFetch(async (url) => {
+      if (url.startsWith(AUTH_URL)) return jsonResponse({ status: "ok" });
       if (url.endsWith("/health")) return jsonResponse({ status: "ok" });
       if (url.endsWith("/ready")) return jsonResponse({ status: "ready" });
       return jsonResponse(
@@ -58,18 +66,17 @@ describe("probeConnection", () => {
       );
     });
 
-    const result = await probeConnection({
-      gatewayUrl: "http://gateway.test:8899",
-      chainRpcUrl: "https://api.devnet.solana.com",
-    });
+    const result = await probeConnection(baseInput());
 
     expect(result.ok).toBe(false);
     expect(result.gateway.status).toBe("ready");
     expect(result.rpc.ok).toBe(false);
+    expect(result.auth.ok).toBe(true);
   });
 
   it("returns ok:false when gateway is unreachable even if RPC succeeds", async () => {
     stubFetch(async (url) => {
+      if (url.startsWith(AUTH_URL)) return jsonResponse({ status: "ok" });
       if (url.endsWith("/health")) throw new TypeError("fetch failed");
       if (url.endsWith("/ready")) return jsonResponse({ status: "ready" });
       return jsonResponse({
@@ -79,13 +86,34 @@ describe("probeConnection", () => {
       });
     });
 
-    const result = await probeConnection({
-      gatewayUrl: "http://gateway.test:8899",
-      chainRpcUrl: "https://api.devnet.solana.com",
-    });
+    const result = await probeConnection(baseInput());
 
     expect(result.ok).toBe(false);
     expect(result.gateway.status).toBe("unreachable");
     expect(result.rpc.ok).toBe(true);
+    expect(result.auth.ok).toBe(true);
+  });
+
+  it("returns ok:false when the auth service returns a non-2xx", async () => {
+    stubFetch(async (url) => {
+      if (url.startsWith(AUTH_URL)) return jsonResponse({ status: "down" }, 503);
+      if (url.endsWith("/health")) return jsonResponse({ status: "ok" });
+      if (url.endsWith("/ready")) return jsonResponse({ status: "ready" });
+      return jsonResponse({
+        jsonrpc: "2.0",
+        id: "sdp-private-channels-rpc-probe",
+        result: { "solana-core": "1.18.4" },
+      });
+    });
+
+    const result = await probeConnection(baseInput());
+
+    expect(result.ok).toBe(false);
+    expect(result.gateway.status).toBe("ready");
+    expect(result.rpc.ok).toBe(true);
+    expect(result.auth.ok).toBe(false);
+    if (!result.auth.ok) {
+      expect(result.auth.error).toMatch(/HTTP 503/);
+    }
   });
 });

@@ -73,8 +73,8 @@ export async function inviteMember(
 
   // Retry once on collision: SPC hard-fails on duplicate username; the random
   // suffix makes second-attempt collisions effectively impossible.
-  let registered: Awaited<ReturnType<typeof spcRegister>>;
   let username = deriveUsername(input.targetUserEmail);
+  let registered: Awaited<ReturnType<typeof spcRegister>>;
   try {
     registered = await spcRegister(input.authUrl, { username, password });
   } catch (err) {

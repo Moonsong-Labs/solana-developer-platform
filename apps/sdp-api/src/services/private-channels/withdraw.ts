@@ -70,12 +70,12 @@ export interface CreateChannelWithdrawalInput {
   /** Devnet address that receives the operator's release; defaults to the owner. */
   destination?: string;
   /**
-   * SPC JWT handle. Required when the connected instance has auth enabled —
-   * broadcasting the burn is a gateway WRITE and confirming it a gateway READ, both
-   * JWT-gated. Resolved by the handler; shared across broadcast + confirm so confirm
-   * reuses a token broadcast already refreshed.
+   * SPC auth context for the gateway. Required — broadcasting the burn is a gateway
+   * WRITE and confirming it a gateway READ, both JWT-gated. Resolved by the handler;
+   * shared across broadcast + confirm so confirm reuses a token broadcast already
+   * refreshed.
    */
-  gatewayAuth?: SpcAuthContext;
+  gatewayAuth: SpcAuthContext;
 }
 
 /**
@@ -92,7 +92,7 @@ async function broadcastWithdrawal(
     mint: Address;
     destination: Address;
     amountBaseUnits: bigint;
-    gatewayAuth?: SpcAuthContext;
+    gatewayAuth: SpcAuthContext;
   }
 ): Promise<Signature> {
   // Signer derivation + the (blockhash-independent) burn instruction are built ONCE,

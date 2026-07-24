@@ -8,15 +8,17 @@ import { mapPrivateChannelInstanceRow, type PrivateChannelInstanceRow } from "@/
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
-import { verifyInstanceConnection } from "@/services/private-channels";
+import { inviteMember, verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import {
   getPrivateChannelDepositRepository,
   getPrivateChannelInstanceRepository,
   getPrivateChannelRepository,
+  getPrivateChannelUserRepository,
   getPrivateChannelWithdrawalRepository,
+  getProjectUserRepository,
 } from "../context";
-import { emitLifecycle } from "../helpers";
+import { emitLifecycle, emitMember } from "../helpers";
 import { connectPrivateChannelInstanceSchema } from "../schemas";
 
 export const getPrivateChannelInstance = async (c: AppContext) => {
@@ -65,6 +67,7 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
   const probe = await verifyInstanceConnection({
     gatewayUrl: input.gatewayUrl,
     chainRpcUrl: input.chainRpcUrl,
+    authUrl: input.authUrl,
   });
   if (!probe.ok) {
     // AppError responses are returned silently by app.onError; log diagnostics here.
@@ -73,12 +76,15 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
       projectId,
       gatewayUrl: input.gatewayUrl,
       chainRpcUrl: input.chainRpcUrl,
+      authUrl: input.authUrl,
       gateway: probe.gateway,
       rpc: probe.rpc,
+      auth: probe.auth,
     });
     throw badRequest("Connection check failed", {
       gateway: probe.gateway,
       rpc: probe.rpc,
+      auth: probe.auth,
     });
   }
 
@@ -116,28 +122,72 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
     payload: { gatewayUrl: row.gateway_url },
   });
 
-  // Ensure the instance's default channel exists once connected. Idempotent +
-  // best-effort: a hiccup here must not fail the connect (the channels list
-  // endpoint ensures the default too). Emitted after connect so the feed reads
-  // in chronological order.
-  try {
-    const { channel, created } = await getPrivateChannelRepository(c).getOrCreateDefault({
-      instanceId: row.id,
-      organizationId: row.organization_id,
-      projectId: row.project_id,
+  // The default channel is bootstrapped exclusively here; GET /channels lists
+  // what exists and does not lazy-create.
+  const { channel: defaultChannel, created } = await getPrivateChannelRepository(
+    c
+  ).getOrCreateDefault({
+    instanceId: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+  });
+  if (created) {
+    await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
+      channelId: defaultChannel.id,
+      payload: { name: defaultChannel.name, isDefault: true },
     });
-    if (created) {
-      await emitLifecycle(c, row, PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED, {
-        channelId: channel.id,
-        payload: { name: channel.name, isDefault: true },
-      });
-    }
-  } catch (error) {
-    console.warn("connectPrivateChannelInstance: failed to ensure default channel", {
-      organizationId: auth.organizationId,
+  }
+
+  // Auto-onboard the human connector as the workspace's founding SPC member and
+  // add them to the default channel. Skipped for API-key auth (no user identity
+  // to attribute — the API key's owner can still invite themselves via /users).
+  if (auth.userId) {
+    const projectUser = await getProjectUserRepository(c).getByProjectAndUserId(
       projectId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+      auth.userId
+    );
+    if (projectUser) {
+      const userRepo = getPrivateChannelUserRepository(c);
+      const existingOwner = await userRepo.findByProjectAndUser(scope, auth.userId);
+      const owner =
+        existingOwner ??
+        (
+          await inviteMember(c.env, userRepo, {
+            ...scope,
+            authUrl: row.auth_url,
+            targetUserId: auth.userId,
+            targetUserEmail: projectUser.email,
+            invitedBy: auth.userId,
+          })
+        ).member;
+
+      const memberships = await userRepo.listMembershipsForUser(owner.id);
+      const alreadyMember = memberships.some((m) => m.channel_id === defaultChannel.id);
+      const membership = await userRepo.addMembership({
+        channelId: defaultChannel.id,
+        privateChannelUserId: owner.id,
+        addedBy: auth.userId,
+      });
+      if (!alreadyMember) {
+        await emitMember(
+          c,
+          {
+            organizationId: row.organization_id,
+            projectId: row.project_id,
+            instanceId: row.id,
+          },
+          PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ADDED,
+          {
+            channelId: defaultChannel.id,
+            payload: {
+              privateChannelUserId: owner.id,
+              targetUserId: owner.user_id,
+              membershipId: membership.id,
+            },
+          }
+        );
+      }
+    }
   }
 
   const response: PrivateChannelInstanceResponse = {

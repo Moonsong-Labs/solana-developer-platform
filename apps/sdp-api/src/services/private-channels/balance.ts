@@ -25,9 +25,8 @@ type BalanceInstance = Pick<PrivateChannelInstance, "gatewayUrl" | "chainRpcUrl"
 /**
  * Read an owner's channel token balance through the gateway → wire DTO.
  *
- * `auth` is the SPC JWT handle (see `./auth/gateway-auth`). Required when the
- * connected instance has auth enabled — the gateway JWT-gates balance reads —
- * and omitted for open deployments.
+ * `auth` is the SPC auth context for gateway reads (see `./auth/gateway-auth`).
+ * Required — the gateway JWT-gates balance reads.
  */
 export async function getChannelBalance(
   env: Env,
@@ -36,7 +35,7 @@ export async function getChannelBalance(
     owner,
     mint,
     auth,
-  }: { instance: BalanceInstance; owner: string; mint?: string; auth?: SpcAuthContext }
+  }: { instance: BalanceInstance; owner: string; mint?: string; auth: SpcAuthContext }
 ): Promise<PrivateChannelBalance> {
   const cluster = inferCluster(instance.chainRpcUrl);
   const ownerAddress = assertValidAddress(owner, "owner");
