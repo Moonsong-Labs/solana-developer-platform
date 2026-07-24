@@ -55,8 +55,23 @@ export class CustodyCipherRouter implements CustodyCipher {
   }
 }
 
-export function createCustodyCipher(env: Env): CustodyCipher {
-  const keyName = env.CUSTODY_KMS_KEY_NAME;
+/** KMS transport settings, shared by every caller. Not key material. */
+type KmsTransportEnv = Pick<Env, "CUSTODY_KMS_API_BASE_URL" | "CUSTODY_KMS_METADATA_TOKEN_URL">;
+
+/**
+ * Build a router over a caller-supplied key pair: a legacy AES-GCM master key
+ * and an optional Cloud KMS key that switches new writes to `v2.` envelopes.
+ * Decryption always dispatches on the ciphertext prefix, so the two coexist.
+ *
+ * The `CUSTODY_KMS_API_BASE_URL` / `CUSTODY_KMS_METADATA_TOKEN_URL` names are
+ * historical — they configure the KMS endpoint and the metadata token source for
+ * the whole process, not just custody, so non-custody callers reuse them too.
+ */
+export function createCipherRouter(
+  env: KmsTransportEnv,
+  opts: { legacyKey?: string; kmsKeyName?: string }
+): CustodyCipher {
+  const keyName = opts.kmsKeyName;
   let envelope: KmsEnvelopeCipher | null = null;
   if (keyName) {
     const tokenProvider = new GcpMetadataTokenProvider({
@@ -70,8 +85,15 @@ export function createCustodyCipher(env: Env): CustodyCipher {
     envelope = new KmsEnvelopeCipher({ kms });
   }
   return new CustodyCipherRouter({
-    legacyKey: env.CUSTODY_ENCRYPTION_KEY,
+    legacyKey: opts.legacyKey,
     envelope,
     activeScheme: keyName ? "v2" : "legacy",
+  });
+}
+
+export function createCustodyCipher(env: Env): CustodyCipher {
+  return createCipherRouter(env, {
+    legacyKey: env.CUSTODY_ENCRYPTION_KEY,
+    kmsKeyName: env.CUSTODY_KMS_KEY_NAME,
   });
 }

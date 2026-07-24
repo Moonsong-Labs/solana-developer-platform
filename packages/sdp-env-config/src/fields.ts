@@ -677,6 +677,14 @@ export const FIELDS: EnvField[] = [
     help: "Base64-encoded 256-bit key for encrypting invited SPC user passwords. Generate with: openssl rand -base64 32",
   },
   {
+    key: "SPC_CREDENTIAL_KMS_KEY_NAME",
+    section: "advanced",
+    kind: "text",
+    label: "SPC credential Cloud KMS key name",
+    pattern: /^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+$/,
+    help: "Optional Cloud KMS key used for SPC credential envelope encryption. Keep the SPC credential encryption key configured so existing legacy rows remain readable.",
+  },
+  {
     key: "SENTRY_DSN",
     section: "advanced",
     kind: "url",

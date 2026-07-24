@@ -1,0 +1,45 @@
+import { describe, expect, it } from "vitest";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
+import { EncryptionError, generateEncryptionKey } from "@/services/encryption.service";
+import type { Env } from "@/types/env";
+
+function envWith(overrides: Partial<Env>): Env {
+  return overrides as Env;
+}
+
+describe("createSpcCredentialCipher", () => {
+  it("round-trips under the legacy key alone", async () => {
+    const cipher = createSpcCredentialCipher(
+      envWith({ SPC_CREDENTIAL_ENCRYPTION_KEY: await generateEncryptionKey() })
+    );
+
+    const ciphertext = await cipher.encrypt("org_1", "spc-password");
+
+    expect(await cipher.decrypt("org_1", ciphertext)).toBe("spc-password");
+  });
+
+  it("emits un-prefixed legacy ciphertext when no KMS key is configured", async () => {
+    // Guards backward compatibility: without SPC_CREDENTIAL_KMS_KEY_NAME the
+    // router must stay on the legacy scheme, so rows written before a KMS key is
+    // introduced keep the format the legacy branch knows how to read.
+    const cipher = createSpcCredentialCipher(
+      envWith({ SPC_CREDENTIAL_ENCRYPTION_KEY: await generateEncryptionKey() })
+    );
+
+    expect(await cipher.encrypt("org_1", "spc-password")).not.toMatch(/^v2\./);
+  });
+
+  it("derives per-organization keys, so another org cannot decrypt", async () => {
+    const cipher = createSpcCredentialCipher(
+      envWith({ SPC_CREDENTIAL_ENCRYPTION_KEY: await generateEncryptionKey() })
+    );
+
+    const ciphertext = await cipher.encrypt("org_1", "spc-password");
+
+    await expect(cipher.decrypt("org_2", ciphertext)).rejects.toThrow();
+  });
+
+  it("throws when neither the legacy key nor a KMS key is configured", () => {
+    expect(() => createSpcCredentialCipher(envWith({}))).toThrow(EncryptionError);
+  });
+});

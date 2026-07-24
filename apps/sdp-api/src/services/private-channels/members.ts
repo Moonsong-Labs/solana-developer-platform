@@ -9,7 +9,7 @@ import type {
   PrivateChannelUserWithIdentityRow,
   ProjectScope,
 } from "@/db/repositories";
-import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
 import type { Env } from "@/types/env";
 
 const SPC_USERNAME_MIN = 5;
@@ -68,8 +68,8 @@ export async function inviteMember(
   }
 
   const password = generatePassword();
-  const encryption = createSpcCredentialEncryption(env);
-  const { ciphertext } = await encryption.encrypt(input.organizationId, password);
+  const cipher = createSpcCredentialCipher(env);
+  const ciphertext = await cipher.encrypt(input.organizationId, password);
 
   // Retry once on collision: SPC hard-fails on duplicate username; the random
   // suffix makes second-attempt collisions effectively impossible.

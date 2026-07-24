@@ -16,9 +16,9 @@
 import { PrivateChannelError } from "@sdp/private-channels";
 import type { SpcAuthClient } from "@sdp/private-channels/auth";
 import type { PrivateChannelUserRow } from "@/db/repositories";
-import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
 import type { KVStore } from "@/runtime/kv";
-import type { EncryptionService } from "@/services/encryption.service";
+import type { CustodyCipher } from "@/services/custody-cipher/cipher-router";
 import type { Env } from "@/types/env";
 
 export interface SpcSession {
@@ -90,7 +90,7 @@ async function readCachedToken(
   cache: KVStore,
   key: string,
   organizationId: string,
-  encryption: EncryptionService
+  encryption: CustodyCipher
 ): Promise<string | null> {
   try {
     const cached = await cache.get<CachedSpcSession>(key, "json");
@@ -114,7 +114,7 @@ async function cacheFreshToken(
   cache: KVStore,
   key: string,
   organizationId: string,
-  encryption: EncryptionService,
+  encryption: CustodyCipher,
   token: string,
   forceRefresh: boolean
 ): Promise<void> {
@@ -129,7 +129,7 @@ async function cacheFreshToken(
     if (usefulMs < MIN_CACHEABLE_LIFETIME_MS) {
       return; // Too little life left to be worth a cache entry.
     }
-    const { ciphertext } = await encryption.encrypt(organizationId, token);
+    const ciphertext = await encryption.encrypt(organizationId, token);
     const entry: CachedSpcSession = { tokenCiphertext: ciphertext, expiresAt };
     await cache.put(key, JSON.stringify(entry), { expirationTtl: Math.ceil(usefulMs / 1000) });
   } catch {
@@ -157,7 +157,7 @@ export async function getSpcSession(
     );
   }
   const username = pcUser.spc_username;
-  const encryption = createSpcCredentialEncryption(env);
+  const encryption = createSpcCredentialCipher(env);
   const cacheKey =
     opts?.cache && opts.instanceId ? sessionCacheKey(opts.instanceId, pcUser.id) : null;
 

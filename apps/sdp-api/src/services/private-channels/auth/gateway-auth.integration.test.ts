@@ -15,7 +15,7 @@ import * as spcAuth from "@sdp/private-channels/auth";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
 import { createPrivateChannelUserRepository } from "@/db/repositories";
-import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
 import { createKVStoreSet } from "@/runtime/kv-redis";
 import { generateEncryptionKey } from "@/services/encryption.service";
 import {
@@ -58,7 +58,7 @@ let loginMock: ReturnType<typeof vi.fn>;
 
 beforeAll(async () => {
   const key = await generateEncryptionKey();
-  // The base workers env lacks the SPC key; add it so encryption is consistent across
+  // The shared test env lacks the SPC key; add it so encryption is consistent across
   // seeding (the stored credential) and getSpcSession (the cached token).
   testEnv = { ...(baseEnv as Env), SPC_CREDENTIAL_ENCRYPTION_KEY: key };
   await seedTestDatabase(baseEnv as Parameters<typeof seedTestDatabase>[0]);
@@ -93,10 +93,7 @@ beforeEach(async () => {
     .run();
 
   // The member row resolveGatewayAuth looks up, with an encrypted SPC credential.
-  const { ciphertext } = await createSpcCredentialEncryption(testEnv).encrypt(
-    TEST_ORG.id,
-    "spc-password"
-  );
+  const ciphertext = await createSpcCredentialCipher(testEnv).encrypt(TEST_ORG.id, "spc-password");
   await db
     .prepare(
       `INSERT INTO private_channel_users
