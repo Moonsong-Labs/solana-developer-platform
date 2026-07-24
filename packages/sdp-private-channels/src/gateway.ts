@@ -13,7 +13,11 @@
 
 import type { RpcEnv } from "@sdp/rpc";
 import { createRpc, getAccountInfo, type SolanaRpc } from "@sdp/rpc/solana";
-import type { Address } from "@solana/kit";
+import {
+  type Address,
+  isSolanaError,
+  SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
+} from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 export interface GatewayClientOptions {
@@ -79,7 +83,24 @@ export async function getChannelTokenBalance(
 
   // Disambiguate "no account" from a real RPC failure up front: a missing ATA is
   // an expected zero balance, whereas getTokenAccountBalance would throw for it.
-  const account = await getAccountInfo(rpc, tokenAccount);
+  //
+  // The SPC gateway conflates "account doesn't exist" and "you don't own this
+  // account" into one HTTP 403 (JSON-RPC -32002 "account not owned by caller") —
+  // it can't establish ownership on an account that doesn't exist. A first-time
+  // recipient has no ATA yet, so the pre-broadcast baseline read would 403 and
+  // fail the whole deposit. Treat that 403 the same as `null` (effective zero
+  // balance) so the deposit can proceed to the on-chain broadcast; the reconciler
+  // picks up the credit delta later. Only 403 on THIS call is swallowed — writes
+  // and other reads still surface auth failures.
+  let account: Awaited<ReturnType<typeof getAccountInfo>>;
+  try {
+    account = await getAccountInfo(rpc, tokenAccount);
+  } catch (error) {
+    if (isGatewayForbiddenAccountRead(error)) {
+      return { tokenAccount, balance: null };
+    }
+    throw error;
+  }
   if (account === null) {
     return { tokenAccount, balance: null };
   }
@@ -93,4 +114,16 @@ export async function getChannelTokenBalance(
       uiAmountString: value.uiAmountString,
     },
   };
+}
+
+/**
+ * Recognise the SPC gateway's HTTP 403 for account reads. Uses Solana Kit's
+ * structured `SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR` (`context.statusCode`) to
+ * avoid string-matching on the underlying `HTTP error (403): Forbidden` message.
+ */
+function isGatewayForbiddenAccountRead(error: unknown): boolean {
+  return (
+    isSolanaError(error, SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR) &&
+    error.context.statusCode === 403
+  );
 }

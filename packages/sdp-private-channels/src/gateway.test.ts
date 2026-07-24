@@ -1,4 +1,8 @@
-import { address } from "@solana/kit";
+import {
+  address,
+  SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
+  SolanaError,
+} from "@solana/kit";
 import { describe, expect, it } from "vitest";
 import { getChannelTokenBalance } from "./gateway";
 
@@ -46,5 +50,51 @@ describe("getChannelTokenBalance", () => {
       USDC
     );
     expect(result.balance).toEqual({ amount: "1500000", decimals: 6, uiAmountString: "1.5" });
+  });
+
+  // SPC gateway signal: HTTP 403 with JSON-RPC -32002 "account not owned by caller"
+  // is returned for BOTH "doesn't exist" and "you don't own this" (the gateway can't
+  // tell them apart). A first-time recipient has no ATA on the channel, so the
+  // baseline balance read for a deposit hits this and would otherwise fail the
+  // whole flow. Treat it the same as a null account (zero balance).
+  it("returns balance null when the gateway returns HTTP 403 on getAccountInfo", async () => {
+    const rpc = {
+      getAccountInfo: () => ({
+        send: async () => {
+          throw new SolanaError(SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR, {
+            headers: new Headers(),
+            message: "Forbidden",
+            statusCode: 403,
+          });
+        },
+      }),
+      getTokenAccountBalance: () => ({
+        send: async () => {
+          throw new Error("should not be called when getAccountInfo 403s");
+        },
+      }),
+      // biome-ignore lint/suspicious/noExplicitAny: hand-rolled test double for the Kit RPC.
+    } as any;
+
+    const result = await getChannelTokenBalance(rpc, OWNER, USDC);
+    expect(result.balance).toBeNull();
+  });
+
+  // Non-403 HTTP errors must still surface — we only coerce the ownership-check 403.
+  it("propagates other transport errors (e.g. 500) from getAccountInfo", async () => {
+    const rpc = {
+      getAccountInfo: () => ({
+        send: async () => {
+          throw new SolanaError(SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR, {
+            headers: new Headers(),
+            message: "Internal Server Error",
+            statusCode: 500,
+          });
+        },
+      }),
+      // biome-ignore lint/suspicious/noExplicitAny: hand-rolled test double for the Kit RPC.
+    } as any;
+
+    await expect(getChannelTokenBalance(rpc, OWNER, USDC)).rejects.toThrow();
   });
 });
