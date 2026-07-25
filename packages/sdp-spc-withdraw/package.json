@@ -14,7 +14,7 @@
     "generate": "tsx scripts/generate.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
-    "test:unit": "vitest run"
+    "test": "vitest run"
   },
   "dependencies": {
     "@sdp/kit-augment": "workspace:*",
