@@ -59,7 +59,7 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
           `SELECT * FROM private_channel_verified_wallets
              WHERE user_id = ?
                AND instance_id = ?
-             ORDER BY verified_at DESC`
+             ORDER BY verified_at DESC, id DESC`
         )
         .bind(userId, instanceId)
         .all<Record<string, unknown>>();

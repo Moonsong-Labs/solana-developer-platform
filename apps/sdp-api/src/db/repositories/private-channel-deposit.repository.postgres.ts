@@ -115,7 +115,7 @@ export function createPostgresPrivateChannelDepositRepository(
         .prepare(
           `SELECT * FROM private_channel_deposits
              WHERE organization_id = ? AND project_id = ?
-             ORDER BY created_at DESC`
+             ORDER BY created_at DESC, id DESC`
         )
         .bind(scope.organizationId, scope.projectId)
         .all<Record<string, unknown>>();
@@ -129,9 +129,12 @@ export function createPostgresPrivateChannelDepositRepository(
       const placeholders = input.statuses.map(() => "?").join(", ");
       const result = await db
         .prepare(
+          // Tie-broken because of the LIMIT: this is the reconciler's work queue, so
+          // rows sharing an updated_at at the cutoff would otherwise be included or
+          // dropped arbitrarily from tick to tick, and one could be starved.
           `SELECT * FROM private_channel_deposits
              WHERE status IN (${placeholders})
-             ORDER BY updated_at ASC
+             ORDER BY updated_at ASC, id ASC
              LIMIT ?`
         )
         .bind(...input.statuses, input.limit)
@@ -142,9 +145,15 @@ export function createPostgresPrivateChannelDepositRepository(
     async listDepositsForRecipient(scope: DepositRecipientScope) {
       const result = await db
         .prepare(
+          // `, id ASC` is load-bearing, not cosmetic: deposit-credit walks this list
+          // in order, anchors its threshold on the first row's baseline_credited and
+          // breaks at the first row exceeding balance. created_at is sdp_iso_now()
+          // (millisecond precision), so without a tie-break two deposits created in
+          // the same millisecond could swap places between reconciler ticks and
+          // change which ones get credited.
           `SELECT * FROM private_channel_deposits
              WHERE instance_id = ? AND recipient = ? AND mint = ?
-             ORDER BY created_at ASC`
+             ORDER BY created_at ASC, id ASC`
         )
         .bind(scope.instanceId, scope.recipient, scope.mint)
         .all<Record<string, unknown>>();
