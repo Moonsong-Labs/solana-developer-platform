@@ -21,6 +21,7 @@ function mapRow(row: Record<string, unknown>): PrivateChannelDepositRow {
     recipient: row.recipient as string,
     mint: row.mint as string,
     amount: row.amount as string,
+    private_channel_user_id: (row.private_channel_user_id ?? null) as string | null,
     baseline_credited: row.baseline_credited as string,
     gateway_url: (row.gateway_url ?? "") as string,
     chain_rpc_url: (row.chain_rpc_url ?? "") as string,
@@ -43,9 +44,10 @@ export function createPostgresPrivateChannelDepositRepository(
         .prepare(
           `INSERT INTO private_channel_deposits (
                id, organization_id, project_id, instance_id, wallet_id,
-               depositor, recipient, mint, amount, baseline_credited,
+               depositor, recipient, mint, amount, private_channel_user_id,
+               baseline_credited,
                gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING *`
         )
         .bind(
@@ -58,6 +60,7 @@ export function createPostgresPrivateChannelDepositRepository(
           input.recipient,
           input.mint,
           input.amount,
+          input.privateChannelUserId,
           input.baselineCredited,
           input.gatewayUrl,
           input.chainRpcUrl,

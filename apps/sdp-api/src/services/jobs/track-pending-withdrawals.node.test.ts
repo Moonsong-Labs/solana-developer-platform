@@ -46,11 +46,17 @@ vi.mock("@solana-program/token", () => ({
 const { emitWithdrawalEvent } = vi.hoisted(() => ({ emitWithdrawalEvent: vi.fn() }));
 vi.mock("@/services/private-channels/withdraw-events", () => ({ emitWithdrawalEvent }));
 
-// Gateway auth for the cron: derived from the burn owner's verified wallet. Default
-// to an auth-less instance ("open"); tests override to assert the gated behaviour.
-const { resolveOwnerGatewayAuth, withGatewayRpc } = vi.hoisted(() => ({
-  resolveOwnerGatewayAuth: vi.fn(
-    async () => ({ kind: "open" }) as { kind: string; context?: unknown; reason?: string }
+// Gateway auth for the cron: resolved from the member persisted on the withdrawal.
+// Auth is always required, so the default mock returns a valid token; individual
+// tests override to assert unavailable/error paths.
+const { resolveMemberGatewayAuth, withGatewayRpc } = vi.hoisted(() => ({
+  resolveMemberGatewayAuth: vi.fn(
+    async () =>
+      ({ kind: "token", context: { current: "jwt-default", refresh: vi.fn() } }) as {
+        kind: string;
+        context?: unknown;
+        reason?: string;
+      }
   ),
   // Stand in for the real wrapper: run the gateway op with a dummy rpc so
   // getSignatureStatuses still executes; tests assert the (url, handle) it received.
@@ -60,7 +66,7 @@ const { resolveOwnerGatewayAuth, withGatewayRpc } = vi.hoisted(() => ({
   ),
 }));
 vi.mock("@/services/private-channels/auth/gateway-auth", () => ({
-  resolveOwnerGatewayAuth,
+  resolveMemberGatewayAuth,
   withGatewayRpc,
 }));
 
@@ -84,6 +90,7 @@ function withdrawalRow(overrides: Record<string, unknown>) {
     destination: DESTINATION,
     mint: MINT,
     amount: "10",
+    private_channel_user_id: "pcu-actor",
     gateway_url: "gw-X",
     chain_rpc_url: "https://api.devnet.solana.com",
     escrow_program_id: "esc",
@@ -100,7 +107,10 @@ function withdrawalRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resolveOwnerGatewayAuth.mockResolvedValue({ kind: "open" });
+  resolveMemberGatewayAuth.mockResolvedValue({
+    kind: "token",
+    context: { current: "jwt-default", refresh: vi.fn() },
+  });
   vi.useFakeTimers();
   vi.setSystemTime(new Date(NOW_ISO));
   withdrawalRepo.updateWithdrawal.mockImplementation(async (input: Record<string, unknown>) => ({
@@ -122,7 +132,7 @@ describe("trackPendingWithdrawals", () => {
     expect(withGatewayRpc).toHaveBeenCalledWith(
       expect.anything(),
       "gw-SNAP",
-      undefined,
+      expect.objectContaining({ current: "jwt-default" }),
       expect.any(Function)
     );
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
@@ -147,7 +157,7 @@ describe("trackPendingWithdrawals", () => {
     withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
       withdrawalRow({ id: "w1", status: "submitted", gateway_url: "gw-SNAP" }),
     ]);
-    resolveOwnerGatewayAuth.mockResolvedValue({
+    resolveMemberGatewayAuth.mockResolvedValue({
       kind: "token",
       context: { current: "jwt-xyz", refresh: vi.fn() },
     });
@@ -170,7 +180,7 @@ describe("trackPendingWithdrawals", () => {
     withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
       withdrawalRow({ id: "w1", status: "submitted" }),
     ]);
-    resolveOwnerGatewayAuth.mockResolvedValue({
+    resolveMemberGatewayAuth.mockResolvedValue({
       kind: "unavailable",
       reason: "no verified wallet",
     });

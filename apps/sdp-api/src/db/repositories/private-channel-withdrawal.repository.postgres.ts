@@ -20,6 +20,7 @@ function mapRow(row: Record<string, unknown>): PrivateChannelWithdrawalRow {
     destination: row.destination as string,
     mint: row.mint as string,
     amount: row.amount as string,
+    private_channel_user_id: (row.private_channel_user_id ?? null) as string | null,
     gateway_url: (row.gateway_url ?? "") as string,
     chain_rpc_url: (row.chain_rpc_url ?? "") as string,
     escrow_program_id: (row.escrow_program_id ?? "") as string,
@@ -42,9 +43,9 @@ export function createPostgresPrivateChannelWithdrawalRepository(
         .prepare(
           `INSERT INTO private_channel_withdrawals (
                id, organization_id, project_id, instance_id, wallet_id,
-               owner, destination, mint, amount,
+               owner, destination, mint, amount, private_channel_user_id,
                gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING *`
         )
         .bind(
@@ -57,6 +58,7 @@ export function createPostgresPrivateChannelWithdrawalRepository(
           input.destination,
           input.mint,
           input.amount,
+          input.privateChannelUserId,
           input.gatewayUrl,
           input.chainRpcUrl,
           input.escrowProgramId,

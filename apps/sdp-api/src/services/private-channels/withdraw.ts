@@ -163,6 +163,9 @@ export async function createChannelWithdrawal(
     destination,
     mint,
     amount: input.amount,
+    // Record the acting member now, while we still know it. The reconciler needs an
+    // SPC identity for its gateway reads and cannot re-derive this one later.
+    privateChannelUserId: input.gatewayAuth.pcUserId,
     // Snapshot the reconciliation context so a later reconnect can't move it.
     gatewayUrl: instance.gatewayUrl,
     chainRpcUrl: instance.chainRpcUrl,

@@ -20,11 +20,11 @@ vi.mock("@/services/private-channels", () => ({ getChannelBalance }));
 const { emitDepositEvent } = vi.hoisted(() => ({ emitDepositEvent: vi.fn() }));
 vi.mock("@/services/private-channels/deposit-events", () => ({ emitDepositEvent }));
 
-// Gateway auth for the cron: resolved from the recipient's verified wallet.
+// Gateway auth for the cron: resolved from the member persisted on the deposit.
 // Auth is always required, so the default mock returns a valid token; individual
 // tests override to assert unavailable/error paths.
-const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
-  resolveOwnerGatewayAuth: vi.fn(
+const { resolveMemberGatewayAuth } = vi.hoisted(() => ({
+  resolveMemberGatewayAuth: vi.fn(
     async () =>
       ({ kind: "token", context: { current: "jwt-default", refresh: vi.fn() } }) as {
         kind: string;
@@ -33,7 +33,7 @@ const { resolveOwnerGatewayAuth } = vi.hoisted(() => ({
       }
   ),
 }));
-vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveOwnerGatewayAuth }));
+vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveMemberGatewayAuth }));
 
 const { createRpc, getSignatureStatuses } = vi.hoisted(() => ({
   createRpc: vi.fn(() => ({})),
@@ -54,6 +54,7 @@ function depositRow(overrides: Record<string, unknown>) {
     recipient: "recipient-1",
     mint: "mint-1",
     amount: "10",
+    private_channel_user_id: "pcu-actor",
     baseline_credited: "0",
     // snapshot config
     gateway_url: "gw-X",
@@ -71,7 +72,7 @@ function depositRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resolveOwnerGatewayAuth.mockResolvedValue({
+  resolveMemberGatewayAuth.mockResolvedValue({
     kind: "token",
     context: { current: "jwt-default", refresh: vi.fn() },
   });
@@ -146,7 +147,7 @@ describe("trackPendingDeposits", () => {
     const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
     depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
     depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
-    resolveOwnerGatewayAuth.mockResolvedValue({
+    resolveMemberGatewayAuth.mockResolvedValue({
       kind: "token",
       context: { current: "jwt-abc", refresh: vi.fn() },
     });
@@ -154,10 +155,11 @@ describe("trackPendingDeposits", () => {
 
     await trackPendingDeposits({} as Env);
 
-    // The identity is derived from the credit recipient, in its tenancy scope.
-    expect(resolveOwnerGatewayAuth).toHaveBeenCalledWith(
+    // The identity comes from the member persisted on the deposit — the actor who
+    // created the intent — not from a reverse lookup on the recipient pubkey.
+    expect(resolveMemberGatewayAuth).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ owner: "recipient-1", instanceId: "inst-X" })
+      expect.objectContaining({ privateChannelUserId: "pcu-actor", instanceId: "inst-X" })
     );
     expect(getChannelBalance).toHaveBeenCalledWith(
       expect.anything(),
@@ -172,7 +174,7 @@ describe("trackPendingDeposits", () => {
     const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
     depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
     depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
-    resolveOwnerGatewayAuth.mockResolvedValue({
+    resolveMemberGatewayAuth.mockResolvedValue({
       kind: "unavailable",
       reason: "no verified wallet",
     });

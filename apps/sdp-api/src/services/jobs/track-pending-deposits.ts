@@ -24,7 +24,7 @@ import {
   type PrivateChannelDepositRow,
 } from "@/db/repositories";
 import { getChannelBalance } from "@/services/private-channels";
-import { resolveOwnerGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
+import { resolveMemberGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
 import { emitDepositEvent } from "@/services/private-channels/deposit-events";
 import type { Env } from "@/types/env";
 import { planDepositCredits } from "./deposit-credit";
@@ -93,7 +93,7 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
 }
 
 interface DepositCreditGroup {
-  /** Tenancy scope — needed to resolve the recipient's SPC identity for gateway auth. */
+  /** Tenancy scope — needed to resolve the acting member's SPC identity for gateway auth. */
   organizationId: string;
   projectId: string;
   instanceId: string;
@@ -210,16 +210,23 @@ async function reconcileCreditGroup(
   // Resolved AFTER the snapshot guard on purpose: this does DB lookups plus an SPC
   // login (a network round-trip), so never pay for it on a group we're about to skip.
   //
-  // The gateway JWT-gates balance reads. The cron has no request user, so derive
-  // the SPC identity from the data: the recipient's VERIFIED wallet maps the pubkey
-  // back to the member whose credential can mint a token. `unavailable` (e.g. an
-  // external/unverified recipient) skips this group rather than failing the tick —
-  // those deposits stay `confirmed` for manual resolution.
-  const gatewayAuth = await resolveOwnerGatewayAuth(env, {
+  // The gateway JWT-gates balance reads. The cron has no request user, so it uses the
+  // member persisted on the deposit at intent time — the actor, not the recipient.
+  // Picked from the row list the same way as the snapshot above: any member in the
+  // group can mint a token for this read, so take the first row that still has one
+  // (a revoked member leaves null). Deterministic because listDepositsForRecipient
+  // orders by (created_at, id).
+  //
+  // `unavailable` (e.g. every member in the group was revoked) skips this group
+  // rather than failing the tick — those deposits stay `confirmed` for manual
+  // resolution.
+  const actingMemberId =
+    deposits.find((deposit) => deposit.private_channel_user_id)?.private_channel_user_id ?? null;
+  const gatewayAuth = await resolveMemberGatewayAuth(env, {
     organizationId: group.organizationId,
     projectId: group.projectId,
     instanceId: group.instanceId,
-    owner: group.recipient,
+    privateChannelUserId: actingMemberId,
   });
   if (gatewayAuth.kind === "unavailable") {
     console.warn("trackPendingDeposits: skipping credit group, gateway auth unavailable", {

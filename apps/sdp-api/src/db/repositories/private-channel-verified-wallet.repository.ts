@@ -56,21 +56,6 @@ export interface PrivateChannelVerifiedWalletRepository {
     userId: string,
     instanceId: string
   ): Promise<PrivateChannelVerifiedWalletRow[]>;
-  /**
-   * Reverse lookup: which member verified this pubkey in this project?
-   *
-   * Used by background jobs that hold only an on-chain address and need an SPC
-   * identity to authenticate gateway reads with (the cron has no request user).
-   * Keyed on the INSTANCE, matching the table's `(user_id, instance_id, pubkey)`
-   * uniqueness — a verification does not transfer across instances, and a job
-   * always knows which instance a record belongs to. Two members could in theory
-   * each verify the same pubkey on one instance; this returns the most recently
-   * verified, the best available answer for "who owns this address".
-   */
-  findByInstanceAndPubkey(
-    instanceId: string,
-    pubkey: string
-  ): Promise<PrivateChannelVerifiedWalletRow | null>;
 }
 
 export function mapPrivateChannelVerifiedWalletRow(

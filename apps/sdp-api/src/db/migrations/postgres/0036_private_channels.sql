@@ -239,6 +239,15 @@ CREATE TABLE IF NOT EXISTS private_channel_deposits (
     recipient TEXT NOT NULL,
     mint TEXT NOT NULL,
     amount TEXT NOT NULL,
+    -- The member who created this intent, captured while the request was still
+    -- authenticated. The reconciler needs an SPC identity to read the channel
+    -- balance, and this is the only unambiguous one: deriving it later from
+    -- `recipient` answers "whose wallet is this" (a different question with 0, 1 or
+    -- many answers) and fails outright for an external recipient.
+    --
+    -- SET NULL rather than CASCADE: revoking a member must not delete financial
+    -- history, matching the no-FK stance on instance_id below.
+    private_channel_user_id TEXT,
     baseline_credited TEXT NOT NULL DEFAULT '0',
     -- Instance config snapshotted at intent time (immutable reconciliation context).
     --
@@ -264,6 +273,7 @@ CREATE TABLE IF NOT EXISTS private_channel_deposits (
     -- FK so the deposit record outlives the instance (financial history).
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE SET NULL,
 
     CONSTRAINT private_channel_deposits_status_check
         CHECK (status IN ('prepared', 'submitted', 'confirmed', 'credited', 'failed'))
@@ -318,6 +328,9 @@ CREATE TABLE IF NOT EXISTS private_channel_withdrawals (
     destination TEXT NOT NULL,
     mint TEXT NOT NULL,
     amount TEXT NOT NULL,
+    -- The member who created this intent (see private_channel_deposits above); the
+    -- reconciler authenticates its gateway reads as this member.
+    private_channel_user_id TEXT,
     -- Instance config snapshotted at intent time (immutable reconciliation context).
     gateway_url TEXT NOT NULL DEFAULT '',
     chain_rpc_url TEXT NOT NULL DEFAULT '',
@@ -336,6 +349,7 @@ CREATE TABLE IF NOT EXISTS private_channel_withdrawals (
     -- FK so the withdrawal record outlives the instance (financial history).
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE SET NULL,
 
     CONSTRAINT private_channel_withdrawals_status_check
         CHECK (status IN (

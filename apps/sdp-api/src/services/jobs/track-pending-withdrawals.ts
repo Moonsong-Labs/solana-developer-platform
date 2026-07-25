@@ -39,7 +39,7 @@ import {
   type PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
 import {
-  resolveOwnerGatewayAuth,
+  resolveMemberGatewayAuth,
   withGatewayRpc,
 } from "@/services/private-channels/auth/gateway-auth";
 import { inferCluster, knownMintDecimals } from "@/services/private-channels/mint";
@@ -179,17 +179,16 @@ async function reconcileSubmitted(
     return;
   }
 
-  // The gateway JWT-gates signature reads. The cron has no request user, so derive
-  // the SPC identity from the burn OWNER's verified wallet (same mechanism deposits
-  // use for the credit recipient). `unavailable` — e.g. an unverified owner — leaves
-  // the withdrawal `submitted` for a later tick / manual resolution. It must NOT be
-  // auto-failed: we can't tell whether the burn confirmed, and after burn_confirmed
-  // the balance is already gone.
-  const gatewayAuth = await resolveOwnerGatewayAuth(env, {
+  // The gateway JWT-gates signature reads. The cron has no request user, so it uses
+  // the member persisted on the withdrawal at intent time. `unavailable` — e.g. that
+  // member was revoked — leaves the withdrawal `submitted` for a later tick / manual
+  // resolution. It must NOT be auto-failed: we can't tell whether the burn confirmed,
+  // and after burn_confirmed the balance is already gone.
+  const gatewayAuth = await resolveMemberGatewayAuth(env, {
     organizationId: withdrawal.organization_id,
     projectId: withdrawal.project_id,
     instanceId: withdrawal.instance_id,
-    owner: withdrawal.owner,
+    privateChannelUserId: withdrawal.private_channel_user_id,
   });
   if (gatewayAuth.kind === "unavailable") {
     console.warn("trackPendingWithdrawals: skipping burn confirmation, gateway auth unavailable", {
