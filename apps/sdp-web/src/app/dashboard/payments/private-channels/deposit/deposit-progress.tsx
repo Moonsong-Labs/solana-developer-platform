@@ -4,6 +4,8 @@ import type { PrivateChannelDeposit } from "@sdp/types";
 import { CheckCircle2Icon, CircleIcon, Loader2Icon, XCircleIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { explorerTxUrl } from "@/lib/explorer";
+import { useSolanaCluster } from "@/lib/use-solana-cluster";
 import { cn } from "@/lib/utils";
 import { fetchDepositAction } from "./actions";
 
@@ -44,6 +46,7 @@ export function DepositProgress({
   onReset: () => void;
 }) {
   const [deposit, setDeposit] = useState(initial);
+  const cluster = useSolanaCluster();
 
   useEffect(() => {
     setDeposit(initial);
@@ -116,11 +119,11 @@ export function DepositProgress({
       {deposit.signature && (
         <a
           className="inline-block text-primary text-xs underline underline-offset-2"
-          href={`https://explorer.solana.com/tx/${deposit.signature}?cluster=devnet`}
+          href={explorerTxUrl(deposit.signature, cluster)}
           rel="noreferrer"
           target="_blank"
         >
-          View transaction on devnet explorer
+          View transaction on Solana Explorer
         </a>
       )}
 

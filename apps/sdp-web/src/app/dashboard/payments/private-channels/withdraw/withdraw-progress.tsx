@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { explorerTxUrl } from "@/lib/explorer";
+import { useSolanaCluster } from "@/lib/use-solana-cluster";
 import { cn } from "@/lib/utils";
 import { fetchWithdrawalAction } from "./actions";
 
@@ -61,6 +63,7 @@ export function WithdrawProgress({
   onReset: () => void;
 }) {
   const [withdrawal, setWithdrawal] = useState(initial);
+  const cluster = useSolanaCluster();
 
   useEffect(() => {
     setWithdrawal(initial);
@@ -153,11 +156,11 @@ export function WithdrawProgress({
       {withdrawal.releaseSignature && (
         <a
           className="inline-block text-primary text-xs underline underline-offset-2"
-          href={`https://explorer.solana.com/tx/${withdrawal.releaseSignature}?cluster=devnet`}
+          href={explorerTxUrl(withdrawal.releaseSignature, cluster)}
           rel="noreferrer"
           target="_blank"
         >
-          View release on devnet explorer
+          View release on Solana Explorer
         </a>
       )}
 
