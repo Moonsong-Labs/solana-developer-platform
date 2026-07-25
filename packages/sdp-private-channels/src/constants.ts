@@ -1,7 +1,7 @@
 import type { PrivateChannelInstanceConfig } from "./types";
 
 /**
- * Public sandbox instance operated by the SPC upstream team. All identifiers
+ * Public sandbox instance operated by the Solana Private Channels project. All identifiers
  * are on-chain public keys, not secrets.
  *
  * `chainRpcUrl` is a template, not a working endpoint: devnet's public RPC is

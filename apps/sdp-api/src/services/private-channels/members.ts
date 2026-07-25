@@ -51,9 +51,9 @@ function deriveUsername(email: string): string {
 
 /**
  * Fixed-length random suffix. `getRandomValues` rather than `Math.random()`, to
- * match every other random value in this module. Fixed-length because
- * `Number.toString(36)` drops leading zeros, which silently shortened the suffix
- * at random and ate into the collision space it exists to provide. The alphabet is
+ * match every other random value in this module. Fixed length because a base-36
+ * numeric conversion drops leading zeros, which would shorten the suffix at random
+ * and eat into the collision space it exists to provide. The alphabet is
  * 32 characters so a byte maps to one character uniformly by masking, with no
  * modulo bias and no rejection loop.
  */

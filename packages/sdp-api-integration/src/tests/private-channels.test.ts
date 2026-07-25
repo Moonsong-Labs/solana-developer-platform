@@ -1,9 +1,8 @@
 /**
  * Solana Private Channels (SPC) — live gateway connectivity.
  *
- * The proven SDP → SPC pathway, exercised through the shared
- * `@sdp/private-channels` client. App-free: only `@sdp/private-channels` + the
- * test helper are imported.
+ * Exercises the SDP → SPC pathway through the shared `@sdp/private-channels`
+ * client. App-free: only `@sdp/private-channels` + the test helper are imported.
  *
  * Run: RUN_INTEGRATION_TESTS=true PRIVATE_CHANNEL_GATEWAY_URL=… \
  *        pnpm --filter @sdp/api-integration test
@@ -45,16 +44,13 @@ describe.skipIf(!PRIVATE_CHANNEL_CONFIGURED || !RUN_INTEGRATION_TESTS)(
     });
 
     it("gateway RPC: an unauthenticated channel balance read is rejected", async () => {
-      // The gateway enforces RBAC per method. Verified live against the sandbox:
-      // getLatestBlockhash and getTokenAccountsByOwner answer 200 without a bearer,
-      // but getAccountInfo — which getChannelTokenBalance needs — answers 401. This
-      // suite is deliberately app-free and therefore tokenless, so the reachable
-      // assertion is that the balance path is gated, not that it returns a balance.
-      //
-      // A positive-path test needs a member JWT, which means the app harness
-      // (getSpcSession + withGatewayRpc). Note that even a valid member bearer gets
-      // 403 on this method for its own verified wallet, so a green authorized read is
-      // not demonstrable against this instance today.
+      // The gateway enforces RBAC per method: getLatestBlockhash and
+      // getTokenAccountsByOwner answer 200 without a bearer, but getAccountInfo —
+      // which getChannelTokenBalance needs — answers 401. This suite is app-free and
+      // therefore tokenless, so it asserts that the balance path is gated rather than
+      // that it returns a balance. A positive path needs a member JWT (getSpcSession
+      // + withGatewayRpc), and a member bearer is answered 403 on this method even
+      // for its own verified wallet.
       const rpc = createChannelGatewayRpc(env, getGatewayUrl());
 
       await expect(getChannelTokenBalance(rpc, SAMPLE_OWNER, DEVNET_USDC)).rejects.toThrow(

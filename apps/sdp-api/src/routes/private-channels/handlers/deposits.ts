@@ -32,10 +32,10 @@ async function loadActiveInstance(c: AppContext, organizationId: string, project
  * the channel. Feature-gated + `payments:write`. Returns the deposit DTO with its
  * current status (submitted/confirmed, or failed with a reason).
  *
- * TODO(visibility, per implementation notes): like the balance read, this is
- * under-gated for the notes' model — a non-admin should only deposit from their
- * own verified wallet and to channels they belong to. Add that gate with the
- * member/wallet tables in a later slice.
+ * TODO(visibility): like the balance read, this is under-gated — a non-admin should
+ * only be able to deposit from their own verified wallet and into channels they
+ * belong to, per `private_channel_verified_wallets` and
+ * `private_channel_memberships`.
  */
 export async function createPrivateChannelDeposit(c: AppContext) {
   const body = await c.req.json().catch(() => null);

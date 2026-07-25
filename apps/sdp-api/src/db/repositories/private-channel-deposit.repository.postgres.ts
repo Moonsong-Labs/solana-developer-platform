@@ -145,12 +145,12 @@ export function createPostgresPrivateChannelDepositRepository(
     async listDepositsForRecipient(scope: DepositRecipientScope) {
       const result = await db
         .prepare(
-          // `, id ASC` is load-bearing, not cosmetic: deposit-credit walks this list
-          // in order, anchors its threshold on the first row's baseline_credited and
-          // breaks at the first row exceeding balance. created_at is sdp_iso_now()
-          // (millisecond precision), so without a tie-break two deposits created in
-          // the same millisecond could swap places between reconciler ticks and
-          // change which ones get credited.
+          // The `, id ASC` tie-break decides which deposits get credited. deposit-credit
+          // walks this list in order, anchors its threshold on the first row's
+          // baseline_credited and breaks at the first row exceeding balance, and
+          // created_at is sdp_iso_now() at millisecond precision — so untie-broken, two
+          // deposits created in the same millisecond could swap places between
+          // reconciler ticks.
           `SELECT * FROM private_channel_deposits
              WHERE instance_id = ? AND recipient = ? AND mint = ?
              ORDER BY created_at ASC, id ASC`

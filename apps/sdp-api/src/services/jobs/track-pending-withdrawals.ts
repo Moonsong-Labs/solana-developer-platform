@@ -22,8 +22,7 @@
  * (`expectedStatus`) so a concurrent worker can't regress state.
  *
  * NOTE: release DETECTION matches the operator's devnet release from the instance's
- * classic-Token ATA to the destination's ATA for the mint — confirmed against a live
- * devnet release. Matching is by content `(destinationAta, mint, base-unit amount)`,
+ * classic-Token ATA to the destination's ATA for the mint. Matching is by content `(destinationAta, mint, base-unit amount)`,
  * FIFO within the single-flight bucket, so it cannot disambiguate two withdrawals
  * sharing all three; a memo/withdrawId on the release tx would make it exact.
  */

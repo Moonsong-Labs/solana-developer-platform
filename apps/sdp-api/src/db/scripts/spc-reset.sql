@@ -13,9 +13,8 @@ DROP TABLE IF EXISTS private_channel_deposits CASCADE;
 DROP TABLE IF EXISTS private_channels CASCADE;
 DROP TABLE IF EXISTS private_channel_instances CASCADE;
 
--- Matches on the name, not a number range: the schema shipped as seven migrations
--- (0025-0031) before being folded into one (0036), and a database built before the
--- fold still carries the old rows. Both have to go or the re-migrate is skipped and
--- the tables above are never recreated.
+-- Matched by name rather than version number, so every SPC migration row is caught
+-- regardless of numbering. Any row left behind makes the re-migrate a no-op and the
+-- tables dropped above are never recreated.
 DELETE FROM schema_migrations
  WHERE version ~ '_private_channel';

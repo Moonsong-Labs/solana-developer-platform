@@ -19,7 +19,6 @@ describe("createSpcCredentialCipher", () => {
   });
 
   it("emits un-prefixed legacy ciphertext when no KMS key is configured", async () => {
-    // Not a backward-compatibility guard — there is no historical ciphertext.
     // v1 is the only scheme available off GCP (KMS auth needs the GCE metadata
     // server), so local dev, docker-compose, self-hosting and CI all depend on
     // this path staying un-prefixed and self-consistent.

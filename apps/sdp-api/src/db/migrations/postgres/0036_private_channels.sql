@@ -3,11 +3,6 @@
 -- Tables are declared in dependency order — the connected instance, then its
 -- channels, members and event feed, then deposits, withdrawals and verified
 -- wallets. Every statement is IF NOT EXISTS, so re-running is a no-op.
---
--- This was originally seven migrations (0025-0031) authored while Private
--- Channels sat on a branch. Those numbers collided with main's payments
--- migrations on every merge, so they are consolidated here: the feature has
--- never shipped, so there is no applied history to preserve.
 
 
 -- ==========================================================================
@@ -203,11 +198,10 @@ CREATE TABLE IF NOT EXISTS private_channel_events (
 
 -- Channel feed query: filter by instance_id, order by (occurred_at, id) DESC.
 --
--- There is deliberately no (channel_id, occurred_at) index. The only channel-scoped
--- read is `instance_id = ? AND (channel_id = ? OR channel_id IS NULL)`, which the
--- planner serves from this index with the channel test as a filter — verified with
--- EXPLAIN, including with enable_seqscan off. A channel-leading index was never
--- chosen, so it was pure write amplification on an append-only table.
+-- There is deliberately no (channel_id, occurred_at) index: the only channel-scoped
+-- read is `instance_id = ? AND (channel_id = ? OR channel_id IS NULL)`, and a
+-- channel-leading index cannot serve the IS NULL arm. This index answers it with
+-- the channel test applied as a filter.
 CREATE INDEX IF NOT EXISTS idx_private_channel_events_instance_occurred
     ON private_channel_events (instance_id, occurred_at DESC, id DESC);
 
@@ -316,7 +310,7 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_instance_recipient_mint
 -- Lifecycle: pending -> submitted -> burn_confirmed -> release_pending -> released
 -- (or failed pre-burn / manual_review after burn). Amounts are decimal strings.
 --
--- Like deposits (0029), withdrawals are FINANCIAL/AUDIT records: `instance_id` is
+-- Like private_channel_deposits above, withdrawals are FINANCIAL/AUDIT records: `instance_id` is
 -- denormalized with NO FK so a withdrawal SURVIVES instance deletion, and the
 -- reconciliation endpoints (gateway/chain RPC/escrow instance) are SNAPSHOTTED on
 -- the row so a later reconnect can't move the chain a pending withdrawal reconciles
@@ -324,8 +318,8 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_instance_recipient_mint
 --
 -- Asymmetry vs deposits: release detection is UNAUTHENTICATED (the release lands on
 -- public devnet, found by getSignaturesForAddress on the instance ATA), so a
--- withdrawal can reach `released` even while deposit crediting is blocked on the
--- gateway JWT work. NEVER auto-`failed` after `burn_confirmed` (the balance is
+-- withdrawal can reach `released` without any authenticated gateway read, unlike
+-- deposit crediting. NEVER auto-`failed` after `burn_confirmed` (the balance is
 -- already gone) — an unobservable release is a settlement issue → `manual_review`.
 
 CREATE TABLE IF NOT EXISTS private_channel_withdrawals (
@@ -392,8 +386,8 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_withdrawals_instance_status
 
 -- SPC verified wallets: a custody wallet (pubkey) a member has proven control
 -- of, via the challenge → sign → verify handshake with the connected instance's
--- auth service, under that member's SPC user. This is the gate the future
--- transfer/withdraw flows check before moving money.
+-- auth service, under that member's SPC user. A row is the record that a member
+-- controls a wallet, for flows that require proof of control before moving funds.
 --
 -- A member may verify many wallets, but a verification is scoped to the instance
 -- it was made under and does not transfer across instances: uniqueness is

@@ -30,8 +30,7 @@ async function loadActiveInstance(c: AppContext, organizationId: string, project
  * POST /withdrawals — burn the custody wallet's channel-chain balance (via the
  * withdraw program) and broadcast it to the gateway; the operator later releases
  * the matching real USDC on devnet to `destination` (defaults to the owner).
- * Feature-gated + `payments:write` + `projects:admin` (interim, see the router
- * note). Returns the withdrawal DTO with its current status (submitted/
+ * Feature-gated + `payments:write`. Returns the withdrawal DTO with its current status (submitted/
  * burn_confirmed, or failed with a reason). Release (`released`) is detected
  * asynchronously by the reconciler via the devnet release on the instance ATA.
  */

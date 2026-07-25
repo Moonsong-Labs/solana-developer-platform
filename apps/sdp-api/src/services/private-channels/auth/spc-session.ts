@@ -1,6 +1,6 @@
 // SPC session: mint and cache a JWT for an invited member's SPC user.
 //
-// The SDP user never types SPC credentials. When the member was invited (#7),
+// The SDP user never types SPC credentials. When the member was invited,
 // SDP generated an SPC password and stored it encrypted on the
 // private_channel_users row. Here we decrypt it and log in on the member's
 // behalf to obtain the SPC-issued JWT that gates the wallet APIs.

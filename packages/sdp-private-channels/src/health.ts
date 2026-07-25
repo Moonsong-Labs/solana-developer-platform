@@ -70,7 +70,7 @@ function toErrorMessage(error: unknown): string {
 
 /**
  * Probe the SPC gateway's `/health` and `/ready` endpoints. Pure: no side effects
- * beyond the two HTTP requests. Safe to call from both server and Worker contexts.
+ * beyond the two HTTP requests.
  */
 export async function probeGatewayHealth(gatewayUrl: string): Promise<GatewayHealthResult> {
   const startedAt = Date.now();

@@ -311,7 +311,7 @@ See [`docs/ops/release-operations.md`](../../docs/ops/release-operations.md) for
 
 - **Transfer reconciliation** can run via the dedicated Cloud Run Job (`src/job.ts`). Web service replicas skip in-process cron by default when `K_SERVICE` is set (`DISABLE_CRON=false` opts a service back in).
 - **Recurring payment collection** and **Private Channels deposit/withdrawal reconcilers** register only on in-process `startCron` (`src/cron/runner.ts`) when their respective env gates are enabled (`PAYMENTS_RECURRING_COLLECTION_ENABLED`, `PRIVATE_CHANNELS_ENABLED`). That path covers self-hosted and explicitly opted-in services.
-- **TODO:** decide whether managed GCP should also run Private Channels deposit/withdrawal reconciliation from the Cloud Run Job (or a second job) so production does not depend on an opted-in web replica. Leave `job.ts` transfers-only until that decision.
+- **TODO:** the Cloud Run Job is transfers-only, so on managed deployments the Private Channels reconcilers run only on a service replica that opts back in with `DISABLE_CRON=false`. Decide whether that job (or a second one) should run them instead, so production does not depend on an opted-in replica.
 
 ## Contributing
 

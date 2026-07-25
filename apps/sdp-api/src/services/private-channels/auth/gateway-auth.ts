@@ -214,12 +214,12 @@ export interface ResolveMemberGatewayAuthInput {
  * Resolve gateway auth for a background job from the member persisted on the row.
  *
  * The acting member is captured at intent time, while the request is still
- * authenticated, so the cron reads it rather than re-deriving it. The previous
- * approach mapped an on-chain address back through
- * `private_channel_verified_wallets` — which answered a different question ("who
- * verified this wallet", uniqueness `user_id + instance_id + pubkey`, so 0, 1 or
- * many answers), attributed a cross-member deposit to the RECIPIENT rather than the
- * actor, and could not resolve an external recipient at all.
+ * authenticated, so the cron reads it rather than re-deriving it. An on-chain address
+ * cannot stand in for the actor: `private_channel_verified_wallets` answers a
+ * different question (who verified this wallet, unique on
+ * `user_id + instance_id + pubkey`, so 0, 1 or many answers), a cross-member deposit
+ * resolves to the RECIPIENT rather than the actor, and an external recipient has no
+ * row at all.
  *
  * Returns `unavailable` (never throws) when no identity is available — a revoked
  * member, a deleted instance, or a failed SPC login. The caller should skip that

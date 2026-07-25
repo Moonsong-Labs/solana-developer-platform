@@ -11,11 +11,10 @@
 //     generates it and registers it with SPC, and the member never sees it, so
 //     an unreadable credential is repaired by re-inviting.
 //
-// SPC_CREDENTIAL_ENCRYPTION_KEY is NOT a migration leftover — SPC has never
-// shipped, so there is no historical ciphertext. It is the only scheme that works
-// off GCP: KMS auth goes through the GCE metadata server (lib/gcp/access-token.ts),
-// so local dev, docker-compose, non-GCP self-hosting and CI all run on the v1
-// path. Treat it as required and the KMS key as the GCP-only upgrade.
+// Despite the router calling it `legacy`, SPC_CREDENTIAL_ENCRYPTION_KEY is required
+// rather than optional: KMS auth goes through the GCE metadata server
+// (lib/gcp/access-token.ts), so local dev, docker-compose, non-GCP self-hosting and
+// CI all run on the v1 path. The KMS key is the GCP-only upgrade.
 //
 // Decryption dispatches on the ciphertext prefix, so the two schemes coexist in
 // whichever environments end up using each.

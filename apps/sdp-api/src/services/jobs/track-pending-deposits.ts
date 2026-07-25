@@ -189,14 +189,13 @@ async function reconcileCreditGroup(
   }
 
   // Read the recipient's channel balance via the group's snapshotted gateway.
-  // A deposit row written before the snapshot columns existed can carry EMPTY urls.
+  // A deposit row can carry EMPTY snapshot urls — those columns default to ''.
   // Never build a gateway client from an empty URL — that throws "Invalid URL: " and
   // takes down the whole group, including healthy deposits that DO have a snapshot.
   // Pick a deposit that actually carries one; skip the group if none does.
   //
-  // NOTE: this still assumes every deposit in the group shares one config. When
-  // snapshots legitimately diverge, the group should be keyed by the snapshot
-  // itself — tracked as finding #3 in DEPOSIT_REVIEW_FIXES.md.
+  // NOTE: this assumes every deposit in the group shares one config. If snapshots can
+  // diverge, the group has to be keyed by the snapshot itself.
   const snapshot = deposits.find((deposit) => deposit.gateway_url && deposit.chain_rpc_url);
   if (!snapshot) {
     console.warn("trackPendingDeposits: skipping credit group with no usable config snapshot", {

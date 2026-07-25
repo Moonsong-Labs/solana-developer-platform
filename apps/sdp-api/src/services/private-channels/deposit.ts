@@ -8,7 +8,7 @@
  * payer (pays rent + the SOL fee). Broadcast targets `instance.chainRpcUrl`, NOT
  * the default RPC or the gateway.
  *
- * TODO(gasless): revert to the Kora/native sponsored fee-payer model (the
+ * TODO(gasless): switch to the Kora/native sponsored fee-payer model (the
  * `payer` = `createNoopSigner(feePayment.getFeePayer())`, tx fee payer set via
  * `setTransactionMessageFeePayer`, sign with `partiallySignTransactionMessageWithSigners`
  * then `feePayment.signAsFeePayer`) once the escrow program `9tgHa1…` is added to

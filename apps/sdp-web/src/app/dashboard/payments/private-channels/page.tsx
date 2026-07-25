@@ -4,8 +4,6 @@ import { privateChannels } from "@/flags";
 import { createSdpApiClient } from "@/lib/sdp-api";
 
 // Overview is the landing when connected; Instance is the landing otherwise.
-// A dedicated overview page (cards / summaries) can replace the redirect once
-// there's enough section-level content to justify it.
 export default async function PrivateChannelsPage() {
   if (!(await privateChannels())) {
     notFound();

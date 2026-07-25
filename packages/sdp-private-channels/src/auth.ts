@@ -1,12 +1,13 @@
 // SPC auth service client.
 //
 // One transport (`authRequest`) backs the whole auth surface:
-//  - Standalone `spcRegister` / `spcLogin` — used by the member-invite flow
-//    (services/private-channels/members.ts).
+//  - Standalone `spcRegister` — used by the member-invite flow
+//    (services/private-channels/members.ts); `spcLogin` exchanges credentials for a
+//    JWT outside that flow.
 //  - `createAuthClient(authBaseUrl)` — the JWT-gated wallet surface
 //    (challenge/verify/delete), used by the wallet-verification write path.
 // Both accept `SpcAuthClientOptions` (injectable `fetchImpl` for tests).
-// Worker-safe (fetch only; no Node/DB imports). Exposed via the
+// Fetch-only, with no Node or database imports. Exposed via the
 // `@sdp/private-channels/auth` subpath so callers can import it without pulling
 // the whole barrel; it is also re-exported from the barrel (e.g. `members.ts`
 // imports `spcRegister` from `@sdp/private-channels`).
@@ -181,8 +182,7 @@ export async function spcRegister(
   };
 }
 
-// POST /auth/login — exchanges username + password for a JWT. Not called by the
-// invite flow; scaffolded for future operate-on-behalf-of use.
+// POST /auth/login — exchanges username + password for a JWT.
 export async function spcLogin(
   authUrl: string,
   input: SpcLoginInput,
