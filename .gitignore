@@ -20,10 +20,6 @@ apps/sdp-api/.ramp-rails/raw/
 .dev.vars.*
 .cloudflare.*.env
 
-# Local secrets / private docs — never commit
-private-channels-grant-proposal.pdf
-*.grant-proposal.pdf
-
 # IDE
 .idea/
 .vscode/
