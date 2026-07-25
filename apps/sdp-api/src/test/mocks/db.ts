@@ -47,6 +47,18 @@ const POSTGRES_TEST_TABLES = [
   "issued_tokens",
   "counterparty_accounts",
   "counterparties",
+  // Private Channels. private_channel_events, _deposits and _withdrawals hold
+  // instance_id with no FK on purpose (the rows outlive the instance), so cascading
+  // from projects/organizations cannot reach them — they only get cleared because
+  // they are listed here.
+  "private_channel_verified_wallets",
+  "private_channel_memberships",
+  "private_channel_users",
+  "private_channel_events",
+  "private_channel_withdrawals",
+  "private_channel_deposits",
+  "private_channels",
+  "private_channel_instances",
   "magic_links",
   "sessions",
   "project_members",
