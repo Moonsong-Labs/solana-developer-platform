@@ -18,19 +18,29 @@ export class CustodyCipherError extends Error {
   }
 }
 
+const DEFAULT_LEGACY_KEY_ENV_NAME = "CUSTODY_ENCRYPTION_KEY";
+
 export class CustodyCipherRouter implements CustodyCipher {
   private readonly legacyKey?: string;
   private readonly envelope: KmsEnvelopeCipher | null;
   private readonly activeScheme: "legacy" | "v2";
+  /**
+   * Which env var supplies `legacyKey`, for error messages only. Non-custody
+   * callers hold their own key, so naming the custody one would tell an operator
+   * to reuse the exact key the separation exists to keep apart.
+   */
+  private readonly legacyKeyEnvName: string;
 
   constructor(opts: {
     legacyKey?: string;
     envelope: KmsEnvelopeCipher | null;
     activeScheme: "legacy" | "v2";
+    legacyKeyEnvName?: string;
   }) {
     this.legacyKey = opts.legacyKey;
     this.envelope = opts.envelope;
     this.activeScheme = opts.activeScheme;
+    this.legacyKeyEnvName = opts.legacyKeyEnvName ?? DEFAULT_LEGACY_KEY_ENV_NAME;
   }
 
   async encrypt(orgId: string, plaintext: string): Promise<string> {
@@ -39,7 +49,7 @@ export class CustodyCipherRouter implements CustodyCipher {
       return (await this.envelope.encrypt(orgId, plaintext)).ciphertext;
     }
     if (!this.legacyKey)
-      throw new CustodyCipherError("legacy active but CUSTODY_ENCRYPTION_KEY not set");
+      throw new CustodyCipherError(`legacy active but ${this.legacyKeyEnvName} not set`);
     return (await createEncryptionService(this.legacyKey).encrypt(orgId, plaintext)).ciphertext;
   }
 
@@ -50,7 +60,7 @@ export class CustodyCipherRouter implements CustodyCipher {
       return this.envelope.decrypt(orgId, ciphertext);
     }
     if (!this.legacyKey)
-      throw new CustodyCipherError("legacy ciphertext but CUSTODY_ENCRYPTION_KEY not set");
+      throw new CustodyCipherError(`legacy ciphertext but ${this.legacyKeyEnvName} not set`);
     return createEncryptionService(this.legacyKey).decrypt(orgId, ciphertext);
   }
 }
@@ -69,7 +79,7 @@ type KmsTransportEnv = Pick<Env, "CUSTODY_KMS_API_BASE_URL" | "CUSTODY_KMS_METAD
  */
 export function createCipherRouter(
   env: KmsTransportEnv,
-  opts: { legacyKey?: string; kmsKeyName?: string }
+  opts: { legacyKey?: string; kmsKeyName?: string; legacyKeyEnvName?: string }
 ): CustodyCipher {
   const keyName = opts.kmsKeyName;
   let envelope: KmsEnvelopeCipher | null = null;
@@ -88,6 +98,7 @@ export function createCipherRouter(
     legacyKey: opts.legacyKey,
     envelope,
     activeScheme: keyName ? "v2" : "legacy",
+    ...(opts.legacyKeyEnvName ? { legacyKeyEnvName: opts.legacyKeyEnvName } : {}),
   });
 }
 

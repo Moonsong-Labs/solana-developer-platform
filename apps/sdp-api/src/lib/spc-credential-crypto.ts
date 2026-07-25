@@ -24,15 +24,20 @@ import { type CustodyCipher, createCipherRouter } from "@/services/custody-ciphe
 import { EncryptionError } from "@/services/encryption.service";
 import type { Env } from "@/types/env";
 
-export function createSpcCredentialCipher(
-  env: Pick<
-    Env,
-    | "SPC_CREDENTIAL_ENCRYPTION_KEY"
-    | "SPC_CREDENTIAL_KMS_KEY_NAME"
-    | "CUSTODY_KMS_API_BASE_URL"
-    | "CUSTODY_KMS_METADATA_TOKEN_URL"
-  >
-): CustodyCipher {
+/**
+ * Every variable the SPC cipher reads. Callers must declare all of it: narrowing
+ * to just the legacy key type-checks (every Env member is optional) but silently
+ * writes v1 ciphertext in a KMS-configured deployment.
+ */
+export type SpcCredentialCipherEnv = Pick<
+  Env,
+  | "SPC_CREDENTIAL_ENCRYPTION_KEY"
+  | "SPC_CREDENTIAL_KMS_KEY_NAME"
+  | "CUSTODY_KMS_API_BASE_URL"
+  | "CUSTODY_KMS_METADATA_TOKEN_URL"
+>;
+
+export function createSpcCredentialCipher(env: SpcCredentialCipherEnv): CustodyCipher {
   const legacyKey = env.SPC_CREDENTIAL_ENCRYPTION_KEY;
   const kmsKeyName = env.SPC_CREDENTIAL_KMS_KEY_NAME;
   // Fail fast rather than at the first encrypt/decrypt: neither key configured
@@ -42,5 +47,9 @@ export function createSpcCredentialCipher(
       "SPC_CREDENTIAL_ENCRYPTION_KEY environment variable is not configured"
     );
   }
-  return createCipherRouter(env, { legacyKey, kmsKeyName });
+  return createCipherRouter(env, {
+    legacyKey,
+    kmsKeyName,
+    legacyKeyEnvName: "SPC_CREDENTIAL_ENCRYPTION_KEY",
+  });
 }

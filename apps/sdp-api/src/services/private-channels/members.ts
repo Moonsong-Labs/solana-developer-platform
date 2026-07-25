@@ -9,8 +9,10 @@ import type {
   PrivateChannelUserWithIdentityRow,
   ProjectScope,
 } from "@/db/repositories";
-import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
-import type { Env } from "@/types/env";
+import {
+  createSpcCredentialCipher,
+  type SpcCredentialCipherEnv,
+} from "@/lib/spc-credential-crypto";
 
 const SPC_USERNAME_MIN = 5;
 const SPC_USERNAME_MAX = 32;
@@ -54,7 +56,7 @@ function generateInviteToken(): string {
 }
 
 export async function inviteMember(
-  env: Pick<Env, "SPC_CREDENTIAL_ENCRYPTION_KEY">,
+  env: SpcCredentialCipherEnv,
   repo: PrivateChannelUserRepository,
   input: InviteMemberInput
 ): Promise<InviteMemberResult> {

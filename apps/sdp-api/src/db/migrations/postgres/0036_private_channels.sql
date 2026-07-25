@@ -117,9 +117,11 @@ CREATE TABLE IF NOT EXISTS private_channel_users (
     user_id TEXT NOT NULL,
 
     -- SPC credential (created by POST /auth/register at invite time). SDP owns
-    -- these; the user never sees them. Password ciphertext is AES-GCM encrypted
-    -- with SPC_CREDENTIAL_ENCRYPTION_KEY (base64 IV + ciphertext + auth tag,
-    -- per EncryptionService).
+    -- these; the user never sees them. The password ciphertext is written by the
+    -- SPC cipher router: either AES-GCM under SPC_CREDENTIAL_ENCRYPTION_KEY
+    -- (base64 IV + ciphertext + auth tag, per EncryptionService) or, when
+    -- SPC_CREDENTIAL_KMS_KEY_NAME is set, a `v2.`-prefixed Cloud KMS envelope.
+    -- Decryption dispatches on that prefix, so no version column is needed.
     spc_user_id TEXT,
     spc_username TEXT,
     spc_credential_ciphertext TEXT,
