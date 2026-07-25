@@ -59,12 +59,15 @@ export interface ResolveGatewayAuthInput {
   userId: string | null | undefined;
 }
 
-/** Best-effort KV `cache` store; `undefined` when KV isn't configured on this runtime. */
+/** Best-effort KV `cache` store; `undefined` when Redis isn't configured. */
 function tryGetCache(env: Env) {
   try {
     return createKVStoreSet(env).cache;
   } catch {
-    return undefined; // No KV binding → no caching, fall back to fresh login each call.
+    // Both server entrypoints assert REDIS_URL, so this is a guard for partially
+    // configured envs (tests, scripts) rather than a path production takes: no
+    // Redis → no caching, fall back to a fresh login each call.
+    return undefined;
   }
 }
 

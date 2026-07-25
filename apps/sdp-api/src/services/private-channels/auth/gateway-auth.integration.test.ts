@@ -1,6 +1,7 @@
 /**
  * Integration test for SPC gateway auth: the KV token cache + 401 invalidate-and-retry,
- * exercised against Miniflare's `SDP_CACHE` KV and the test Postgres.
+ * exercised against the real `createKVStoreSet(env).cache` (Redis) and the test
+ * Postgres, both provisioned by the testcontainers global setup.
  *
  * Only the external SPC boundary is mocked: `createAuthClient().login` (so no live SPC auth
  * service). Everything else is the production path — `resolveGatewayAuth` does its DB
@@ -115,13 +116,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", () => {
+describe("SPC gateway auth — KV cache + 401 retry (Redis KV + Postgres)", () => {
   it("caches the SPC token in KV so a second resolve does not re-login", async () => {
     const first = await resolveGatewayAuth(testEnv, resolveInput);
     expect(first?.current).toBeTruthy();
     expect(loginMock).toHaveBeenCalledTimes(1);
 
-    // The token is really in Miniflare KV (encrypted).
+    // The token is really in the KV store (encrypted).
     const cached = await createKVStoreSet(testEnv).cache.get<{ tokenCiphertext: string }>(
       CACHE_KEY,
       "json"
