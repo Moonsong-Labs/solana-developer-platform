@@ -18,6 +18,10 @@ const SPC_USERNAME_MIN = 5;
 const SPC_USERNAME_MAX = 32;
 const SPC_PASSWORD_BYTES = 32;
 const SPC_USERNAME_ALLOWED = /[^a-zA-Z0-9_-]/g;
+const SPC_USERNAME_SUFFIX_LEN = 5;
+// 32 characters (lowercase base32), so `byte & 31` selects one uniformly.
+// biome-ignore lint/security/noSecrets: Character alphabet, not a secret.
+const SPC_USERNAME_SUFFIX_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 
 export interface InviteMemberInput extends ProjectScope {
   authUrl: string;
@@ -37,10 +41,26 @@ export interface InviteMemberResult {
 // don't fail the first try.
 function deriveUsername(email: string): string {
   const slug = email.split("@")[0]?.replace(SPC_USERNAME_ALLOWED, "-") ?? "user";
-  const base = slug.replace(/^-+|-+$/g, "").slice(0, SPC_USERNAME_MAX - 6);
-  const seed = base.length >= SPC_USERNAME_MIN - 6 ? base : `user-${base}`;
-  const suffix = Math.random().toString(36).slice(2, 7);
-  return `${seed}-${suffix}`.slice(0, SPC_USERNAME_MAX);
+  // Reserve the separator + suffix so the final slice can never truncate the
+  // suffix away (that would silently spend the collision space).
+  const reserved = SPC_USERNAME_SUFFIX_LEN + 1;
+  const base = slug.replace(/^-+|-+$/g, "").slice(0, SPC_USERNAME_MAX - reserved);
+  const seed = base.length >= SPC_USERNAME_MIN - reserved ? base : `user-${base}`;
+  return `${seed}-${randomSuffix()}`.slice(0, SPC_USERNAME_MAX);
+}
+
+/**
+ * Fixed-length random suffix. `getRandomValues` rather than `Math.random()`, to
+ * match every other random value in this module. Fixed-length because
+ * `Number.toString(36)` drops leading zeros, which silently shortened the suffix
+ * at random and ate into the collision space it exists to provide. The alphabet is
+ * 32 characters so a byte maps to one character uniformly by masking, with no
+ * modulo bias and no rejection loop.
+ */
+function randomSuffix(): string {
+  const bytes = new Uint8Array(SPC_USERNAME_SUFFIX_LEN);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => SPC_USERNAME_SUFFIX_ALPHABET[byte & 31]).join("");
 }
 
 function generatePassword(): string {
