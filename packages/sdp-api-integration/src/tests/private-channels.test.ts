@@ -44,13 +44,22 @@ describe.skipIf(!PRIVATE_CHANNEL_CONFIGURED || !RUN_INTEGRATION_TESTS)(
       expect(value.blockhash).toBeTruthy();
     });
 
-    it("gateway RPC: getChannelTokenBalance returns a token account (balance may be zero)", async () => {
+    it("gateway RPC: an unauthenticated channel balance read is rejected", async () => {
+      // The gateway enforces RBAC per method. Verified live against the sandbox:
+      // getLatestBlockhash and getTokenAccountsByOwner answer 200 without a bearer,
+      // but getAccountInfo — which getChannelTokenBalance needs — answers 401. This
+      // suite is deliberately app-free and therefore tokenless, so the reachable
+      // assertion is that the balance path is gated, not that it returns a balance.
+      //
+      // A positive-path test needs a member JWT, which means the app harness
+      // (getSpcSession + withGatewayRpc). Note that even a valid member bearer gets
+      // 403 on this method for its own verified wallet, so a green authorized read is
+      // not demonstrable against this instance today.
       const rpc = createChannelGatewayRpc(env, getGatewayUrl());
 
-      const result = await getChannelTokenBalance(rpc, SAMPLE_OWNER, DEVNET_USDC);
-
-      // A never-credited owner reads as balance: null — both null and a value are valid here.
-      expect(result.tokenAccount).toBeTruthy();
+      await expect(getChannelTokenBalance(rpc, SAMPLE_OWNER, DEVNET_USDC)).rejects.toThrow(
+        /401|[Uu]nauthorized/
+      );
     });
   }
 );
