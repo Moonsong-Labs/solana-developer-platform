@@ -83,6 +83,31 @@ describe("PrivateChannelDepositRepository (postgres)", () => {
     repo = createPostgresPrivateChannelDepositRepository(db);
   });
 
+  /** Insert with an explicit created_at, which createDeposit cannot set. */
+  async function seedDepositAt(id: string, amount: string, createdAt: string): Promise<void> {
+    await getDb(env)
+      .prepare(
+        `INSERT INTO private_channel_deposits
+           (id, organization_id, project_id, instance_id, wallet_id, depositor, recipient,
+            mint, amount, private_channel_user_id, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'wal_pcd_1', 'DepositorAddr1111111111111111111111111111', ?,
+            ?, ?, ?, 'confirmed', ?, ?)`
+      )
+      .bind(
+        id,
+        TEST_ORG.id,
+        TEST_PROJECT_ID,
+        TEST_INSTANCE_ID,
+        RECIPIENT,
+        MINT,
+        amount,
+        TEST_PC_USER_ID,
+        createdAt,
+        createdAt
+      )
+      .run();
+  }
+
   it("createDeposit persists every column and defaults to prepared", async () => {
     const row = await repo.createDeposit(makeInput());
 
@@ -109,5 +134,61 @@ describe("PrivateChannelDepositRepository (postgres)", () => {
     await expect(
       repo.createDeposit(makeInput({ privateChannelUserId: "pcu_nope" }))
     ).rejects.toThrow();
+  });
+
+  describe("listDepositsForRecipient", () => {
+    it("returns the group oldest first", async () => {
+      await seedDepositAt("dep_b", "2", "2026-02-01T00:00:00.000Z");
+      await seedDepositAt("dep_a", "1", "2026-01-01T00:00:00.000Z");
+
+      const rows = await repo.listDepositsForRecipient({
+        instanceId: TEST_INSTANCE_ID,
+        recipient: RECIPIENT,
+        mint: MINT,
+      });
+
+      expect(rows.map((r) => r.id)).toEqual(["dep_a", "dep_b"]);
+    });
+
+    it("breaks created_at ties on id ASC so credit planning is deterministic", async () => {
+      // deposit-credit walks this list in order, anchors its threshold on the first
+      // row's baseline_credited and breaks at the first row exceeding balance — so an
+      // unstable order across ticks would change which deposits get credited.
+      const sameInstant = "2026-03-01T00:00:00.000Z";
+      await seedDepositAt("dep_c", "3", sameInstant);
+      await seedDepositAt("dep_a", "1", sameInstant);
+      await seedDepositAt("dep_b", "2", sameInstant);
+
+      const first = await repo.listDepositsForRecipient({
+        instanceId: TEST_INSTANCE_ID,
+        recipient: RECIPIENT,
+        mint: MINT,
+      });
+      const second = await repo.listDepositsForRecipient({
+        instanceId: TEST_INSTANCE_ID,
+        recipient: RECIPIENT,
+        mint: MINT,
+      });
+
+      expect(first.map((r) => r.id)).toEqual(["dep_a", "dep_b", "dep_c"]);
+      expect(second.map((r) => r.id)).toEqual(first.map((r) => r.id));
+    });
+
+    it("excludes another instance's deposits for the same recipient", async () => {
+      await seedDepositAt("dep_a", "1", "2026-01-01T00:00:00.000Z");
+      await getDb(env)
+        .prepare(
+          `UPDATE private_channel_deposits SET instance_id = 'inst_other' WHERE id = 'dep_a'`
+        )
+        .run();
+
+      const rows = await repo.listDepositsForRecipient({
+        instanceId: TEST_INSTANCE_ID,
+        recipient: RECIPIENT,
+        mint: MINT,
+      });
+
+      expect(rows).toEqual([]);
+    });
   });
 });

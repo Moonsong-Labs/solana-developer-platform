@@ -28,6 +28,18 @@ async function seedInstance(db: ReturnType<typeof getDb>, id: string): Promise<v
     .run();
 }
 
+/** Insert a channel with an explicit created_at, which createChannel cannot set. */
+async function seedChannelAt(id: string, name: string, createdAt: string): Promise<void> {
+  await getDb(env)
+    .prepare(
+      `INSERT INTO private_channels
+         (id, organization_id, project_id, instance_id, name, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`
+    )
+    .bind(id, TEST_ORG_ID, TEST_PROJECT_ID, TEST_INSTANCE_ID, name, createdAt, createdAt)
+    .run();
+}
+
 describe("PrivateChannelRepository (postgres)", () => {
   let repo: PrivateChannelRepository;
 
@@ -139,11 +151,35 @@ describe("PrivateChannelRepository (postgres)", () => {
       const first = await repo.createChannel({ ...SCOPE, name: "Alpha", description: null });
       const second = await repo.createChannel({ ...SCOPE, name: "Beta", description: null });
       const rows = await repo.listChannels({ instanceId: TEST_INSTANCE_ID });
-      // Ordering is `created_at DESC, id DESC`. Back-to-back creates can land in
-      // the same millisecond (sdp_iso_now() is millisecond precision) and the tie
-      // then breaks on a random UUID, so assert membership rather than sequence.
+      // createChannel takes no created_at, so back-to-back creates can land in the
+      // same millisecond (sdp_iso_now() is millisecond precision). Sequence is
+      // asserted separately below, on rows seeded with explicit timestamps.
       expect(rows).toHaveLength(2);
       expect(new Set(rows.map((r) => r.id))).toEqual(new Set([first?.id, second?.id]));
+    });
+
+    it("orders by created_at DESC, newest first", async () => {
+      await seedChannelAt("pch_older", "Older", "2026-01-01T00:00:00.000Z");
+      await seedChannelAt("pch_newer", "Newer", "2026-02-01T00:00:00.000Z");
+
+      const rows = await repo.listChannels({ instanceId: TEST_INSTANCE_ID });
+
+      expect(rows.map((r) => r.id)).toEqual(["pch_newer", "pch_older"]);
+    });
+
+    it("breaks created_at ties on id DESC, so equal timestamps still order stably", async () => {
+      // The whole point of the `, id DESC` tie-break: same-millisecond rows must
+      // come back in one fixed order, not whichever order Postgres happens to pick.
+      const sameInstant = "2026-03-01T00:00:00.000Z";
+      await seedChannelAt("pch_aaa", "Aaa", sameInstant);
+      await seedChannelAt("pch_bbb", "Bbb", sameInstant);
+      await seedChannelAt("pch_ccc", "Ccc", sameInstant);
+
+      const first = await repo.listChannels({ instanceId: TEST_INSTANCE_ID });
+      const second = await repo.listChannels({ instanceId: TEST_INSTANCE_ID });
+
+      expect(first.map((r) => r.id)).toEqual(["pch_ccc", "pch_bbb", "pch_aaa"]);
+      expect(second.map((r) => r.id)).toEqual(first.map((r) => r.id));
     });
   });
 
