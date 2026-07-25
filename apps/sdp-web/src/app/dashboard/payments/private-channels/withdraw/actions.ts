@@ -6,7 +6,7 @@ import {
   createPrivateChannelWithdrawal,
   fetchPrivateChannelWithdrawal,
 } from "@/lib/private-channels";
-import { createSdpApiClient } from "@/lib/sdp-api";
+import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
 
 export interface CreateWithdrawalInput {
   walletId: string;
@@ -40,7 +40,7 @@ export async function createWithdrawalAction(
     revalidatePath("/dashboard/payments/private-channels/withdraw");
     return { ok: true, withdrawal };
   } catch (error) {
-    return { ok: false, kind: "server", message: extractApiMessage(error) };
+    return { ok: false, kind: "server", message: extractSdpApiErrorMessage(error) };
   }
 }
 
@@ -51,21 +51,5 @@ export async function fetchWithdrawalAction(id: string): Promise<PrivateChannelW
     return await fetchPrivateChannelWithdrawal(client, id);
   } catch {
     return null;
-  }
-}
-
-function extractApiMessage(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return "Unknown error.";
-  }
-  const match = /^SDP API request failed \(\d+\):\s*([\s\S]*)$/.exec(error.message);
-  if (!match) {
-    return error.message;
-  }
-  try {
-    const payload = JSON.parse(match[1] ?? "") as { error?: { message?: string } };
-    return payload.error?.message ?? error.message;
-  } catch {
-    return error.message;
   }
 }

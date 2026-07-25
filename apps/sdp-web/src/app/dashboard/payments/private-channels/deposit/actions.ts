@@ -3,7 +3,7 @@
 import type { PrivateChannelDeposit } from "@sdp/types";
 import { revalidatePath } from "next/cache";
 import { createPrivateChannelDeposit, fetchPrivateChannelDeposit } from "@/lib/private-channels";
-import { createSdpApiClient } from "@/lib/sdp-api";
+import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
 
 export interface CreateDepositInput {
   walletId: string;
@@ -35,7 +35,7 @@ export async function createDepositAction(input: CreateDepositInput): Promise<Cr
     revalidatePath("/dashboard/payments/private-channels/deposit");
     return { ok: true, deposit };
   } catch (error) {
-    return { ok: false, kind: "server", message: extractApiMessage(error) };
+    return { ok: false, kind: "server", message: extractSdpApiErrorMessage(error) };
   }
 }
 
@@ -46,21 +46,5 @@ export async function fetchDepositAction(id: string): Promise<PrivateChannelDepo
     return await fetchPrivateChannelDeposit(client, id);
   } catch {
     return null;
-  }
-}
-
-function extractApiMessage(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return "Unknown error.";
-  }
-  const match = /^SDP API request failed \(\d+\):\s*([\s\S]*)$/.exec(error.message);
-  if (!match) {
-    return error.message;
-  }
-  try {
-    const payload = JSON.parse(match[1] ?? "") as { error?: { message?: string } };
-    return payload.error?.message ?? error.message;
-  } catch {
-    return error.message;
   }
 }
