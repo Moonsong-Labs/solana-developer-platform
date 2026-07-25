@@ -201,16 +201,20 @@ CREATE TABLE IF NOT EXISTS private_channel_events (
     created_at TEXT NOT NULL DEFAULT sdp_iso_now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_private_channel_events_channel_occurred
-    ON private_channel_events (channel_id, occurred_at DESC)
-    WHERE channel_id IS NOT NULL;
-
 -- Channel feed query: filter by instance_id, order by (occurred_at, id) DESC.
+--
+-- There is deliberately no (channel_id, occurred_at) index. The only channel-scoped
+-- read is `instance_id = ? AND (channel_id = ? OR channel_id IS NULL)`, which the
+-- planner serves from this index with the channel test as a filter — verified with
+-- EXPLAIN, including with enable_seqscan off. A channel-leading index was never
+-- chosen, so it was pure write amplification on an append-only table.
 CREATE INDEX IF NOT EXISTS idx_private_channel_events_instance_occurred
     ON private_channel_events (instance_id, occurred_at DESC, id DESC);
 
+-- Project feed. Same (occurred_at, id) DESC cursor as the instance feed above, so it
+-- carries the same trailing id to keep the sort fully index-ordered.
 CREATE INDEX IF NOT EXISTS idx_private_channel_events_project_occurred
-    ON private_channel_events (project_id, occurred_at DESC);
+    ON private_channel_events (project_id, occurred_at DESC, id DESC);
 
 
 -- ==========================================================================
@@ -293,6 +297,14 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_pending
 CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_instance_status
     ON private_channel_deposits(instance_id)
     WHERE status IN ('prepared', 'submitted', 'confirmed');
+
+-- The reconciler's per-tick credit grouping (listDepositsForRecipient) reads every
+-- deposit for one (instance, recipient, mint) with NO status predicate, because
+-- crediting is cumulative over already-credited rows. Neither partial index above
+-- can serve that, and project_id doesn't lead — so without this the query is a
+-- sequential scan of a table this file declares append-only and unbounded.
+CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_instance_recipient_mint
+    ON private_channel_deposits(instance_id, recipient, mint, created_at);
 
 
 -- ==========================================================================
