@@ -286,7 +286,7 @@ function InviteDialog({
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             disabled={pending}
-            className="w-full truncate rounded-md border border-border-light bg-white px-3 py-2 pr-8 text-sm text-text-extra-high"
+            className="w-full truncate rounded-md border border-border-light bg-surface-raised px-3 py-2 pr-8 text-sm text-text-extra-high"
           >
             <option value="">Select a user…</option>
             {candidates.map((pm) => (
