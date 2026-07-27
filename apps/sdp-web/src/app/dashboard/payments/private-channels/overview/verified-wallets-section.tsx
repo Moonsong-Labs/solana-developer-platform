@@ -12,6 +12,7 @@ import {
 import { WalletProviderMark } from "@/app/dashboard/custody/wallet-provider-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/i18n/provider";
 import { deleteVerifiedWalletAction, verifyWalletAction } from "./actions";
 
 interface Props {
@@ -27,6 +28,7 @@ function shortKey(pk: string): string {
 export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadError }: Props) {
   const [pending, startTransition] = useTransition();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const t = useTranslations();
 
   const verifiedByPubkey = new Map(verifiedWallets.map((w) => [w.pubkey, w]));
   const custodyPubkeys = new Set(custodyWallets.map((w) => w.publicKey));
@@ -38,7 +40,9 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
     startTransition(async () => {
       const result = await verifyWalletAction(walletId);
       if (result.ok) {
-        toast.success(`Wallet ${shortKey(pubkey)} verified.`);
+        toast.success(
+          t("DashboardPrivateChannels.verifiedWallets.verifySuccess", { key: shortKey(pubkey) })
+        );
       } else {
         toast.error(result.message);
       }
@@ -51,7 +55,9 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
     startTransition(async () => {
       const result = await deleteVerifiedWalletAction(pubkey);
       if (result.ok) {
-        toast.success(`Verification for ${shortKey(pubkey)} revoked.`);
+        toast.success(
+          t("DashboardPrivateChannels.verifiedWallets.revokeSuccess", { key: shortKey(pubkey) })
+        );
       } else {
         toast.error(result.message);
       }
@@ -62,7 +68,7 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
   if (loadError) {
     return (
       <p className="text-sm text-status-error-text">
-        Couldn't load your wallets. Refresh the page to try again.
+        {t("DashboardPrivateChannels.verifiedWallets.loadError")}
       </p>
     );
   }
@@ -70,16 +76,20 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
   if (custodyWallets.length === 0 && orphanedVerified.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3">
-        <p className="text-sm text-text-medium">No wallets found for user, create one.</p>
+        <p className="text-sm text-secondary">
+          {t("DashboardPrivateChannels.verifiedWallets.noWallets")}
+        </p>
         <Button asChild>
-          <Link href="/dashboard/wallets">Create a wallet</Link>
+          <Link href="/dashboard/wallets">
+            {t("DashboardPrivateChannels.verifiedWallets.createWallet")}
+          </Link>
         </Button>
       </div>
     );
   }
 
   return (
-    <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+    <ul className="flex flex-col divide-y divide-border-default rounded-lg border border-border-default">
       {custodyWallets.map((wallet) => {
         const verified = verifiedByPubkey.get(wallet.publicKey);
         return (
@@ -92,7 +102,7 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
                 <span className="truncate font-medium">
                   {wallet.label ?? formatCustodyProviderName(wallet.provider ?? "wallet")}
                 </span>
-                <span className="truncate font-mono text-xs text-text-medium">
+                <span className="truncate font-mono text-xs text-secondary">
                   {wallet.publicKey}
                 </span>
               </div>
@@ -103,14 +113,16 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
                   <Badge variant="success">
                     <span className="inline-flex items-center gap-1">
                       <CheckCircle2Icon className="size-3" />
-                      Verified
+                      {t("DashboardPrivateChannels.verifiedWallets.verified")}
                     </span>
                   </Badge>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Revoke verification for ${wallet.publicKey}`}
-                    title="Revoke verification"
+                    aria-label={t("DashboardPrivateChannels.verifiedWallets.revokeAria", {
+                      pubkey: wallet.publicKey,
+                    })}
+                    title={t("DashboardPrivateChannels.verifiedWallets.revokeTitle")}
                     disabled={pending && pendingKey === wallet.publicKey}
                     onClick={() => handleDelete(wallet.publicKey)}
                   >
@@ -129,7 +141,7 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
                   {pending && pendingKey === wallet.walletId ? (
                     <Loader2Icon className="animate-spin" />
                   ) : null}
-                  Verify
+                  {t("DashboardPrivateChannels.verifiedWallets.verify")}
                 </Button>
               )}
             </div>
@@ -140,16 +152,22 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
       {orphanedVerified.map((w) => (
         <li key={w.id} className="flex items-center justify-between gap-4 px-4 py-3">
           <div className="flex min-w-0 flex-col">
-            <span className="truncate font-mono text-sm">{w.pubkey}</span>
-            <span className="text-xs text-text-medium">Custody wallet no longer listed</span>
+            <span className="truncate font-mono text-secondary text-xs">{w.pubkey}</span>
+            <span className="text-xs text-secondary">
+              {t("DashboardPrivateChannels.verifiedWallets.orphaned")}
+            </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="success">Verified</Badge>
+            <Badge variant="success">
+              {t("DashboardPrivateChannels.verifiedWallets.verified")}
+            </Badge>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Revoke verification for ${w.pubkey}`}
-              title="Revoke verification"
+              aria-label={t("DashboardPrivateChannels.verifiedWallets.revokeAria", {
+                pubkey: w.pubkey,
+              })}
+              title={t("DashboardPrivateChannels.verifiedWallets.revokeTitle")}
               disabled={pending && pendingKey === w.pubkey}
               onClick={() => handleDelete(w.pubkey)}
             >

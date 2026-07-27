@@ -1,94 +1,64 @@
-import { auth } from "@clerk/nextjs/server";
-import type {
-  CustodyWalletSummary,
-  PrivateChannelInstance,
-  PrivateChannelInstanceOverview,
-  PrivateChannelVerifiedWalletDto,
-} from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
-import {
-  fetchCustodyWallets,
-  fetchPrivateChannelOverview,
-  fetchVerifiedWallets,
-} from "@/lib/private-channels";
+import { getTranslations } from "@/i18n/server";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  requirePrivateChannelsAccess,
+} from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadOverview, loadWalletVerification } from "../private-channels-page.data";
 import { InstanceOverviewCard } from "./instance-overview-card";
 import { VerifiedWalletsSection } from "./verified-wallets-section";
 
-async function loadOverview(): Promise<{
-  instance: PrivateChannelInstance;
-  overview: PrivateChannelInstanceOverview;
-} | null> {
-  try {
-    const client = await createSdpApiClient();
-    return await fetchPrivateChannelOverview(client);
-  } catch {
-    // 404 → no active instance; caller routes to /instance
-    return null;
-  }
-}
-
-async function loadWallets(): Promise<{
-  verified: PrivateChannelVerifiedWalletDto[];
-  custody: CustodyWalletSummary[];
-  loadError: boolean;
-}> {
-  try {
-    const client = await createSdpApiClient();
-    const [verified, custody] = await Promise.all([
-      fetchVerifiedWallets(client),
-      fetchCustodyWallets(client),
-    ]);
-    return { verified, custody, loadError: false };
-  } catch {
-    // Surface the failure so the UI can show an error state rather than the
-    // "create a wallet" empty CTA (which would mislead a user who has wallets).
-    return { verified: [], custody: [], loadError: true };
-  }
-}
-
 export default async function PrivateChannelsOverviewPage() {
-  if (!(await privateChannels())) {
-    notFound();
-  }
+  await requirePrivateChannelsAccess();
 
-  const { userId, orgId } = await auth();
-  if (!userId) redirect(await getAuthEntryPath());
-  if (!orgId) redirect("/dashboard");
+  const t = await getTranslations();
 
-  const [data, wallets] = await Promise.all([loadOverview(), loadWallets()]);
-  if (!data) {
-    redirect("/dashboard/payments/private-channels/instance");
+  const client = await createSdpApiClient();
+  const [overview, wallets] = await Promise.all([
+    loadOverview(client),
+    loadWalletVerification(client),
+  ]);
+
+  // `ok` with no data is the expected "no active instance" 404 — route to the
+  // connect form. A genuine failure keeps the user here and shows the error.
+  if (overview.ok && !overview.data) {
+    redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Overview</CardTitle>
-          <CardDescription>Live status of your connected instance.</CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.overview.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.overview.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <InstanceOverviewCard instance={data.instance} overview={data.overview} />
+          {overview.data ? (
+            <InstanceOverviewCard
+              instance={overview.data.instance}
+              overview={overview.data.overview}
+            />
+          ) : (
+            <PrivateChannelsLoadError message={overview.error} />
+          )}
         </CardContent>
       </Card>
 
       <Card id="verified-wallets">
         <CardHeader>
-          <CardTitle>Verified wallets</CardTitle>
+          <CardTitle>{t("DashboardPrivateChannels.verifiedWallets.title")}</CardTitle>
           <CardDescription>
-            Verify a custody wallet against this instance to unlock transactions. Verifying signs a
-            challenge with the wallet; revoking removes it.
+            {t("DashboardPrivateChannels.verifiedWallets.description")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <VerifiedWalletsSection
-            verifiedWallets={wallets.verified}
-            custodyWallets={wallets.custody}
-            loadError={wallets.loadError}
+            verifiedWallets={wallets.data.verified}
+            custodyWallets={wallets.data.custody}
+            loadError={!wallets.ok}
           />
         </CardContent>
       </Card>

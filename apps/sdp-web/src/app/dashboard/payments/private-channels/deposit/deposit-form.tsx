@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
+import { useTranslations } from "@/i18n/provider";
 import { createDepositAction } from "./actions";
 import { DepositProgress } from "./deposit-progress";
 
@@ -23,6 +24,7 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   const [error, setError] = useState<string | null>(null);
   const [deposit, setDeposit] = useState<PrivateChannelDeposit | null>(null);
   const [isSubmitting, startTransition] = useTransition();
+  const t = useTranslations();
 
   if (deposit) {
     return (
@@ -40,10 +42,7 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
 
   if (wallets.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        You have no custody wallets yet. Create one under Wallets, fund it with devnet USDC, then
-        come back to deposit.
-      </p>
+      <p className="text-secondary text-sm">{t("DashboardPrivateChannels.deposit.noWallets")}</p>
     );
   }
 
@@ -57,7 +56,7 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
       });
       if (result.ok) {
         setDeposit(result.deposit);
-        toast.success("Deposit submitted");
+        toast.success(t("DashboardPrivateChannels.deposit.submitToast"));
       } else {
         setError(result.message);
         if (result.kind === "server") {
@@ -76,7 +75,7 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
       }}
     >
       <div className="space-y-1.5">
-        <Label htmlFor="deposit-wallet">From wallet</Label>
+        <Label htmlFor="deposit-wallet">{t("DashboardPrivateChannels.deposit.fromWallet")}</Label>
         <Select onValueChange={(value) => setWalletId(value ?? "")} value={walletId}>
           {wallets.map((wallet) => (
             <SelectItem key={wallet.walletId} value={wallet.walletId}>
@@ -84,32 +83,32 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
             </SelectItem>
           ))}
         </Select>
-        <p className="text-muted-foreground text-xs">
-          The deposit is signed from this wallet. It must hold devnet USDC (and a little SOL).
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.deposit.fromWalletHelp")}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="deposit-amount">Amount (USDC)</Label>
+        <Label htmlFor="deposit-amount">{t("DashboardPrivateChannels.common.amountUsdc")}</Label>
         <Input
           id="deposit-amount"
           inputMode="decimal"
           onChange={(event) => setAmount(event.target.value)}
-          placeholder="1.5"
+          placeholder={t("DashboardPrivateChannels.common.amountPlaceholder")}
           value={amount}
         />
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="deposit-recipient">Recipient (optional)</Label>
+        <Label htmlFor="deposit-recipient">{t("DashboardPrivateChannels.deposit.recipient")}</Label>
         <Input
           id="deposit-recipient"
           onChange={(event) => setRecipient(event.target.value)}
-          placeholder="Defaults to the depositing wallet"
+          placeholder={t("DashboardPrivateChannels.deposit.recipientPlaceholder")}
           value={recipient}
         />
-        <p className="text-muted-foreground text-xs">
-          A wallet address or walletId to credit in the channel. Leave blank to credit this wallet.
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.deposit.recipientHelp")}
         </p>
       </div>
 
@@ -117,7 +116,7 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
 
       <Button disabled={isSubmitting || !walletId || !amount.trim()} type="submit">
         {isSubmitting && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-        Deposit
+        {t("DashboardPrivateChannels.deposit.submit")}
       </Button>
     </form>
   );

@@ -9,7 +9,9 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/i18n/provider";
 import { explorerTxUrl } from "@/lib/explorer";
 import { useSolanaCluster } from "@/lib/use-solana-cluster";
 import { cn } from "@/lib/utils";
@@ -28,23 +30,23 @@ const RANK: Record<PrivateChannelWithdrawal["status"], number> = {
 const STAGES = [
   {
     rank: 1,
-    title: "Burn sent to the channel",
-    description: "Broadcasting the burn to the channel chain.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageBurnSentTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageBurnSentDescription",
   },
   {
     rank: 2,
-    title: "Burn confirmed (balance debited)",
-    description: "The burn confirmed and your channel balance was debited.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageBurnConfirmedTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageBurnConfirmedDescription",
   },
   {
     rank: 3,
-    title: "Awaiting devnet release",
-    description: "The operator is releasing the matching USDC on devnet.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageAwaitingReleaseTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageAwaitingReleaseDescription",
   },
   {
     rank: 4,
-    title: "Released on devnet",
-    description: "The operator released the USDC to the destination.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageReleasedTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageReleasedDescription",
   },
 ] as const;
 
@@ -64,6 +66,7 @@ export function WithdrawProgress({
 }) {
   const [withdrawal, setWithdrawal] = useState(initial);
   const cluster = useSolanaCluster();
+  const t = useTranslations();
 
   useEffect(() => {
     setWithdrawal(initial);
@@ -96,22 +99,26 @@ export function WithdrawProgress({
     <div className="space-y-5">
       <div className="flex items-baseline justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Withdrawing</p>
-          <p className="font-semibold text-lg">{withdrawal.amount} USDC</p>
+          <p className="text-sm text-secondary">
+            {t("DashboardPrivateChannels.withdraw.progressLabel")}
+          </p>
+          <p className="font-semibold text-lg">
+            {t("DashboardPrivateChannels.withdraw.amountWithUnit", { amount: withdrawal.amount })}
+          </p>
         </div>
-        <StatusBadge status={withdrawal.status} />
+        <StatusBadge status={withdrawal.status} t={t} />
       </div>
 
       {failed && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
-          {withdrawal.failureReason ?? "The withdrawal failed."}
+          {withdrawal.failureReason ?? t("DashboardPrivateChannels.withdraw.failed")}
         </div>
       )}
 
       {flagged && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-700 text-sm dark:text-amber-500">
-          Flagged for manual review.{" "}
-          {withdrawal.failureReason ?? "An operator will reconcile this withdrawal."}
+        <div className="rounded-md border border-warning-border bg-warning-bg p-3 text-sm text-warning">
+          {t("DashboardPrivateChannels.withdraw.flagged")}{" "}
+          {withdrawal.failureReason ?? t("DashboardPrivateChannels.withdraw.flaggedFallback")}
         </div>
       )}
 
@@ -131,16 +138,12 @@ export function WithdrawProgress({
                 <p
                   className={cn(
                     "font-medium text-sm",
-                    done
-                      ? "text-foreground"
-                      : activeStage
-                        ? "text-foreground"
-                        : "text-muted-foreground"
+                    done || activeStage ? "text-primary" : "text-tertiary"
                   )}
                 >
-                  {stage.title}
+                  {t(stage.titleKey)}
                 </p>
-                <p className="text-muted-foreground text-xs">{stage.description}</p>
+                <p className="text-secondary text-xs">{t(stage.descriptionKey)}</p>
               </div>
             </li>
           );
@@ -148,8 +151,9 @@ export function WithdrawProgress({
       </ol>
 
       {withdrawal.burnSignature && (
-        <p className="text-muted-foreground text-xs">
-          Burn signature: <span className="font-mono">{withdrawal.burnSignature}</span>
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.withdraw.burnSignature")}{" "}
+          <span className="font-mono text-xs">{withdrawal.burnSignature}</span>
         </p>
       )}
 
@@ -160,13 +164,13 @@ export function WithdrawProgress({
           rel="noreferrer"
           target="_blank"
         >
-          View release on Solana Explorer
+          {t("DashboardPrivateChannels.withdraw.viewRelease")}
         </a>
       )}
 
       {terminal && (
         <Button onClick={onReset} variant="secondary">
-          New withdrawal
+          {t("DashboardPrivateChannels.withdraw.newWithdrawal")}
         </Button>
       )}
     </div>
@@ -185,7 +189,7 @@ function StageIcon({
   flagged: boolean;
 }) {
   if (done) {
-    return <CheckCircle2Icon className="mt-0.5 size-5 text-green-500" />;
+    return <CheckCircle2Icon className="mt-0.5 size-5 text-success" />;
   }
   if (active) {
     return <Loader2Icon className="mt-0.5 size-5 animate-spin text-primary" />;
@@ -194,32 +198,34 @@ function StageIcon({
     return <XCircleIcon className="mt-0.5 size-5 text-destructive" />;
   }
   if (flagged) {
-    return <AlertTriangleIcon className="mt-0.5 size-5 text-amber-500" />;
+    return <AlertTriangleIcon className="mt-0.5 size-5 text-warning" />;
   }
-  return <CircleIcon className="mt-0.5 size-5 text-muted-foreground/40" />;
+  return <CircleIcon className="mt-0.5 size-5 text-tertiary" />;
 }
 
-function StatusBadge({ status }: { status: PrivateChannelWithdrawal["status"] }) {
+function StatusBadge({
+  status,
+  t,
+}: {
+  status: PrivateChannelWithdrawal["status"];
+  t: ReturnType<typeof useTranslations>;
+}) {
   const label: Record<PrivateChannelWithdrawal["status"], string> = {
-    pending: "Pending",
-    submitted: "Submitted",
-    burn_confirmed: "Burn confirmed",
-    release_pending: "Releasing",
-    released: "Released",
-    failed: "Failed",
-    manual_review: "Manual review",
+    pending: t("DashboardPrivateChannels.withdraw.statusPending"),
+    submitted: t("DashboardPrivateChannels.withdraw.statusSubmitted"),
+    burn_confirmed: t("DashboardPrivateChannels.withdraw.statusBurnConfirmed"),
+    release_pending: t("DashboardPrivateChannels.withdraw.statusReleasePending"),
+    released: t("DashboardPrivateChannels.withdraw.statusReleased"),
+    failed: t("DashboardPrivateChannels.withdraw.statusFailed"),
+    manual_review: t("DashboardPrivateChannels.withdraw.statusManualReview"),
   };
-  const tone =
+  const variant: BadgeVariant =
     status === "released"
-      ? "bg-green-500/10 text-green-600"
+      ? "success"
       : status === "failed"
-        ? "bg-destructive/10 text-destructive"
+        ? "danger"
         : status === "manual_review"
-          ? "bg-amber-500/10 text-amber-600"
-          : "bg-muted text-muted-foreground";
-  return (
-    <span className={cn("rounded-full px-2.5 py-1 font-medium text-xs", tone)}>
-      {label[status]}
-    </span>
-  );
+          ? "warning"
+          : "default";
+  return <Badge variant={variant}>{label[status]}</Badge>;
 }
