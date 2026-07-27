@@ -1,10 +1,10 @@
 /**
- * Pending-withdrawals reconciliation entrypoint, runtime-neutral.
+ * Pending-withdrawals reconciliation entrypoint.
  *
  * Mirrors `pending-deposits`: wraps `trackPendingWithdrawals` with a Sentry cron
- * monitor when observability is supplied and hands the promise to the
- * BackgroundRunner. Called by both the CF `scheduled` handler and the Node
- * `node-cron` tick, gated on the Private Channels feature flag.
+ * monitor when observability is supplied, and hands the resulting promise to the
+ * BackgroundRunner so it survives past the initiating tick and drains during
+ * graceful shutdown. Gated on the Private Channels feature flag.
  */
 
 import type { BackgroundRunner } from "@/runtime/background";

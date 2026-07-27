@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "@/contexts/theme-context";
+import { useTranslations } from "@/i18n/provider";
 
 const STRIPE_JS_URL = "https://js.stripe.com/dahlia/stripe.js";
 const STRIPE_CRYPTO_ONRAMP_URL = "https://crypto-js.stripe.com/crypto-onramp-outer.js";
 
 type StripeOnrampSession = {
   mount: (target: string | HTMLElement) => void;
+  setAppearance: (appearance: { theme: "light" | "dark" }) => void;
 };
 
 type StripeOnrampFactory = (publishableKey: string) => {
@@ -94,22 +97,38 @@ export function StripeOnrampFrame({
   clientSecret: string;
   publishableKey: string;
 }) {
+  const t = useTranslations();
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
+  const mountAttemptRef = useRef(0);
+  const sessionRef = useRef<StripeOnrampSession | null>(null);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
   const [failed, setFailed] = useState(false);
 
   const mountStripeWidget = useCallback(async () => {
+    const mountAttempt = ++mountAttemptRef.current;
     setFailed(false);
     try {
       const factory = await loadStripeOnramp();
-      if (!mountedRef.current || !containerRef.current) {
+      if (
+        !mountedRef.current ||
+        !containerRef.current ||
+        mountAttempt !== mountAttemptRef.current
+      ) {
         return;
       }
+      const session = factory(publishableKey).createSession({
+        clientSecret,
+        appearance: { theme: themeRef.current },
+      });
       containerRef.current.replaceChildren();
-      factory(publishableKey).createSession({ clientSecret }).mount(containerRef.current);
+      session.mount(containerRef.current);
+      sessionRef.current = session;
     } catch (error) {
       console.error("[stripe onramp] failed to mount widget", error);
-      if (mountedRef.current) {
+      if (mountedRef.current && mountAttempt === mountAttemptRef.current) {
         setFailed(true);
       }
     }
@@ -120,16 +139,24 @@ export function StripeOnrampFrame({
     void mountStripeWidget();
     return () => {
       mountedRef.current = false;
+      mountAttemptRef.current += 1;
+      sessionRef.current = null;
     };
   }, [mountStripeWidget]);
+
+  useEffect(() => {
+    sessionRef.current?.setAppearance({ theme });
+  }, [theme]);
 
   return (
     <div className="flex min-h-[640px] flex-col items-center justify-center">
       {failed ? (
         <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
-          <p className="text-lg font-medium text-text-extra-high">Couldn't load Stripe checkout</p>
-          <p className="max-w-md text-sm leading-relaxed text-text-low">
-            The Stripe checkout failed to load. Check your connection and try again.
+          <p className="text-lg font-medium text-primary">
+            {t("DashboardPayments.ramps.stripeLoadError")}
+          </p>
+          <p className="max-w-md text-sm leading-relaxed text-tertiary">
+            {t("DashboardPayments.ramps.stripeLoadHelp")}
           </p>
           <Button
             type="button"
@@ -138,7 +165,7 @@ export function StripeOnrampFrame({
               void mountStripeWidget();
             }}
           >
-            Try again
+            {t("DashboardPayments.ramps.tryAgain")}
           </Button>
         </div>
       ) : null}

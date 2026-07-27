@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import type { CustodyConfigSummary, CustodyWalletSummary } from "@sdp/types";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -10,23 +10,15 @@ import {
   fetchActiveApiKeys,
   resolvePlaygroundApiBaseUrl,
 } from "@/app/dashboard/playground-api-data";
-import {
-  WalletsOnboardingSkeleton,
-  WalletsPageSkeleton,
-} from "@/app/dashboard/wallets/wallets-page-skeleton";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { WalletsOverviewSkeleton } from "@/app/dashboard/wallets/wallet-route-skeletons";
+import { getTranslations } from "@/i18n/server";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { fetchProviderAvailability } from "@/lib/provider-availability";
 import { createTimedTrace } from "@/lib/request-tracing";
-import { createOrgSdpApiClient, createSdpApiClient, type SdpApiClient } from "@/lib/sdp-api";
+import { createRequestScopedSdpApiClients, type SdpApiClient } from "@/lib/sdp-api";
+import { WORKSPACE_LOADING_PATH } from "@/lib/workspace-loading";
 import type { OnboardingStatusResponse } from "../onboarding-status";
 import { WalletsWorkspace } from "./wallets-workspace";
-
-interface ClerkOrganizationSummary {
-  id: string;
-  name: string | null;
-  slug: string | null;
-}
 
 type SettledResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
@@ -56,7 +48,6 @@ async function getCustodyWallets(
   request: SdpApiClient["request"]
 ): Promise<CustodyWalletSummary[]> {
   // Wallet cards refresh balances client-side; avoid blocking the overview render on balance RPCs.
-  // biome-ignore lint/security/noSecrets: Public API path with query flags for wallet listing.
   const res = await request("/v1/wallets?includeAllProviders=true");
   if (!res.ok) {
     const body = await res.text();
@@ -69,67 +60,8 @@ async function getCustodyWallets(
   return json.data?.wallets ?? [];
 }
 
-async function getClerkOrganizationSummary(
-  organizationId: string
-): Promise<ClerkOrganizationSummary> {
-  try {
-    const client = await clerkClient();
-    const organization = await client.organizations.getOrganization({
-      organizationId,
-    });
-    return {
-      id: organization.id,
-      name: organization.name ?? null,
-      slug: organization.slug ?? null,
-    };
-  } catch {
-    return {
-      id: organizationId,
-      name: null,
-      slug: null,
-    };
-  }
-}
-
-async function OnboardingGateSection({ orgId }: { orgId: string }) {
-  const organization = await getClerkOrganizationSummary(orgId);
-
-  return (
-    <Card className="rounded-[24px] border-[rgba(28,28,29,0.08)] shadow-none">
-      <CardHeader>
-        <CardTitle>Waiting for organization sync</CardTitle>
-        <CardDescription>
-          SDP is waiting for the Clerk webhook to create this organization mapping.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-xl border border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.04)] p-4 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 py-1">
-            <span className="text-[rgba(28,28,29,0.72)]">Organization name</span>
-            <span className="font-medium text-[#1c1c1d]">{organization.name ?? "Unavailable"}</span>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 py-1">
-            <span className="text-[rgba(28,28,29,0.72)]">Organization slug</span>
-            <span className="font-mono text-xs text-[#1c1c1d]">
-              {organization.slug ?? "Unavailable"}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 py-1">
-            <span className="text-[rgba(28,28,29,0.72)]">Clerk organization ID</span>
-            <span className="font-mono text-xs text-[#1c1c1d]">{organization.id}</span>
-          </div>
-        </div>
-        <p className="text-sm text-[rgba(28,28,29,0.72)]">
-          Organization creation and membership sync now happen from Clerk webhooks only. Refresh in
-          a moment; if this keeps showing, check the Clerk webhook delivery for this organization.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default async function CustodyPage() {
-  const { userId, orgId } = await auth();
+  const [t, { getToken, userId, orgId }] = await Promise.all([getTranslations(), auth()]);
   if (!userId) {
     redirect(await getAuthEntryPath());
   }
@@ -140,11 +72,15 @@ export default async function CustodyPage() {
   const trace = createTimedTrace("dashboard.custody.page");
 
   try {
-    const orgClient = await trace.step("create_org_sdp_api_client", () =>
-      createOrgSdpApiClient(trace.childContext("dashboard.custody.org.api"))
+    const { organizationClient, projectClient } = await trace.step("create_sdp_api_clients", () =>
+      createRequestScopedSdpApiClients({
+        getToken,
+        organizationTraceContext: trace.childContext("dashboard.custody.org.api"),
+        projectTraceContext: trace.childContext("dashboard.custody.api"),
+      })
     );
     const onboarding = await trace.step("fetch_onboarding_status", () =>
-      orgClient.fetch<OnboardingStatusResponse>("/v1/onboarding/status")
+      organizationClient.fetch<OnboardingStatusResponse>("/v1/onboarding/status")
     );
 
     if (!onboarding.linked) {
@@ -153,23 +89,19 @@ export default async function CustodyPage() {
         linked: false,
       });
 
-      return (
-        <Suspense fallback={<WalletsOnboardingSkeleton />}>
-          <OnboardingGateSection orgId={orgId} />
-        </Suspense>
-      );
+      redirect(`${WORKSPACE_LOADING_PATH}?return_to=${encodeURIComponent("/dashboard/wallets")}`);
     }
 
-    const apiClient = await trace.step("create_sdp_api_client", () =>
-      createSdpApiClient(trace.childContext("dashboard.custody.api"))
-    );
+    if (!projectClient) {
+      throw new Error("Selected project required");
+    }
     const [configsResult, walletsResult, apiKeysResult, providerAccessResult] = await Promise.all([
-      trace.step("fetch_custody_configs", () => settle(getCustodyConfigs(apiClient.request))),
-      trace.step("fetch_custody_wallets", () => settle(getCustodyWallets(apiClient.request))),
-      trace.step("fetch_active_api_keys", () => fetchActiveApiKeys(apiClient.request)),
+      trace.step("fetch_custody_configs", () => settle(getCustodyConfigs(projectClient.request))),
+      trace.step("fetch_custody_wallets", () => settle(getCustodyWallets(projectClient.request))),
+      trace.step("fetch_active_api_keys", () => fetchActiveApiKeys(projectClient.request)),
       trace.step("fetch_provider_access", () =>
         onboarding.organization
-          ? settle(fetchProviderAvailability(apiClient.request, onboarding.organization.id))
+          ? settle(fetchProviderAvailability(projectClient.request, onboarding.organization.id))
           : Promise.resolve({
               ok: false as const,
               error: new Error("Organization is not linked"),
@@ -188,12 +120,12 @@ export default async function CustodyPage() {
       ? null
       : configsResult.error instanceof Error
         ? configsResult.error.message
-        : "Unable to load wallet providers";
+        : t("DashboardCustody.unableToLoadWalletProviders");
     const walletsError = walletsResult.ok
       ? null
       : walletsResult.error instanceof Error
         ? walletsResult.error.message
-        : "Unable to load wallets";
+        : t("DashboardCustody.unableToLoadWallets");
     const apiKeys = apiKeysResult.ok ? (apiKeysResult.data ?? []) : [];
     const enabledProviders = providerAccessResult.ok
       ? providerAccessResult.value.enabledCustodyProviders
@@ -209,7 +141,7 @@ export default async function CustodyPage() {
     });
 
     return (
-      <Suspense fallback={<WalletsPageSkeleton />}>
+      <Suspense fallback={<WalletsOverviewSkeleton />}>
         <WalletsWorkspace
           apiBaseUrl={resolvePlaygroundApiBaseUrl()}
           apiKeys={apiKeys}

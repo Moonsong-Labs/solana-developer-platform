@@ -1,7 +1,6 @@
 "use client";
 
 import type { ComplianceProviderId, Counterparty, PaymentsDashboardWallet } from "@sdp/types";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import useSWR, { preload } from "swr";
 import {
@@ -10,7 +9,9 @@ import {
   fetchCounterpartyAccounts,
   fetchWallets,
 } from "@/app/dashboard/payments/payments-workspace.data";
+import { useTranslations } from "@/i18n/provider";
 import { hasEnabledRampProvider, type RampProviderAccess } from "@/lib/provider-availability";
+import { useDashboardRouter } from "@/lib/use-dashboard-router";
 import { BatchSendRail } from "./batch-send-rail";
 import { CounterpartyPicker } from "./components/counterparty-picker";
 import { CounterpartyRecentTransfers } from "./components/counterparty-recent-transfers";
@@ -25,7 +26,6 @@ import { OnrampRail } from "./onramp-rail";
 
 interface PaymentsActionPageProps {
   mode: "send" | "receive";
-  actionLabel?: string;
   wallets: PaymentsDashboardWallet[];
   walletsError: string | null;
   issuedTokenSymbolsByMint: Record<string, string>;
@@ -54,8 +54,9 @@ export interface RailProps {
 type RampsPhase = "counterparty" | "method" | "rail";
 
 export function PaymentsActionPage(props: PaymentsActionPageProps) {
+  const t = useTranslations();
   const { mode, rampProviderAccess } = props;
-  const router = useRouter();
+  const router = useDashboardRouter();
 
   const [phase, setPhase] = useState<RampsPhase>("counterparty");
   const [sendMode, setSendMode] = useState<SendMode>("single");
@@ -77,24 +78,29 @@ export function PaymentsActionPage(props: PaymentsActionPageProps) {
     if (!id) {
       return;
     }
-    void preload(PAYMENTS_ACTION_WALLETS_KEY, () => fetchWallets({ includeBalances: true }));
-    void preload(["counterparty-accounts", id], () => fetchCounterpartyAccounts(id));
+    void preload(PAYMENTS_ACTION_WALLETS_KEY, () => fetchWallets({ includeBalances: true }, t));
+    void preload(["counterparty-accounts", id], () => fetchCounterpartyAccounts(id, t));
   };
 
   const fiatEnabled = hasEnabledRampProvider(rampProviderAccess);
   const availableMethods: PaymentMethod[] = fiatEnabled ? ["onchain", "ramp"] : ["onchain"];
   const showMethodStep = availableMethods.length > 1;
 
-  const counterpartyTitle = mode === "send" ? "Who are you paying?" : "Who is this deposit from?";
+  const counterpartyTitle =
+    mode === "send"
+      ? t("DashboardPayments.whoAreYouPaying")
+      : t("DashboardPayments.whoIsThisDepositFrom");
   const methodTitle =
-    mode === "send" ? "How would you like to pay?" : "How would you like to deposit?";
+    mode === "send"
+      ? t("DashboardPayments.howWouldYouLikeToPay")
+      : t("DashboardPayments.howWouldYouLikeToDeposit");
 
   const preSteps = useMemo<WizardStep[]>(
     () => [
-      { label: "Counterparty", title: counterpartyTitle },
-      ...(showMethodStep ? [{ label: "Method", title: methodTitle }] : []),
+      { label: t("DashboardPayments.counterpartyLabel"), title: counterpartyTitle },
+      ...(showMethodStep ? [{ label: t("DashboardPayments.method"), title: methodTitle }] : []),
     ],
-    [counterpartyTitle, methodTitle, showMethodStep]
+    [counterpartyTitle, methodTitle, showMethodStep, t]
   );
 
   const effectiveMethod: PaymentMethod = showMethodStep ? (method ?? "onchain") : "onchain";
@@ -187,7 +193,7 @@ export function PaymentsActionPage(props: PaymentsActionPageProps) {
       steps={preSteps}
       stepIndex={stepIndex}
       primaryDisabled={primaryDisabled}
-      primaryLabel="Next"
+      primaryLabel={t("DashboardPayments.counterparty.next")}
       walletsError={null}
       onPrimary={onPrimary}
       onSecondary={onSecondary}

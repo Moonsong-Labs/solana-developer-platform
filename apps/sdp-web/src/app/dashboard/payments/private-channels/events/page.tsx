@@ -2,9 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import type { PrivateChannelEventListEnvelope } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { fetchPrivateChannelEvents } from "@/lib/private-channels";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { EventsList } from "./events-list";
 
@@ -18,7 +18,7 @@ async function loadEvents(): Promise<PrivateChannelEventListEnvelope> {
 }
 
 export default async function PrivateChannelsEventsPage() {
-  if (!isPrivateChannelsDashboardEnabled()) {
+  if (!(await privateChannels())) {
     notFound();
   }
 

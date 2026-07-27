@@ -8,6 +8,7 @@ import {
 } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { resolveDashboardAccess } from "@/lib/dashboard-access";
 import {
@@ -15,7 +16,6 @@ import {
   fetchPrivateChannelInstance,
   fetchPrivateChannels,
 } from "@/lib/private-channels";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { ChannelsManager } from "./channels-manager";
 
@@ -36,7 +36,7 @@ async function loadChannels(): Promise<{
 }
 
 export default async function PrivateChannelsChannelsPage() {
-  if (!isPrivateChannelsDashboardEnabled()) {
+  if (!(await privateChannels())) {
     notFound();
   }
 

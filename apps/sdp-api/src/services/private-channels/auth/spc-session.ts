@@ -1,6 +1,6 @@
 // SPC session: mint and cache a JWT for an invited member's SPC user.
 //
-// The SDP user never types SPC credentials. When the member was invited (#7),
+// The SDP user never types SPC credentials. When the member was invited,
 // SDP generated an SPC password and stored it encrypted on the
 // private_channel_users row. Here we decrypt it and log in on the member's
 // behalf to obtain the SPC-issued JWT that gates the wallet APIs.
@@ -13,12 +13,13 @@
 // callers go through `openSpcAuthContext` (see ./gateway-auth), which always
 // supplies the cache when KV is configured.
 
+import { redactCredentialSecrets } from "@sdp/custody";
 import { PrivateChannelError } from "@sdp/private-channels";
 import type { SpcAuthClient } from "@sdp/private-channels/auth";
 import type { PrivateChannelUserRow } from "@/db/repositories";
-import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
 import type { KVStore } from "@/runtime/kv";
-import type { EncryptionService } from "@/services/encryption.service";
+import type { CustodyCipher } from "@/services/custody-cipher/cipher-router";
 import type { Env } from "@/types/env";
 
 export interface SpcSession {
@@ -90,7 +91,7 @@ async function readCachedToken(
   cache: KVStore,
   key: string,
   organizationId: string,
-  encryption: EncryptionService
+  encryption: CustodyCipher
 ): Promise<string | null> {
   try {
     const cached = await cache.get<CachedSpcSession>(key, "json");
@@ -102,9 +103,16 @@ async function readCachedToken(
       return null;
     }
     return await encryption.decrypt(organizationId, cached.tokenCiphertext);
-  } catch {
-    // KV get failure, or decrypt failure (e.g. SPC_CREDENTIAL_ENCRYPTION_KEY rotated
-    // → undecryptable ciphertext). Treat as a miss and re-login rather than error out.
+  } catch (error) {
+    // KV get failure, or decrypt failure — a rotated SPC_CREDENTIAL_ENCRYPTION_KEY
+    // leaves undecryptable ciphertext, and on the KMS path this is a round trip that
+    // a bad key name or missing IAM binding fails outright. Treat as a miss and
+    // re-login rather than error out, but say so: silently degrading to a permanent
+    // cache miss looks identical to a cold cache.
+    console.warn(
+      "spc-session: cached token unusable, falling back to a fresh login",
+      redactCredentialSecrets({ organizationId, error })
+    );
     return null;
   }
 }
@@ -114,7 +122,7 @@ async function cacheFreshToken(
   cache: KVStore,
   key: string,
   organizationId: string,
-  encryption: EncryptionService,
+  encryption: CustodyCipher,
   token: string,
   forceRefresh: boolean
 ): Promise<void> {
@@ -129,11 +137,17 @@ async function cacheFreshToken(
     if (usefulMs < MIN_CACHEABLE_LIFETIME_MS) {
       return; // Too little life left to be worth a cache entry.
     }
-    const { ciphertext } = await encryption.encrypt(organizationId, token);
+    const ciphertext = await encryption.encrypt(organizationId, token);
     const entry: CachedSpcSession = { tokenCiphertext: ciphertext, expiresAt };
     await cache.put(key, JSON.stringify(entry), { expirationTtl: Math.ceil(usefulMs / 1000) });
-  } catch {
-    // Caching is an optimization; a KV/encrypt failure must not fail the request.
+  } catch (error) {
+    // Caching is an optimization; a KV/encrypt failure must not fail the request. It
+    // does mean every subsequent call re-logs in, so it is worth a line — on the KMS
+    // path an encrypt failure is a misconfigured key, not a transient blip.
+    console.warn(
+      "spc-session: could not cache the SPC token; subsequent calls will re-login",
+      redactCredentialSecrets({ organizationId, error })
+    );
   }
 }
 
@@ -157,7 +171,7 @@ export async function getSpcSession(
     );
   }
   const username = pcUser.spc_username;
-  const encryption = createSpcCredentialEncryption(env);
+  const encryption = createSpcCredentialCipher(env);
   const cacheKey =
     opts?.cache && opts.instanceId ? sessionCacheKey(opts.instanceId, pcUser.id) : null;
 

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { KnownCustodyProvider } from "@/app/dashboard/custody/provider-catalog";
 import { ApiPlaygroundShell } from "@/components/api-playground-shell";
 import { PlaygroundApiKeySelector } from "@/components/playground-api-key-selector";
+import { useTranslations } from "@/i18n/provider";
 import {
   buildWalletsPlaygroundEndpointConfigs,
   type WalletsPlaygroundWalletView,
@@ -28,24 +29,27 @@ export function WalletsPlayground({
   wallets,
   walletsError,
 }: WalletsPlaygroundProps) {
+  const t = useTranslations();
   const endpoints = useMemo(
-    () => buildWalletsPlaygroundEndpointConfigs({ connectedProviders, wallets }),
-    [connectedProviders, wallets]
+    () => buildWalletsPlaygroundEndpointConfigs({ connectedProviders, wallets, t }),
+    [connectedProviders, t, wallets]
   );
 
   return (
-    <ApiPlaygroundShell
-      productName="Wallets"
-      endpoints={endpoints}
-      defaultEndpointId="list-wallets"
-      apiBaseUrl={apiBaseUrl}
-      apiKeyValue={apiKeyValue}
-      apiKeySelector={<PlaygroundApiKeySelector />}
-      requiresApiKey={!hasActiveApiKeys}
-      leftMessages={[
-        ...(configsError ? [{ text: configsError, tone: "critical" as const }] : []),
-        ...(walletsError ? [{ text: walletsError, tone: "critical" as const }] : []),
-      ]}
-    />
+    <div className="contents" data-wallet-panel="playground-ready">
+      <ApiPlaygroundShell
+        productName={t("DashboardCustody.wallets")}
+        endpoints={endpoints}
+        defaultEndpointId="list-wallets"
+        apiBaseUrl={apiBaseUrl}
+        apiKeyValue={apiKeyValue}
+        apiKeySelector={<PlaygroundApiKeySelector />}
+        requiresApiKey={!hasActiveApiKeys}
+        leftMessages={[
+          ...(configsError ? [{ text: configsError, tone: "critical" as const }] : []),
+          ...(walletsError ? [{ text: walletsError, tone: "critical" as const }] : []),
+        ]}
+      />
+    </div>
   );
 }

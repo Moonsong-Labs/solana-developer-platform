@@ -2,9 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import type { CustodyWalletSummary } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { fetchPrivateChannelInstance, fetchSignableCustodyWallets } from "@/lib/private-channels";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { WithdrawForm } from "./withdraw-form";
 
@@ -18,7 +18,7 @@ async function loadWallets(): Promise<CustodyWalletSummary[]> {
 }
 
 export default async function PrivateChannelsWithdrawPage() {
-  if (!isPrivateChannelsDashboardEnabled()) {
+  if (!(await privateChannels())) {
     notFound();
   }
 

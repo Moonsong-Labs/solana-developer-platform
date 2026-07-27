@@ -25,6 +25,14 @@ import {
 
 type FormValues = PrivateChannelInstanceInput;
 
+/**
+ * Sandbox prefill for the connect form. `chainRpcUrl` is deliberately blank:
+ * SANDBOX_DEFAULTS carries a documented placeholder (`?api-key=XXXXXXX`) rather than
+ * a working endpoint, so prefilling it guarantees a failed probe on first Connect and
+ * hides the field's own placeholder. The operator supplies their own keyed RPC URL.
+ */
+const FORM_PREFILL: FormValues = { ...SANDBOX_DEFAULTS, chainRpcUrl: "" };
+
 interface Props {
   initialInstance: PrivateChannelInstance | null;
   canManage: boolean;
@@ -42,7 +50,7 @@ const GATEWAY_TEXT: Record<"ready" | "degraded" | "unreachable", string> = {
 };
 
 function toValues(instance: PrivateChannelInstance | null): FormValues {
-  if (!instance) return { ...SANDBOX_DEFAULTS };
+  if (!instance) return { ...FORM_PREFILL };
   return {
     gatewayUrl: instance.gatewayUrl,
     chainRpcUrl: instance.chainRpcUrl,
@@ -161,7 +169,7 @@ export function PrivateChannelsConnectForm({ initialInstance, canManage }: Props
       const result = await deletePrivateChannelAction();
       if (result.ok) {
         setInstance(null);
-        setValues({ ...SANDBOX_DEFAULTS });
+        setValues({ ...FORM_PREFILL });
         setGatewayResult(null);
         setRpcResult(null);
         setAuthResult(null);
@@ -203,7 +211,7 @@ export function PrivateChannelsConnectForm({ initialInstance, canManage }: Props
         placeholder="http://auth.example:8903"
         value={values.authUrl}
         error={errors.authUrl}
-        disabled={isLocked}
+        disabled={controlsLocked}
         onChange={(v) => update("authUrl", v)}
         status={authStatus(authResult)}
       />

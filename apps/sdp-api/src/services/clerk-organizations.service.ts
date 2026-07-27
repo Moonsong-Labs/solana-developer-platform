@@ -20,7 +20,7 @@ export class ClerkOrganizationsService {
   private apiBase: string;
   private secretKey: string;
 
-  constructor(private env: Env) {
+  constructor(env: Env) {
     if (!env.CLERK_SECRET_KEY) {
       throw new AppError("INTERNAL_ERROR", "CLERK_SECRET_KEY is required");
     }
@@ -53,6 +53,10 @@ export class ClerkOrganizationsService {
     return (await res.json()) as T;
   }
 
+  async getOrganization(organizationId: string): Promise<ClerkOrganization> {
+    return this.request<ClerkOrganization>(`/organizations/${organizationId}`);
+  }
+
   async createOrganizationInvitation(params: {
     organizationId: string;
     inviterUserId: string;
@@ -76,10 +80,6 @@ export class ClerkOrganizationsService {
         body: JSON.stringify(payload),
       }
     );
-  }
-
-  async getOrganization(organizationId: string): Promise<ClerkOrganization> {
-    return this.request<ClerkOrganization>(`/organizations/${organizationId}`);
   }
 
   async updateOrganizationPrivateMetadata(

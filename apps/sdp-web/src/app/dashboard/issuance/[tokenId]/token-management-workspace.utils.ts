@@ -1,4 +1,6 @@
 import type { PaymentsDashboardWallet, Token, TokenAllowlistEntry } from "@sdp/types";
+import type { AppLocale } from "@/i18n/config";
+import type { MessageKey, TranslationValues } from "@/i18n/messages";
 import { formatDisplayLabel } from "@/lib/utils";
 import { type AccessControlMode, getTokenAccessControlMode } from "../access-control.utils";
 import type {
@@ -25,8 +27,9 @@ import type {
 
 export const SOLANA_ADDRESS_PATTERN = "[1-9A-HJ-NP-Za-km-z]{32,44}";
 
-export const TOKEN_AMOUNT_FIELD_DESCRIPTION =
-  "Token units (e.g. 1 or 1.5). Will be converted to raw units using this token's decimals.";
+type Translate = (key: MessageKey, values?: TranslationValues) => string;
+export const getTokenAmountFieldDescription = (t: Translate) =>
+  t("DashboardIssuance.management.tokenAmountDescription");
 export const NON_WHITESPACE_PATTERN = ".*\\S.*";
 
 export interface ControlListCopy {
@@ -42,36 +45,33 @@ export interface ControlListCopy {
   freezeHint: string | null;
 }
 
-export function getControlListCopy(mode: AccessControlMode): ControlListCopy | null {
+export function getControlListCopy(mode: AccessControlMode, t: Translate): ControlListCopy | null {
   switch (mode) {
     case "allowlist":
       return {
-        label: "Allowlist",
-        description: "Manage the approved destination addresses for this token.",
-        summaryDescription: "Allowlist entries and frozen account status",
-        summaryTitle: "Allowlist Entries",
-        addActionLabel: "Add allowlist entry",
-        removeActionLabel: "Remove entry",
-        emptyState: "No allowlist entries yet.",
-        addressRequiredMessage: "Allowlist address is required.",
-        extensionHelper:
-          "Mint and controlled transfer destinations must be on the token allowlist.",
+        label: t("DashboardIssuance.management.allowlist"),
+        description: t("DashboardIssuance.management.allowlistDescription"),
+        summaryDescription: t("DashboardIssuance.management.allowlistSummaryDescription"),
+        summaryTitle: t("DashboardIssuance.management.allowlistEntries"),
+        addActionLabel: t("DashboardIssuance.management.addAllowlistEntry"),
+        removeActionLabel: t("DashboardIssuance.management.removeEntry"),
+        emptyState: t("DashboardIssuance.management.noAllowlistEntries"),
+        addressRequiredMessage: t("DashboardIssuance.management.allowlistAddressRequired"),
+        extensionHelper: t("DashboardIssuance.management.allowlistExtensionHelper"),
         freezeHint: null,
       };
     case "blocklist":
       return {
-        label: "Denylist",
-        description: "Manage the blocked destination addresses for this token.",
-        summaryDescription: "Denylist entries and frozen account status",
-        summaryTitle: "Denylist Entries",
-        addActionLabel: "Add denylist entry",
-        removeActionLabel: "Remove entry",
-        emptyState: "No denylist entries yet.",
-        addressRequiredMessage: "Denylist address is required.",
-        extensionHelper:
-          "Listed destinations are blocked from mint and controlled transfer operations.",
-        freezeHint:
-          "Need to restrict a wallet before it has a token account? Add it to the denylist first.",
+        label: t("DashboardIssuance.management.denylist"),
+        description: t("DashboardIssuance.management.denylistDescription"),
+        summaryDescription: t("DashboardIssuance.management.denylistSummaryDescription"),
+        summaryTitle: t("DashboardIssuance.management.denylistEntries"),
+        addActionLabel: t("DashboardIssuance.management.addDenylistEntry"),
+        removeActionLabel: t("DashboardIssuance.management.removeEntry"),
+        emptyState: t("DashboardIssuance.management.noDenylistEntries"),
+        addressRequiredMessage: t("DashboardIssuance.management.denylistAddressRequired"),
+        extensionHelper: t("DashboardIssuance.management.denylistExtensionHelper"),
+        freezeHint: t("DashboardIssuance.management.denylistFreezeHint"),
       };
     case "disabled":
       return null;
@@ -82,10 +82,12 @@ function getDestinationAccessControlError({
   token,
   destination,
   allowlistEntries,
+  t,
 }: {
   token: Token;
   destination: string;
   allowlistEntries: TokenAllowlistEntry[];
+  t: Translate;
 }): string | null {
   const normalizedDestination = destination.trim();
   if (!normalizedDestination) {
@@ -96,11 +98,11 @@ function getDestinationAccessControlError({
   const isListed = allowlistEntries.some((entry) => entry.address === normalizedDestination);
 
   if (accessControlMode === "allowlist" && !isListed) {
-    return "Destination is not on this token's allowlist.";
+    return t("DashboardIssuance.management.destinationNotAllowlisted");
   }
 
   if (accessControlMode === "blocklist" && isListed) {
-    return "Destination is on this token's denylist.";
+    return t("DashboardIssuance.management.destinationDenylisted");
   }
 
   return null;
@@ -176,7 +178,7 @@ export function createInitialAllowlistForm(): AllowlistFormState {
   };
 }
 
-export function formatDate(value: string | null | undefined): string {
+export function formatDate(value: string | null | undefined, locale: AppLocale): string {
   if (!value) {
     return "—";
   }
@@ -186,11 +188,61 @@ export function formatDate(value: string | null | undefined): string {
     return value;
   }
 
-  return date.toLocaleString("en-US", {
+  return date.toLocaleString(locale, {
     month: "short",
     day: "2-digit",
     year: "numeric",
   });
+}
+
+/** Full date + time, e.g. "Jul 21, 2026, 3:45 PM" — used in the audit table. */
+export function formatDateTime(value: string | null | undefined, locale: AppLocale): string {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString(locale, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Compact activity timestamp: just the time when the event happened today,
+ * otherwise the short date. Keeps the recent-activity preview scannable.
+ */
+export function formatActivityTimestamp(
+  value: string | null | undefined,
+  locale: AppLocale
+): string {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (isToday) {
+    return date.toLocaleString(locale, { hour: "numeric", minute: "2-digit" });
+  }
+
+  return formatDate(value, locale);
 }
 
 export function stringifyBody(body: unknown): string {
@@ -280,8 +332,8 @@ function formatBaseUnitsAsTokenAmount(value: bigint, decimals: number): string {
   return `${negative ? "-" : ""}${fraction ? `${whole}.${fraction}` : whole}`;
 }
 
-function getTokenDisplaySymbol(token: Token): string {
-  return token.symbol.trim() || token.name.trim() || "token";
+function getTokenDisplaySymbol(token: Token, t: Translate): string {
+  return token.symbol.trim() || token.name.trim() || t("DashboardIssuance.management.token");
 }
 
 function getWalletTokenBalanceRecord(wallet: PaymentsDashboardWallet, mintAddress: string | null) {
@@ -333,19 +385,28 @@ function compareNonNegativeDecimalStrings(left: string, right: string): number |
 
 function getTokenLifecycleDisabledReason(
   token: Token,
-  verb: "mint" | "burn" | "force transfer" | "force burn"
+  action: "mint" | "burn" | "forceTransfer" | "forceBurn",
+  t: Translate
 ): string | null {
   switch (token.status) {
     case "active":
       return null;
     case "paused":
-      return `Token is paused. Unpause it to ${verb}.`;
+      return t("DashboardIssuance.management.actionPaused", {
+        action: t(`DashboardIssuance.management.${action}`),
+      });
     case "pending":
-      return `Token must be active to ${verb}.`;
+      return t("DashboardIssuance.management.actionRequiresActive", {
+        action: t(`DashboardIssuance.management.${action}`),
+      });
     case "revoked":
-      return `Token is revoked and can no longer ${verb}.`;
+      return t("DashboardIssuance.management.actionRevoked", {
+        action: t(`DashboardIssuance.management.${action}`),
+      });
     default:
-      return `Token must be active to ${verb}.`;
+      return t("DashboardIssuance.management.actionRequiresActive", {
+        action: t(`DashboardIssuance.management.${action}`),
+      });
   }
 }
 
@@ -353,7 +414,10 @@ function getPauseAuthorityAddress(token: Token): string | null {
   return token.extensions?.pausable?.authority ?? token.mintAuthority ?? null;
 }
 
-export function getTokenActionDisabledReasons(token: Token): {
+export function getTokenActionDisabledReasons(
+  token: Token,
+  t: Translate
+): {
   mintDisabledReason: string | null;
   burnDisabledReason: string | null;
   seizeDisabledReason: string | null;
@@ -363,19 +427,20 @@ export function getTokenActionDisabledReasons(token: Token): {
 } {
   const hasSupply = isPositiveAmount(token.totalSupply);
   const maxSupplyReached = hasReachedMaxSupply(token.totalSupply, token.maxSupply);
-  const mintDisabledReason = getTokenLifecycleDisabledReason(token, "mint")
-    ? getTokenLifecycleDisabledReason(token, "mint")
+  const mintDisabledReason = getTokenLifecycleDisabledReason(token, "mint", t)
+    ? getTokenLifecycleDisabledReason(token, "mint", t)
     : !token.isMintable
-      ? "Minting is disabled for this token."
+      ? t("DashboardIssuance.management.mintingDisabled")
       : !token.mintAuthority
-        ? "No mint authority is configured."
+        ? t("DashboardIssuance.management.noMintAuthorityConfigured")
         : maxSupplyReached
-          ? "Maximum supply has already been reached."
+          ? t("DashboardIssuance.management.maximumSupplyReached")
           : null;
   const burnDisabledReason =
-    getTokenLifecycleDisabledReason(token, "burn") ?? (hasSupply ? null : "Supply is zero.");
+    getTokenLifecycleDisabledReason(token, "burn", t) ??
+    (hasSupply ? null : t("DashboardIssuance.management.supplyZero"));
   const permanentDelegateDisabledReason = !token.extensions?.permanentDelegate
-    ? "Permanent delegate authority is not configured."
+    ? t("DashboardIssuance.management.noPermanentDelegateAuthority")
     : null;
   const pauseAuthority = getPauseAuthorityAddress(token);
 
@@ -383,31 +448,31 @@ export function getTokenActionDisabledReasons(token: Token): {
     mintDisabledReason,
     burnDisabledReason,
     seizeDisabledReason:
-      getTokenLifecycleDisabledReason(token, "force transfer") ??
+      getTokenLifecycleDisabledReason(token, "forceTransfer", t) ??
       permanentDelegateDisabledReason ??
-      (hasSupply ? null : "No supply is currently held."),
+      (hasSupply ? null : t("DashboardIssuance.management.noSupplyHeld")),
     forceBurnDisabledReason:
-      getTokenLifecycleDisabledReason(token, "force burn") ??
+      getTokenLifecycleDisabledReason(token, "forceBurn", t) ??
       permanentDelegateDisabledReason ??
-      (hasSupply ? null : "Supply is zero."),
+      (hasSupply ? null : t("DashboardIssuance.management.supplyZero")),
     pauseDisabledReason: pauseAuthority
       ? token.status === "revoked"
-        ? "Revoked tokens cannot be paused or unpaused."
+        ? t("DashboardIssuance.management.revokedTokensCannotPause")
         : token.status === "pending"
-          ? "Token must be deployed and active before pause controls are available."
+          ? t("DashboardIssuance.management.pauseRequiresActiveToken")
           : null
-      : "No pause authority is configured. Set a pausable authority or mint authority first.",
+      : t("DashboardIssuance.management.noPauseAuthorityConfigured"),
     freezeDisabledReason: !token.isFreezable
-      ? "Freezing is disabled for this token."
+      ? t("DashboardIssuance.management.freezingDisabled")
       : !token.freezeAuthority
-        ? "No freeze authority is configured."
+        ? t("DashboardIssuance.management.noFreezeAuthorityConfigured")
         : null,
   };
 }
 
-export function formatValue(value: string | null | undefined): string {
+export function formatValue(value: string | null | undefined, t: Translate): string {
   if (!value) {
-    return "None";
+    return t("DashboardIssuance.wallet.none");
   }
 
   if (value.length <= 16) {
@@ -417,7 +482,7 @@ export function formatValue(value: string | null | undefined): string {
   return `${value.slice(0, 6)}...${value.slice(-6)}`;
 }
 
-export function extractApiError(body: unknown): string {
+export function extractApiError(body: unknown, t: Translate): string {
   if (typeof body === "string") {
     return body;
   }
@@ -434,7 +499,7 @@ export function extractApiError(body: unknown): string {
     }
   }
 
-  return "Unknown error";
+  return t("DashboardIssuance.management.unknownError");
 }
 
 export function getExplorerHref(mintAddress: string | null): string | null {
@@ -451,7 +516,8 @@ export function getExplorerHref(mintAddress: string | null): string | null {
 }
 
 export async function executeActionRequest(
-  input: ActionExecutionInput
+  input: ActionExecutionInput,
+  t: Translate
 ): Promise<ActionExecutionResult> {
   try {
     const response = await fetch("/api/playground/execute", {
@@ -471,7 +537,9 @@ export async function executeActionRequest(
     if (!response.ok) {
       return {
         ok: false,
-        message: payload.error ?? `Execution route failed (${response.status})`,
+        message:
+          payload.error ??
+          t("DashboardIssuance.management.executionRouteFailed", { status: response.status }),
         status: response.status,
         body: payload,
       };
@@ -481,7 +549,11 @@ export async function executeActionRequest(
       const status = payload.status ?? null;
       return {
         ok: false,
-        message: `${input.label} failed (${status ?? "unknown"}): ${extractApiError(payload.body)}`,
+        message: t("DashboardIssuance.management.actionFailed", {
+          action: input.label,
+          status: status ?? t("DashboardIssuance.management.unknown"),
+          error: extractApiError(payload.body, t),
+        }),
         status,
         body: payload.body,
       };
@@ -489,47 +561,55 @@ export async function executeActionRequest(
 
     return {
       ok: true,
-      message: `${input.label} succeeded (${payload.status ?? "ok"})`,
+      message: t("DashboardIssuance.management.actionSucceeded", {
+        action: input.label,
+        status: payload.status ?? t("DashboardIssuance.management.ok"),
+      }),
       status: payload.status ?? null,
       body: payload.body ?? null,
     };
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : "Request failed",
+      message:
+        error instanceof Error ? error.message : t("DashboardIssuance.management.requestFailed"),
       status: null,
       body: null,
     };
   }
 }
 
-export function getPermissionRows(token: Token, metadataAuthority: string | null): PermissionRow[] {
+export function getPermissionRows(
+  token: Token,
+  metadataAuthority: string | null,
+  t: Translate
+): PermissionRow[] {
   return [
     {
       id: "mint-authority",
-      title: "Mint Authority",
-      helper: "Can mint new tokens.",
+      title: t("DashboardIssuance.forms.mintAuthority"),
+      helper: t("DashboardIssuance.management.mintAuthorityHelper"),
       value: token.mintAuthority,
       authorityRole: "mint",
     },
     {
       id: "freeze-authority",
-      title: "Freeze Authority",
-      helper: "Can freeze and unfreeze token accounts.",
+      title: t("DashboardIssuance.forms.freezeAuthority"),
+      helper: t("DashboardIssuance.management.freezeAuthorityHelper"),
       value: token.freezeAuthority,
       authorityRole: "freeze",
     },
     {
       id: "metadata-authority",
-      title: "Metadata Authority",
-      helper: "Can update token metadata.",
+      title: t("DashboardIssuance.forms.metadataAuthority"),
+      helper: t("DashboardIssuance.management.metadataAuthorityHelper"),
       value: metadataAuthority,
       authorityRole: "metadata",
     },
     {
       id: "permanent-delegate",
-      title: "Permanent Delegate Authority",
-      helper: "Can perform delegated transfer/burn operations.",
+      title: t("DashboardIssuance.forms.permanentDelegate"),
+      helper: t("DashboardIssuance.management.permanentDelegateHelper"),
       value: token.extensions?.permanentDelegate ?? null,
       authorityRole: "permanentDelegate",
     },
@@ -618,9 +698,9 @@ export function getAvailableSignerWallets(
   return authorityWallets.filter((wallet) => wallet.publicKey.trim());
 }
 
-export function getSignerWalletOptionLabel(wallet: PaymentsDashboardWallet): string {
-  const primaryLabel = wallet.label?.trim() || "Unlabeled wallet";
-  return `${primaryLabel} · ${formatValue(wallet.walletId)} · ${formatValue(wallet.publicKey)}`;
+export function getSignerWalletOptionLabel(wallet: PaymentsDashboardWallet, t: Translate): string {
+  const primaryLabel = wallet.label?.trim() || t("DashboardIssuance.wallet.unlabeled");
+  return `${primaryLabel} · ${formatValue(wallet.walletId, t)} · ${formatValue(wallet.publicKey, t)}`;
 }
 
 export function findWalletByWalletId(
@@ -668,12 +748,14 @@ export function getSignerSelectionForAction({
   authorityWallets,
   metadataAuthority,
   permissionRow,
+  t,
 }: {
   action: SignerAwareAction;
   token: Token;
   authorityWallets: PaymentsDashboardWallet[];
   metadataAuthority: string | null;
   permissionRow?: PermissionRow | null;
+  t: Translate;
 }): SignerSelectionState {
   const availableWallets = getAvailableSignerWallets(authorityWallets);
 
@@ -681,7 +763,7 @@ export function getSignerSelectionForAction({
     return {
       wallets: [],
       defaultWalletId: "",
-      unavailableReason: "No controlled wallets are available to sign this action.",
+      unavailableReason: t("DashboardIssuance.management.noControlledWalletsAvailable"),
     };
   }
 
@@ -697,39 +779,42 @@ export function getSignerSelectionForAction({
   }
 
   let requiredAuthority: string | null = null;
-  let missingReason = "No signer is configured for this action.";
-  let uncontrolledReason = "The required signer is not one of your controlled wallets.";
+  let missingReason = t("DashboardIssuance.management.noSignerConfigured");
+  let uncontrolledReason = t("DashboardIssuance.management.requiredSignerNotControlled");
 
   switch (action) {
     case "mint":
       requiredAuthority = token.mintAuthority;
-      missingReason = "No mint authority is configured.";
-      uncontrolledReason = "Mint authority is not one of your controlled wallets.";
+      missingReason = t("DashboardIssuance.management.noMintAuthorityConfigured");
+      uncontrolledReason = t("DashboardIssuance.management.mintAuthorityNotControlled");
       break;
     case "seize":
     case "force-burn":
       requiredAuthority = token.extensions?.permanentDelegate ?? token.mintAuthority;
-      missingReason = "No permanent delegate authority is configured.";
-      uncontrolledReason = "Permanent delegate authority is not one of your controlled wallets.";
+      missingReason = t("DashboardIssuance.management.noPermanentDelegateAuthority");
+      uncontrolledReason = t("DashboardIssuance.management.permanentDelegateNotControlled");
       break;
     case "authority": {
       const authorityRole = permissionRow?.authorityRole ?? "mint";
       requiredAuthority = resolveAuthorityAddressForRole(token, authorityRole, metadataAuthority);
-      missingReason = `No ${permissionRow?.title?.toLowerCase() ?? "authority"} is configured.`;
-      uncontrolledReason = `${
-        permissionRow?.title ?? "Current authority"
-      } is not one of your controlled wallets.`;
+      missingReason = t("DashboardIssuance.management.noAuthorityConfigured", {
+        authority:
+          permissionRow?.title?.toLowerCase() ?? t("DashboardIssuance.management.authority"),
+      });
+      uncontrolledReason = t("DashboardIssuance.management.authorityNotControlled", {
+        authority: permissionRow?.title ?? t("DashboardIssuance.authority.current"),
+      });
       break;
     }
     case "freeze":
       requiredAuthority = token.freezeAuthority;
-      missingReason = "No freeze authority is configured.";
-      uncontrolledReason = "Freeze authority is not one of your controlled wallets.";
+      missingReason = t("DashboardIssuance.management.noFreezeAuthorityConfigured");
+      uncontrolledReason = t("DashboardIssuance.management.freezeAuthorityNotControlled");
       break;
     case "pause":
       requiredAuthority = token.extensions?.pausable?.authority ?? token.mintAuthority;
-      missingReason = "No pause authority is configured.";
-      uncontrolledReason = "Pause authority is not one of your controlled wallets.";
+      missingReason = t("DashboardIssuance.management.noPauseAuthorityConfigured");
+      uncontrolledReason = t("DashboardIssuance.management.pauseAuthorityNotControlled");
       break;
     default:
       break;
@@ -768,11 +853,13 @@ export function getMintValidationErrors({
   destination,
   amount,
   allowlistEntries,
+  t,
 }: {
   token: Token;
   destination: string;
   amount: string;
   allowlistEntries: TokenAllowlistEntry[];
+  t: Translate;
 }): MintValidationErrors {
   const normalizedAmount = amount.trim();
   const normalizedDestination = destination.trim();
@@ -782,9 +869,9 @@ export function getMintValidationErrors({
   if (normalizedAmount) {
     const amountBaseUnits = parseTokenAmountToBaseUnits(normalizedAmount, token.decimals);
     if (amountBaseUnits === null) {
-      amountError = "Enter a valid mint amount for this token.";
+      amountError = t("DashboardIssuance.management.validMintAmount");
     } else if (amountBaseUnits <= ZERO_BIGINT) {
-      amountError = "Mint amount must be greater than zero.";
+      amountError = t("DashboardIssuance.management.mintAmountPositive");
     } else if (token.maxSupply) {
       const currentSupply = parseTokenAmountToBaseUnits(token.totalSupply, token.decimals);
       const maxSupply = parseTokenAmountToBaseUnits(token.maxSupply, token.decimals);
@@ -797,11 +884,11 @@ export function getMintValidationErrors({
         const remaining = maxSupply > currentSupply ? maxSupply - currentSupply : ZERO_BIGINT;
         amountError =
           remaining > ZERO_BIGINT
-            ? `Mint amount exceeds the remaining supply cap of ${formatBaseUnitsAsTokenAmount(
-                remaining,
-                token.decimals
-              )} ${getTokenDisplaySymbol(token)}.`
-            : "Maximum supply has already been reached.";
+            ? t("DashboardIssuance.management.mintAmountExceedsSupplyCap", {
+                amount: formatBaseUnitsAsTokenAmount(remaining, token.decimals),
+                symbol: getTokenDisplaySymbol(token, t),
+              })
+            : t("DashboardIssuance.management.maximumSupplyReached");
       }
     }
   }
@@ -811,6 +898,7 @@ export function getMintValidationErrors({
       token,
       destination: normalizedDestination,
       allowlistEntries,
+      t,
     });
   }
 
@@ -825,6 +913,7 @@ export function getMintValidationReason(args: {
   destination: string;
   amount: string;
   allowlistEntries: TokenAllowlistEntry[];
+  t: Translate;
 }): string | null {
   const errors = getMintValidationErrors(args);
   return getFirstValidationError(errors.destination, errors.amount);
@@ -836,12 +925,14 @@ export function getBurnValidationErrors({
   amount,
   signerWallet,
   walletOptions,
+  t,
 }: {
   token: Token;
   source: string;
   amount: string;
   signerWallet: PaymentsDashboardWallet | null;
   walletOptions: PaymentsDashboardWallet[];
+  t: Translate;
 }): BurnValidationErrors {
   const normalizedAmount = amount.trim();
   const normalizedSource = source.trim();
@@ -851,9 +942,9 @@ export function getBurnValidationErrors({
   if (normalizedAmount) {
     const amountBaseUnits = parseTokenAmountToBaseUnits(normalizedAmount, token.decimals);
     if (amountBaseUnits === null) {
-      amountError = "Enter a valid burn amount for this token.";
+      amountError = t("DashboardIssuance.management.validBurnAmount");
     } else if (amountBaseUnits <= ZERO_BIGINT) {
-      amountError = "Burn amount must be greater than zero.";
+      amountError = t("DashboardIssuance.management.burnAmountPositive");
     } else if (!normalizedSource || !signerWallet) {
       return {
         source: sourceError,
@@ -862,7 +953,10 @@ export function getBurnValidationErrors({
     } else {
       const totalSupply = parseTokenAmountToBaseUnits(token.totalSupply, token.decimals);
       if (totalSupply !== null && amountBaseUnits > totalSupply) {
-        amountError = `Burn amount exceeds the current supply of ${token.totalSupply} ${getTokenDisplaySymbol(token)}.`;
+        amountError = t("DashboardIssuance.management.burnAmountExceedsSupply", {
+          amount: token.totalSupply,
+          symbol: getTokenDisplaySymbol(token, t),
+        });
       }
     }
   }
@@ -876,8 +970,7 @@ export function getBurnValidationErrors({
 
   const sourceWallet = findWalletByPublicKey(walletOptions, normalizedSource);
   if (sourceWallet && sourceWallet.publicKey !== signerWallet.publicKey) {
-    sourceError =
-      "Standard burn only works from the selected signer wallet. Use Force burn for a different wallet.";
+    sourceError = t("DashboardIssuance.management.standardBurnSignerOnly");
   }
 
   const signerBalance = getWalletTokenBalanceRecord(signerWallet, token.mintAddress);
@@ -887,16 +980,17 @@ export function getBurnValidationErrors({
     Array.isArray(signerWallet.balances) &&
     !signerBalance
   ) {
-    sourceError = "The selected signer wallet does not currently hold this token.";
+    sourceError = t("DashboardIssuance.management.selectedSignerDoesNotHoldToken");
     amountError = null;
   }
 
   if (normalizedAmount && normalizedSource === signerWallet.publicKey && signerBalance?.amount) {
     const amountBaseUnits = parseTokenAmountToBaseUnits(normalizedAmount, token.decimals);
     if (amountBaseUnits !== null && amountBaseUnits > BigInt(signerBalance.amount)) {
-      amountError = `The selected signer wallet only shows ${signerBalance.uiAmount} ${getTokenDisplaySymbol(
-        token
-      )}.`;
+      amountError = t("DashboardIssuance.management.selectedWalletOnlyShows", {
+        amount: signerBalance.uiAmount,
+        symbol: getTokenDisplaySymbol(token, t),
+      });
     }
   }
 
@@ -912,6 +1006,7 @@ export function getBurnValidationReason(args: {
   amount: string;
   signerWallet: PaymentsDashboardWallet | null;
   walletOptions: PaymentsDashboardWallet[];
+  t: Translate;
 }): string | null {
   const errors = getBurnValidationErrors(args);
   return getFirstValidationError(errors.source, errors.amount);
@@ -924,6 +1019,7 @@ export function getSeizeValidationErrors({
   amount,
   allowlistEntries,
   walletOptions,
+  t,
 }: {
   token: Token;
   source: string;
@@ -931,6 +1027,7 @@ export function getSeizeValidationErrors({
   amount: string;
   allowlistEntries: TokenAllowlistEntry[];
   walletOptions: PaymentsDashboardWallet[];
+  t: Translate;
 }): SeizeValidationErrors {
   const normalizedSource = source.trim();
   const normalizedDestination = destination.trim();
@@ -940,7 +1037,7 @@ export function getSeizeValidationErrors({
   let destinationError: string | null = null;
 
   if (normalizedSource && normalizedDestination && normalizedSource === normalizedDestination) {
-    destinationError = "Destination must be different from the source.";
+    destinationError = t("DashboardIssuance.management.destinationMustDiffer");
   }
 
   if (!destinationError && normalizedDestination) {
@@ -948,6 +1045,7 @@ export function getSeizeValidationErrors({
       token,
       destination: normalizedDestination,
       allowlistEntries,
+      t,
     });
   }
 
@@ -961,9 +1059,9 @@ export function getSeizeValidationErrors({
 
   const amountBaseUnits = parseTokenAmountToBaseUnits(normalizedAmount, token.decimals);
   if (amountBaseUnits === null) {
-    amountError = "Enter a valid transfer amount for this token.";
+    amountError = t("DashboardIssuance.management.validTransferAmount");
   } else if (amountBaseUnits <= ZERO_BIGINT) {
-    amountError = "Transfer amount must be greater than zero.";
+    amountError = t("DashboardIssuance.management.transferAmountPositive");
   }
 
   const sourceWallet = findWalletByPublicKey(walletOptions, normalizedSource);
@@ -971,7 +1069,7 @@ export function getSeizeValidationErrors({
     ? getWalletTokenBalanceRecord(sourceWallet, token.mintAddress)
     : null;
   if (sourceWallet && Array.isArray(sourceWallet.balances) && !sourceBalance) {
-    sourceError = "The selected source wallet does not currently hold this token.";
+    sourceError = t("DashboardIssuance.management.selectedSourceDoesNotHoldToken");
     amountError = null;
   }
 
@@ -981,9 +1079,10 @@ export function getSeizeValidationErrors({
     amountBaseUnits !== null &&
     amountBaseUnits > BigInt(sourceBalance.amount)
   ) {
-    amountError = `The selected source wallet only shows ${sourceBalance.uiAmount} ${getTokenDisplaySymbol(
-      token
-    )}.`;
+    amountError = t("DashboardIssuance.management.selectedWalletOnlyShows", {
+      amount: sourceBalance.uiAmount,
+      symbol: getTokenDisplaySymbol(token, t),
+    });
   }
 
   return {
@@ -1000,6 +1099,7 @@ export function getSeizeValidationReason(args: {
   amount: string;
   allowlistEntries: TokenAllowlistEntry[];
   walletOptions: PaymentsDashboardWallet[];
+  t: Translate;
 }): string | null {
   const errors = getSeizeValidationErrors(args);
   return getFirstValidationError(errors.source, errors.destination, errors.amount);
@@ -1010,11 +1110,13 @@ export function getForceBurnValidationErrors({
   source,
   amount,
   walletOptions,
+  t,
 }: {
   token: Token;
   source: string;
   amount: string;
   walletOptions: PaymentsDashboardWallet[];
+  t: Translate;
 }): ForceBurnValidationErrors {
   const normalizedAmount = amount.trim();
   let amountError: string | null = null;
@@ -1027,9 +1129,9 @@ export function getForceBurnValidationErrors({
 
   const amountBaseUnits = parseTokenAmountToBaseUnits(normalizedAmount, token.decimals);
   if (amountBaseUnits === null) {
-    amountError = "Enter a valid burn amount for this token.";
+    amountError = t("DashboardIssuance.management.validBurnAmount");
   } else if (amountBaseUnits <= ZERO_BIGINT) {
-    amountError = "Force-burn amount must be greater than zero.";
+    amountError = t("DashboardIssuance.management.forceBurnAmountPositive");
   }
 
   const sourceWallet = findWalletByPublicKey(walletOptions, source.trim());
@@ -1038,7 +1140,7 @@ export function getForceBurnValidationErrors({
     : null;
   const sourceError =
     sourceWallet && Array.isArray(sourceWallet.balances) && !sourceBalance
-      ? "The selected source wallet does not currently hold this token."
+      ? t("DashboardIssuance.management.selectedSourceDoesNotHoldToken")
       : null;
   if (sourceError) {
     amountError = null;
@@ -1049,16 +1151,18 @@ export function getForceBurnValidationErrors({
     amountBaseUnits !== null &&
     amountBaseUnits > BigInt(sourceBalance.amount)
   ) {
-    amountError = `The selected source wallet only shows ${sourceBalance.uiAmount} ${getTokenDisplaySymbol(
-      token
-    )}.`;
+    amountError = t("DashboardIssuance.management.selectedWalletOnlyShows", {
+      amount: sourceBalance.uiAmount,
+      symbol: getTokenDisplaySymbol(token, t),
+    });
   }
 
   const totalSupply = parseTokenAmountToBaseUnits(token.totalSupply, token.decimals);
   if (totalSupply !== null && amountBaseUnits !== null && amountBaseUnits > totalSupply) {
-    amountError = `Force-burn amount exceeds the current supply of ${token.totalSupply} ${getTokenDisplaySymbol(
-      token
-    )}.`;
+    amountError = t("DashboardIssuance.management.forceBurnAmountExceedsSupply", {
+      amount: token.totalSupply,
+      symbol: getTokenDisplaySymbol(token, t),
+    });
   }
 
   return {
@@ -1072,20 +1176,21 @@ export function getForceBurnValidationReason(args: {
   source: string;
   amount: string;
   walletOptions: PaymentsDashboardWallet[];
+  t: Translate;
 }): string | null {
   const errors = getForceBurnValidationErrors(args);
   return getFirstValidationError(errors.source, errors.amount);
 }
 
-export function getExtensionRows(token: Token): ExtensionRow[] {
+export function getExtensionRows(token: Token, t: Translate): ExtensionRow[] {
   const configuredExtensionRows: ExtensionRow[] = [];
-  const controlListCopy = getControlListCopy(getTokenAccessControlMode(token));
+  const controlListCopy = getControlListCopy(getTokenAccessControlMode(token), t);
 
   if (token.extensions?.defaultAccountState) {
     configuredExtensionRows.push({
       id: "default-account-state",
-      title: "Default Account State",
-      helper: "Default state for newly created token accounts.",
+      title: t("DashboardIssuance.management.defaultAccountState"),
+      helper: t("DashboardIssuance.management.defaultAccountStateHelper"),
       value: formatDisplayLabel(token.extensions.defaultAccountState),
     });
   }
@@ -1093,53 +1198,53 @@ export function getExtensionRows(token: Token): ExtensionRow[] {
   if (token.extensions?.transferFee) {
     configuredExtensionRows.push({
       id: "transfer-fee",
-      title: "Transfer Fee",
-      helper: "Fee configuration for token transfers.",
-      value: "Configured",
+      title: t("DashboardIssuance.management.transferFee"),
+      helper: t("DashboardIssuance.management.transferFeeHelper"),
+      value: t("DashboardIssuance.management.configured"),
     });
   }
 
   if (token.extensions?.scaledUiAmount) {
     configuredExtensionRows.push({
       id: "scaled-ui",
-      title: "Scaled UI Amount",
-      helper: "UI supply multiplier controls.",
-      value: "Configured",
+      title: t("DashboardIssuance.management.scaledUiAmount"),
+      helper: t("DashboardIssuance.management.scaledUiAmountHelper"),
+      value: t("DashboardIssuance.management.configured"),
     });
   }
 
   if (token.extensions?.transferHook) {
     configuredExtensionRows.push({
       id: "transfer-hook",
-      title: "Transfer Hook",
-      helper: "Custom transfer logic program hook.",
-      value: "Configured",
+      title: t("DashboardIssuance.management.transferHook"),
+      helper: t("DashboardIssuance.management.transferHookHelper"),
+      value: t("DashboardIssuance.management.configured"),
     });
   }
 
   if (token.extensions?.interestBearing) {
     configuredExtensionRows.push({
       id: "interest-bearing",
-      title: "Interest Bearing",
-      helper: "Interest-rate based balance updates.",
-      value: "Configured",
+      title: t("DashboardIssuance.management.interestBearing"),
+      helper: t("DashboardIssuance.management.interestBearingHelper"),
+      value: t("DashboardIssuance.management.configured"),
     });
   }
 
   if (token.extensions?.nonTransferable) {
     configuredExtensionRows.push({
       id: "non-transferable",
-      title: "Non-transferable",
-      helper: "Disables standard transfers between accounts.",
-      value: "Enabled",
+      title: t("DashboardIssuance.management.nonTransferable"),
+      helper: t("DashboardIssuance.management.nonTransferableHelper"),
+      value: t("DashboardIssuance.management.enabled"),
     });
   }
 
   return [
     {
       id: "template",
-      title: "Template",
-      helper: "Base template applied to this token.",
+      title: t("DashboardIssuance.management.template"),
+      helper: t("DashboardIssuance.management.templateHelper"),
       value: formatDisplayLabel(token.template),
     },
     ...(controlListCopy
@@ -1148,21 +1253,25 @@ export function getExtensionRows(token: Token): ExtensionRow[] {
             id: "control-list",
             title: controlListCopy.label,
             helper: controlListCopy.extensionHelper,
-            value: "Enabled",
+            value: t("DashboardIssuance.management.enabled"),
           } satisfies ExtensionRow,
         ]
       : []),
     {
       id: "mintable",
-      title: "Mintable",
-      helper: "Allows mint operations after deployment.",
-      value: token.isMintable ? "Enabled" : "Disabled",
+      title: t("DashboardIssuance.management.mintable"),
+      helper: t("DashboardIssuance.management.mintableHelper"),
+      value: token.isMintable
+        ? t("DashboardIssuance.management.enabled")
+        : t("DashboardIssuance.management.disabled"),
     },
     {
       id: "freezable",
-      title: "Freezable",
-      helper: "Allows freeze/unfreeze account controls.",
-      value: token.isFreezable ? "Enabled" : "Disabled",
+      title: t("DashboardIssuance.management.freezable"),
+      helper: t("DashboardIssuance.management.freezableHelper"),
+      value: token.isFreezable
+        ? t("DashboardIssuance.management.enabled")
+        : t("DashboardIssuance.management.disabled"),
     },
     ...configuredExtensionRows,
   ];

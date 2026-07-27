@@ -2,10 +2,11 @@
 
 import type { PaymentsDashboardWallet } from "@sdp/types";
 import { AnimatePresence } from "motion/react";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/i18n/provider";
+import { useDashboardRouter } from "@/lib/use-dashboard-router";
 import { createAssetDraftAction } from "./actions";
 import { ClassificationInfoRail } from "./classification-info-rail";
 import { CreateDraftConfirmDialog } from "./create-draft-confirm-dialog";
@@ -106,8 +107,9 @@ function renderStep(
 }
 
 function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardProps) {
-  const router = useRouter();
-  const { draft, currentStep, updatedAt, advance, goBack, reset, clearStoredDraft } =
+  const t = useTranslations();
+  const router = useDashboardRouter();
+  const { draft, updateDraft, currentStep, updatedAt, advance, goBack, reset, clearStoredDraft } =
     useIssuanceDraft();
   const [submitting, setSubmitting] = useState(false);
   // Gates the Create-draft action behind a confirmation dialog, so it never
@@ -127,7 +129,7 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
   const isReview = currentStep === "review";
   const showSummaryRail = currentStep === "asset-details" || isReview;
   const showRail = isClassification || showSummaryRail;
-  const blockers = getBlockers(draft);
+  const blockers = getBlockers(draft, t);
 
   // Reset the attempt flag whenever the step changes, so each step starts clean
   // and only reveals errors after its own failed Continue.
@@ -136,11 +138,21 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
     setAttemptedAdvance(false);
   }, [currentStep]);
 
+  // A lone signer wallet renders as a locked card, not a picker, so the user
+  // never actively "selects" it — persist it into the draft anyway so it's sent.
+  // Without this, authority-valued settings (e.g. permanent delegate) fail with a
+  // server-side "signing wallet is required" for the wallet that's right on screen.
+  useEffect(() => {
+    if (signerWallets.length === 1 && !draft.signingWalletId) {
+      updateDraft({ signingWalletId: signerWallets[0].walletId });
+    }
+  }, [signerWallets, draft.signingWalletId, updateDraft]);
+
   // On the Asset-details form, Continue stays enabled until the user attempts to
   // advance with validation errors — then it locks (and the fields highlight)
   // until every error is resolved. Every other step keeps the coarse gate.
   const isDetailsForm = currentStep === "asset-details";
-  const detailsErrorCount = Object.keys(getAssetDetailsErrors(draft)).length;
+  const detailsErrorCount = Object.keys(getAssetDetailsErrors(draft, t)).length;
   const canContinue = isDetailsForm
     ? !(attemptedAdvance && detailsErrorCount > 0)
     : canAdvance(currentStep, draft);
@@ -165,16 +177,28 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
       return;
     }
     setSubmitting(true);
-    const toastId = toast.loading("Creating asset draft…", { position: "bottom-right" });
+    const toastId = toast.loading(t("DashboardIssuance.wizard.creatingDraft"), {
+      position: "bottom-right",
+    });
+    // TokenSignerSelect locks to the only wallet when exactly one exists, but a
+    // locked field never fires onChange — mirror that rule at submit so the
+    // payload carries the wallet the UI shows as selected.
+    const submittedDraft =
+      !signerWalletsError && signerWallets.length === 1
+        ? { ...draft, signingWalletId: signerWallets[0].walletId }
+        : draft;
     try {
       const result = await createAssetDraftAction({
-        token: buildTokenInput(draft),
+        token: buildTokenInput(submittedDraft),
         assetCategory: draft.assetCategory,
         assetType: draft.assetType,
         issuanceMetadata: buildIssuanceMetadata(draft),
       });
       if (result.state === "success") {
-        toast.success("Asset draft created.", { id: toastId, position: "bottom-right" });
+        toast.success(t("DashboardIssuance.wizard.draftCreated"), {
+          id: toastId,
+          position: "bottom-right",
+        });
         // Wipe the persisted draft now, but leave the in-memory step untouched so
         // the wizard keeps rendering Review. The transition holds this page on
         // screen until the management page has loaded, then it unmounts — so the
@@ -198,16 +222,23 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
       toast.error(result.message, { id: toastId, position: "bottom-right" });
     } catch (error) {
       setConfirmOpen(false);
-      toast.error(error instanceof Error ? error.message : "Failed to create draft.", {
-        id: toastId,
-        position: "bottom-right",
-      });
+      toast.error(
+        error instanceof Error ? error.message : t("DashboardIssuance.wizard.failedToCreate"),
+        {
+          id: toastId,
+          position: "bottom-right",
+        }
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const primaryLabel = isReview ? (isBusy ? "Creating…" : "Create draft") : "Continue";
+  const primaryLabel = isReview
+    ? isBusy
+      ? t("DashboardIssuance.wizard.creating")
+      : t("DashboardIssuance.create.createDraft")
+    : t("DashboardIssuance.create.continue");
   const primaryDisabled = isReview ? blockers.length > 0 || isBusy : !canContinue;
 
   // The footer/rail primary action: on Review, open the create confirmation;
@@ -271,10 +302,11 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
               Summary rail top-aligns with the first section card, not the header. */}
           {isReview ? (
             <div className="mb-5">
-              <h2 className="text-2xl font-medium text-[#1c1c1d]">Review &amp; finish</h2>
-              <p className="mt-1.5 text-sm text-[rgba(28,28,29,0.62)]">
-                Please review all details below. You can edit any section before creating your
-                draft.
+              <h2 className="text-2xl font-medium text-primary">
+                {t("DashboardIssuance.wizard.reviewAndFinish")}
+              </h2>
+              <p className="mt-1.5 text-sm text-secondary">
+                {t("DashboardIssuance.wizard.reviewDescription")}
               </p>
             </div>
           ) : null}
@@ -301,7 +333,7 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-[rgba(28,28,29,0.1)] bg-white/80 px-4 py-4 md:px-6">
+      <div className="shrink-0 border-t border-border-default bg-surface-raised/80 px-4 py-4 md:px-6">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3">
           <Button
             type="button"
@@ -309,7 +341,9 @@ function WizardShell({ signerWallets, signerWalletsError }: IssuanceDraftWizardP
             onClick={isClassification ? handleCancel : goBack}
             disabled={isBusy}
           >
-            {isClassification ? "Cancel" : "Back"}
+            {isClassification
+              ? t("DashboardIssuance.workspace.cancel")
+              : t("DashboardIssuance.create.back")}
           </Button>
           {/* Primary action on every step, including "Create draft" on Review. */}
           <Button type="button" onClick={handlePrimary} disabled={primaryDisabled}>

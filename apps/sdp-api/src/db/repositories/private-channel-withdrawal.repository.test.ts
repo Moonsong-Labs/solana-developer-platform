@@ -10,6 +10,9 @@ import type {
 import { createPostgresPrivateChannelWithdrawalRepository } from "./private-channel-withdrawal.repository.postgres";
 
 const TEST_PROJECT_ID = "prj_pcw_repo_test";
+// The withdrawal's acting member. private_channel_user_id FKs this row, so it has to
+// exist (and be re-seeded after each `DELETE FROM projects`, which cascades to it).
+const TEST_PC_USER_ID = "pcu_pcw_repo_test";
 
 function makeInput(overrides: Partial<CreateWithdrawalInput> = {}): CreateWithdrawalInput {
   return {
@@ -21,6 +24,7 @@ function makeInput(overrides: Partial<CreateWithdrawalInput> = {}): CreateWithdr
     destination: "DestAddr11111111111111111111111111111111111",
     mint: "MintAddr11111111111111111111111111111111111",
     amount: "1.5",
+    privateChannelUserId: TEST_PC_USER_ID,
     gatewayUrl: "https://gw.example",
     chainRpcUrl: "https://devnet.example",
     escrowProgramId: "EscrowProg1111111111111111111111111111111",
@@ -64,6 +68,13 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
       )
       .bind(TEST_PROJECT_ID, TEST_ORG.id, TEST_PROJECT_ID, TEST_USER.id)
       .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+           VALUES (?, ?, ?, ?)`
+      )
+      .bind(TEST_PC_USER_ID, TEST_ORG.id, TEST_PROJECT_ID, TEST_USER.id)
+      .run();
 
     repo = createPostgresPrivateChannelWithdrawalRepository(db);
   });
@@ -90,6 +101,8 @@ describe("PrivateChannelWithdrawalRepository (postgres)", () => {
     expect(row?.gateway_url).toBe("https://gw.example");
     expect(row?.chain_rpc_url).toBe("https://devnet.example");
     expect(row?.escrow_instance_addr).toBe("EscrowInst1111111111111111111111111111111");
+    // The acting member is captured so the reconciler can authenticate as them.
+    expect(row?.private_channel_user_id).toBe(TEST_PC_USER_ID);
   });
 
   it("updateWithdrawal applies the CAS transition when expectedStatus matches", async () => {

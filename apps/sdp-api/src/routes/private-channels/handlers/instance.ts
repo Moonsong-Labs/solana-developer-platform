@@ -1,3 +1,4 @@
+import { redactCredentialSecrets } from "@sdp/custody";
 import {
   PRIVATE_CHANNEL_EVENT_TYPES,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
@@ -72,16 +73,21 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
   });
   if (!probe.ok) {
     // AppError responses are returned silently by app.onError; log diagnostics here.
-    console.warn("connectPrivateChannelInstance: connection probe failed", {
-      organizationId: auth.organizationId,
-      projectId,
-      gatewayUrl: input.gatewayUrl,
-      chainRpcUrl: input.chainRpcUrl,
-      authUrl: input.authUrl,
-      gateway: probe.gateway,
-      rpc: probe.rpc,
-      auth: probe.auth,
-    });
+    // Redacted: chainRpcUrl carries the operator's provider API key as a query
+    // parameter (see SANDBOX_DEFAULTS), so the raw URLs must not reach the log.
+    console.warn(
+      "connectPrivateChannelInstance: connection probe failed",
+      redactCredentialSecrets({
+        organizationId: auth.organizationId,
+        projectId,
+        gatewayUrl: input.gatewayUrl,
+        chainRpcUrl: input.chainRpcUrl,
+        authUrl: input.authUrl,
+        gateway: probe.gateway,
+        rpc: probe.rpc,
+        auth: probe.auth,
+      })
+    );
     throw badRequest("Connection check failed", {
       gateway: probe.gateway,
       rpc: probe.rpc,

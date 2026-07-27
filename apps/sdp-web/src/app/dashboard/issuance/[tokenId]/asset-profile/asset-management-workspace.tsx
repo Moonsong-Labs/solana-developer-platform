@@ -8,6 +8,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
+import { useTranslations } from "@/i18n/provider";
+import { getTokenAccessControlMode, hasAccessControlList } from "../../access-control.utils";
 import { togglePublicField } from "../../create/draft-mapping";
 import { TokenActionConfirmationDialog } from "../token-action-confirmation-dialog";
 import { TokenAuthorityModal } from "../token-authority-modal";
@@ -17,6 +19,7 @@ import { TokenManagementModalShell } from "../token-management-modal-shell";
 import { TokenSignerSelect } from "../token-signer-select";
 import { AssetProfileHeader } from "./asset-profile-header";
 import { AssetProfileSaveBar } from "./asset-profile-save-bar";
+import { ActivityTab } from "./tabs/activity-tab";
 import { ComplianceTab } from "./tabs/compliance-tab";
 import { DetailsTab } from "./tabs/details-tab";
 import { OperationsTab } from "./tabs/operations-tab";
@@ -33,15 +36,17 @@ type AssetManagementTab =
   | "public-info"
   | "compliance"
   | "operations"
-  | "permissions";
+  | "permissions"
+  | "activity";
 
-const managementTabs: Array<{ id: AssetManagementTab; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "details", label: "Details" },
-  { id: "public-info", label: "Public information" },
-  { id: "compliance", label: "Compliance" },
-  { id: "operations", label: "Operations" },
-  { id: "permissions", label: "Permissions" },
+const managementTabIds: AssetManagementTab[] = [
+  "overview",
+  "details",
+  "public-info",
+  "compliance",
+  "operations",
+  "permissions",
+  "activity",
 ];
 
 // Deep links minted for the legacy workspace keep working.
@@ -52,7 +57,7 @@ const LEGACY_TAB_MAP: Record<string, AssetManagementTab> = {
 };
 
 function resolveTab(value: string | null): AssetManagementTab {
-  if (value && managementTabs.some((tab) => tab.id === value)) {
+  if (value && managementTabIds.includes(value as AssetManagementTab)) {
     return value as AssetManagementTab;
   }
   if (value && LEGACY_TAB_MAP[value]) {
@@ -80,14 +85,24 @@ export function AssetManagementWorkspace({
   assetProfile: AssetProfile;
   tokenError: string | null;
 }) {
+  const t = useTranslations();
   const { dashboardAccess } = useDashboardWorkspace();
   const canManageTokenAdmin = dashboardAccess.capabilities.canManageTokenAdmin;
+  // Admins get the full compliance tab (policy editor + controls). Non-admins
+  // see it only for tokens that have a control list, and then only the allowlist
+  // controls — the policy editor stays admin-only (also enforced server-side).
+  const showControlList = hasAccessControlList(getTokenAccessControlMode(token));
+  const canViewComplianceTab = canManageTokenAdmin || showControlList;
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const requestedTabParam = searchParams.get("tab");
-  const activeTab = resolveTab(requestedTabParam);
+  const requestedTab = resolveTab(requestedTabParam);
+  // A direct ?tab=compliance deep link falls back to the overview when the tab
+  // isn't available to this user.
+  const activeTab: AssetManagementTab =
+    requestedTab === "compliance" && !canViewComplianceTab ? "overview" : requestedTab;
   const [pendingFundManagementModalAction, setPendingFundManagementModalAction] = useState<
     "deploy" | "mint" | "burn" | null
   >(null);
@@ -95,10 +110,24 @@ export function AssetManagementWorkspace({
   const ops = useTokenOperations({
     token,
     shouldLoadSupportingData: activeTab !== "overview",
-    shouldLoadAuthorityWallets: activeTab !== "overview" || token.status === "pending",
+    // Authority wallets are also needed on the overview for the SDP-controlled
+    // authorities tile (custody-vs-external roll-up), so load them everywhere.
+    shouldLoadAuthorityWallets: true,
     canManageTokenAdmin,
   });
   const form = useAssetProfileForm({ token, assetProfile });
+  const managementTabs: Array<{ id: AssetManagementTab; label: string }> = [
+    { id: "overview", label: t("DashboardIssuance.tabs.overview") },
+    { id: "details", label: t("DashboardIssuance.tabs.details") },
+    { id: "public-info", label: t("DashboardIssuance.tabs.publicInformation") },
+    // Full tab for admins; allowlist-only for non-admins on control-list tokens.
+    ...(canViewComplianceTab
+      ? [{ id: "compliance" as const, label: t("DashboardIssuance.tabs.compliance") }]
+      : []),
+    { id: "operations", label: t("DashboardIssuance.tabs.operations") },
+    { id: "permissions", label: t("DashboardIssuance.tabs.permissions") },
+    { id: "activity", label: t("DashboardIssuance.tabs.activity") },
+  ];
 
   const syncActiveTabInUrl = useCallback(
     (nextTab: AssetManagementTab, mode: "push" | "replace" = "push") => {
@@ -172,6 +201,8 @@ export function AssetManagementWorkspace({
   const effectivePauseDisabledReason = ops.effectivePauseDisabledReason;
 
   return (
+    // Width + centering come from the dashboard shell's action-page layout;
+    // the workspace just fills the column it's given.
     <div className="space-y-4 pb-8">
       <AssetProfileHeader
         token={token}
@@ -183,7 +214,9 @@ export function AssetManagementWorkspace({
         pauseDisabledReason={ops.pauseDisabledReason}
         canManageTokenAdmin={canManageTokenAdmin}
         onCopyAddress={() => void ops.handleCopy(token.mintAddress)}
-        onCopyTokenId={() => void ops.handleCopy(token.id, "Token ID copied")}
+        onCopyTokenId={() =>
+          void ops.handleCopy(token.id, t("DashboardIssuance.management.tokenIdCopied"))
+        }
         onDeploy={handleDeploy}
         onUnpause={() => ops.handlePause(false)}
       />
@@ -203,19 +236,22 @@ export function AssetManagementWorkspace({
       </Tabs>
 
       {tokenError ? (
-        <div className="rounded-xl border border-[rgba(220,38,38,0.2)] bg-[rgba(220,38,38,0.08)] px-4 py-3">
-          <p className="text-sm font-medium text-[#dc2626]">Token load warning</p>
-          <p className="mt-1 text-sm text-[#dc2626]">{tokenError}</p>
+        <div className="rounded-xl border border-error-border bg-error-bg px-4 py-3">
+          <p className="text-sm font-medium text-error">
+            {t("DashboardIssuance.workspace.tokenLoadWarning")}
+          </p>
+          <p className="mt-1 text-sm text-error">{tokenError}</p>
         </div>
       ) : null}
 
       {token.status === "paused" ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-[rgba(234,179,8,0.2)] bg-[rgba(234,179,8,0.08)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-warning-border bg-warning-bg px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-[#92400e]">Token is paused</p>
-            <p className="mt-1 text-sm text-[#92400e]">
-              Minting, burning, and administrative transfer actions are disabled until the token is
-              unpaused.
+            <p className="text-sm font-medium text-warning">
+              {t("DashboardIssuance.workspace.tokenPaused")}
+            </p>
+            <p className="mt-1 text-sm text-warning">
+              {t("DashboardIssuance.workspace.pausedHint")}
             </p>
           </div>
           {canManageTokenAdmin ? (
@@ -229,7 +265,7 @@ export function AssetManagementWorkspace({
                 onClick={() => ops.handlePause(false)}
                 disabled={ops.isPending || Boolean(effectivePauseDisabledReason)}
               >
-                Unpause token
+                {t("DashboardIssuance.workspace.unpauseToken")}
               </Button>
             </TokenDisabledActionTooltip>
           ) : null}
@@ -243,7 +279,8 @@ export function AssetManagementWorkspace({
             assetProfile={form.assetProfile}
             draft={form.draft}
             ops={ops}
-            onDeploy={handleDeploy}
+            onViewActivity={() => syncActiveTabInUrl("activity")}
+            onViewPermissions={() => syncActiveTabInUrl("permissions")}
           />
         ) : null}
         {activeTab === "details" ? <DetailsTab token={token} form={form} ops={ops} /> : null}
@@ -272,6 +309,7 @@ export function AssetManagementWorkspace({
         {activeTab === "permissions" ? (
           <PermissionsTab ops={ops} canManageTokenAdmin={canManageTokenAdmin} />
         ) : null}
+        {activeTab === "activity" ? <ActivityTab tokenId={token.id} /> : null}
       </motion.div>
 
       <AssetProfileSaveBar
@@ -301,12 +339,12 @@ export function AssetManagementWorkspace({
         onClose={ops.closeFundManagementModal}
       >
         {ops.fundManagementModalAction === "deploy" ? (
-          <div className="rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white p-5 shadow-[0_20px_40px_rgba(0,0,0,0.16)]">
-            <p className="pr-12 text-[20px] leading-[1.2] font-medium text-[#1c1c1d]">
-              Deploy token
+          <div className="rounded-2xl border border-border-default bg-surface-raised p-5 shadow-[0_20px_40px_rgba(0,0,0,0.16)]">
+            <p className="pr-12 text-[20px] leading-[1.2] font-medium text-primary">
+              {t("DashboardIssuance.workspace.deployToken")}
             </p>
-            <p className="mt-2 text-[14px] leading-[1.45] text-[rgba(28,28,29,0.72)]">
-              This will deploy the token on-chain so operations can run.
+            <p className="mt-2 text-[14px] leading-[1.45] text-secondary">
+              {t("DashboardIssuance.workspace.deployHint")}
             </p>
             <div className="mt-5 space-y-5">
               <TokenSignerSelect
@@ -320,17 +358,17 @@ export function AssetManagementWorkspace({
                   type="button"
                   onClick={ops.closeFundManagementModal}
                   disabled={ops.isPending}
-                  className="inline-flex h-10 items-center rounded-[12px] border border-[rgba(28,28,29,0.16)] bg-white px-4 text-sm font-medium text-[#1c1c1d] transition-colors hover:bg-[rgba(28,28,29,0.04)] disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex h-10 items-center rounded-[12px] border border-border-default bg-surface-raised px-4 text-sm font-medium text-primary transition-colors hover:bg-fill-subtle disabled:pointer-events-none disabled:opacity-50"
                 >
-                  Cancel
+                  {t("DashboardIssuance.workspace.cancel")}
                 </button>
                 <button
                   type="button"
                   onClick={() => ops.submitFundManagementAction("deploy")}
                   disabled={ops.isPending || Boolean(ops.deploySignerSelection.unavailableReason)}
-                  className="inline-flex h-10 items-center rounded-[12px] bg-[#0f0f10] px-4 text-sm font-medium text-white transition-colors hover:bg-black disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex h-10 items-center rounded-[12px] bg-primary px-4 text-sm font-medium text-on-primary transition hover:opacity-90 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  Deploy now
+                  {t("DashboardIssuance.workspace.deployNow")}
                 </button>
               </div>
             </div>
@@ -355,9 +393,9 @@ export function AssetManagementWorkspace({
       />
 
       {ops.isPending ? (
-        <div className="fixed right-4 bottom-4 z-30 inline-flex items-center gap-2 rounded-lg border border-[rgba(28,28,29,0.12)] bg-white px-3 py-2 text-sm shadow-lg">
+        <div className="fixed right-4 bottom-4 z-30 inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface-raised px-3 py-2 text-sm shadow-lg">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Running action...
+          {t("DashboardIssuance.workspace.runningAction")}
         </div>
       ) : null}
     </div>

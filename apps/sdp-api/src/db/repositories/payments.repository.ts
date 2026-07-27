@@ -41,6 +41,7 @@ export interface PaymentTransferRow {
   project_id: string | null;
   wallet_id: string;
   counterparty_id: string | null;
+  counterparty_display_name?: string | null;
   source_address: string | null;
   destination_address: string | null;
   token: string;
@@ -62,6 +63,8 @@ export interface PaymentTransferRow {
   fee: number | null;
   error: string | null;
   initiated_by_key_id: string | null;
+  idempotency_key: string | null;
+  idempotency_fingerprint: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -93,12 +96,15 @@ export interface CreatePaymentTransferInput {
   signature: string | null;
   slot: number | null;
   initiatedByKeyId: string | null;
+  idempotencyKey?: string | null;
+  idempotencyFingerprint?: string | null;
 }
 
 export interface UpdatePaymentTransferInput {
   transferId: string;
   organizationId?: string;
   projectId?: string | null;
+  expectedStatus?: PaymentTransferStatus;
   status?: PaymentTransferStatus;
   signature?: string | null;
   serializedTx?: string | null;
@@ -128,14 +134,19 @@ export interface ListTransfersInput {
   projectId: string | null;
   walletId?: string;
   walletIds?: string[];
+  walletAddress?: string;
   counterpartyId?: string;
-  sourceAddress?: string;
+  search?: string;
   token?: string;
   direction?: PaymentTransferDirection;
   statuses?: PaymentTransferStatus[];
   types?: readonly PaymentTransferType[];
+  provider?: RampProviderId;
+  providerReference?: string;
   createdAtFrom?: string;
   createdAtTo?: string;
+  sortBy?: "amount" | "createdAt" | "status" | "updatedAt";
+  sortDirection?: "asc" | "desc";
   limit: number;
   offset: number;
 }
@@ -175,6 +186,11 @@ export interface PaymentsRepositoryContext {
 
 export interface PaymentsRepository {
   createTransfer(input: CreatePaymentTransferInput): Promise<PaymentTransferRow | null>;
+  findTransferByIdempotency(params: {
+    organizationId: string;
+    projectId: string | null;
+    idempotencyKey: string;
+  }): Promise<PaymentTransferRow | null>;
   updateTransfer(input: UpdatePaymentTransferInput): Promise<PaymentTransferRow | null>;
   /**
    * Atomically transitions a transfer's status only if it is currently one of
@@ -201,6 +217,11 @@ export interface PaymentsRepository {
     organizationId: string;
     projectId: string | null;
   }): Promise<PaymentTransferRow | null>;
+  listTransfersByIds(params: {
+    transferIds: string[];
+    organizationId: string;
+    projectId: string | null;
+  }): Promise<PaymentTransferRow[]>;
   getTransferByProviderReference(
     params: GetTransferByProviderReferenceInput
   ): Promise<PaymentTransferRow | null>;

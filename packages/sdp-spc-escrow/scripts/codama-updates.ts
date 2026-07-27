@@ -2,8 +2,9 @@
 /**
  * Codama transform updates for the Private Channels escrow client.
  *
- * Adapted from upstream `private-channel-escrow-program/scripts/lib/updates/*`
- * with two SDP-specific changes (see the 3 devnet "gotchas"):
+ * Adapted from the `private-channel-escrow-program` repository's
+ * `scripts/lib/updates/*`, with two changes so the client targets the deployed
+ * devnet program:
  *   - `overrideProgramId` repoints the program from the IDL's placeholder
  *     (`GokvZqD2…`) to the REAL deployed escrow program (`9tgHa1…`), so the
  *     generated `PROGRAM_ADDRESS` and every PDA deriver (allowedMint,

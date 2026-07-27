@@ -3,6 +3,7 @@
 import { ArrowUpRight, Copy } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/i18n/provider";
 import { TokenDisabledActionTooltip } from "./token-disabled-action-tooltip";
 
 interface TokenManagementHeaderProps {
@@ -42,9 +43,10 @@ export function TokenManagementHeader({
   onDeploy,
   onUnpause,
 }: TokenManagementHeaderProps) {
+  const t = useTranslations();
   const tokenAddressLabel = tokenAddress
     ? `${tokenAddress.slice(0, 5)}...${tokenAddress.slice(-4)}`
-    : "Not deployed";
+    : t("DashboardIssuance.header.notDeployed");
 
   return (
     <div className="flex flex-col gap-8">
@@ -54,47 +56,52 @@ export function TokenManagementHeader({
             <img
               src={tokenImageUrl}
               alt={tokenName}
-              className="h-14 w-14 shrink-0 rounded-full border border-[rgba(28,28,29,0.12)] object-cover"
+              className="h-14 w-14 shrink-0 rounded-full border border-border-default object-cover"
             />
           ) : (
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[rgba(28,28,29,0.14)] bg-white text-[20px] font-semibold text-[#1c1c1d]">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border-default bg-surface-raised text-[20px] font-semibold text-primary">
               {tokenSymbol.slice(0, 1) || "T"}
             </div>
           )}
 
           <div className="min-w-0">
-            <h2 className="truncate text-[42px] leading-[1.02] font-medium tracking-[-0.5px] text-[#1c1c1d]">
+            <h2 className="truncate text-[42px] leading-[1.02] font-medium tracking-[-0.5px] text-primary">
               {tokenName}
             </h2>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[18px] text-[rgba(28,28,29,0.68)]">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[18px] text-secondary">
               <span className="font-mono text-[15px] tracking-[-0.1px]">{tokenAddressLabel}</span>
               {tokenAddress ? (
                 <button
                   type="button"
                   onClick={onCopyAddress}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-[rgba(28,28,29,0.12)] bg-white text-[rgba(28,28,29,0.62)] transition-colors hover:text-[#1c1c1d]"
-                  aria-label="Copy token address"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-border-default bg-surface-raised text-secondary transition-colors hover:text-primary"
+                  aria-label={t("DashboardIssuance.header.copyTokenAddress")}
                 >
                   <Copy className="h-4 w-4" />
                 </button>
               ) : null}
-              <span className="rounded-full border border-[rgba(28,28,29,0.1)] bg-white px-3 py-1 text-[13px] font-medium text-[rgba(28,28,29,0.62)]">
+              <span className="rounded-full border border-border-default bg-surface-raised px-3 py-1 text-[13px] font-medium text-secondary">
                 {tokenSymbol}
               </span>
             </div>
             <div
-              className="mt-2 flex flex-wrap items-center gap-2 text-[14px] text-[rgba(28,28,29,0.68)]"
+              className="mt-2 flex min-w-0 items-center gap-2 text-[14px] text-secondary"
               data-testid="token-id-row"
             >
-              <span className="text-[13px] font-medium tracking-[-0.1px] text-[rgba(28,28,29,0.54)]">
-                Token ID:
+              <span className="shrink-0 text-[13px] font-medium tracking-[-0.1px] text-tertiary">
+                {t("DashboardIssuance.header.tokenId")}:
               </span>
-              <span className="font-mono text-[13px] tracking-[-0.1px]">{tokenId}</span>
+              <span
+                className="min-w-0 flex-1 font-mono text-[13px] tracking-[-0.1px] [overflow-wrap:anywhere]"
+                data-token-id-value
+              >
+                {tokenId}
+              </span>
               <button
                 type="button"
                 onClick={onCopyTokenId}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-[10px] border border-[rgba(28,28,29,0.12)] bg-white text-[rgba(28,28,29,0.62)] transition-colors hover:text-[#1c1c1d]"
-                aria-label="Copy token ID"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-border-default bg-surface-raised text-secondary transition-colors hover:text-primary"
+                aria-label={t("DashboardIssuance.header.copyTokenId")}
               >
                 <Copy className="h-3.5 w-3.5" />
               </button>
@@ -106,7 +113,7 @@ export function TokenManagementHeader({
           {explorerHref ? (
             <Button variant="outline" asChild>
               <Link href={explorerHref} target="_blank" rel="noopener noreferrer">
-                Explorer
+                {t("DashboardIssuance.header.explorer")}
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -119,7 +126,7 @@ export function TokenManagementHeader({
                 onClick={onDeploy}
                 disabled={isPending || Boolean(deployDisabledReason)}
               >
-                Deploy
+                {t("DashboardIssuance.header.deploy")}
               </Button>
             </TokenDisabledActionTooltip>
           ) : (
@@ -131,7 +138,7 @@ export function TokenManagementHeader({
                     onClick={onUnpause}
                     disabled={isPending || Boolean(pauseDisabledReason)}
                   >
-                    Unpause
+                    {t("DashboardIssuance.header.unpause")}
                   </Button>
                 </TokenDisabledActionTooltip>
               ) : null}

@@ -15,6 +15,12 @@ export interface PrivateChannelDepositRow {
   recipient: string;
   mint: string;
   amount: string;
+  /**
+   * Member who created the intent, captured while the request was authenticated.
+   * The reconciler authenticates its gateway reads as this member. Null only for a
+   * row whose member was later revoked (FK is ON DELETE SET NULL).
+   */
+  private_channel_user_id: string | null;
   /** Recipient channel balance (base units) captured at intent time; internal. */
   baseline_credited: string;
   /** Instance config snapshotted at intent time — the reconciler's fixed context. */
@@ -41,6 +47,8 @@ export interface CreateDepositInput extends DepositProjectScope {
   recipient: string;
   mint: string;
   amount: string;
+  /** Member creating the intent; taken from the request's SPC auth context. */
+  privateChannelUserId: string;
   baselineCredited: string;
   /** Instance config snapshot (immutable reconciliation context). */
   gatewayUrl: string;

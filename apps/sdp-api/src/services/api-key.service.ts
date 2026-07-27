@@ -4,6 +4,7 @@
  * Shared data access for API key operations.
  */
 
+import { hashString } from "@sdp/payments/hash";
 import type {
   ApiKeyEnvironment,
   ApiKeyRole,
@@ -14,7 +15,6 @@ import type {
 import type { DatabaseExecutor } from "@/db";
 import { parseOptionalPostgresJson, parsePostgresJson } from "@/db/postgres-utils";
 import { AppError, badRequest } from "@/lib/errors";
-import { hashString } from "@/lib/hash";
 import { createApiKeyMaterial } from "./api-key.utils";
 import { assertGrantableApiKeyPermissions } from "./api-key-scope.service";
 
@@ -102,6 +102,13 @@ export interface RotateApiKeyResult {
   previousKeyHash: string;
 }
 
+export interface VerifyApiKeyOwnershipInput {
+  apiKey: string;
+  organizationId: string;
+  projectId: string;
+  pepper?: string;
+}
+
 interface ApiKeyListRow {
   id: string;
   name: string;
@@ -136,6 +143,31 @@ function stringifyJsonb(value: unknown, fallback: unknown): string {
 
 export class ApiKeyService {
   constructor(private db: DatabaseClient) {}
+
+  /**
+   * Verifies full API-key material against the current tenant boundary.
+   *
+   * Display prefixes are intentionally not used here: they are short, public,
+   * and not unique. The raw key is hashed in memory and is never stored.
+   */
+  async ownsUsableApiKey(input: VerifyApiKeyOwnershipInput): Promise<boolean> {
+    const keyHash = await hashString(input.apiKey, input.pepper);
+    const row = await this.db
+      .prepare(
+        `SELECT status, expires_at
+         FROM api_keys
+         WHERE key_hash = ? AND organization_id = ? AND project_id = ?
+         LIMIT 1`
+      )
+      .bind(keyHash, input.organizationId, input.projectId)
+      .first<{ status: ApiKeyStatus; expires_at: string | null }>();
+
+    if (row?.status !== "active") {
+      return false;
+    }
+
+    return !row.expires_at || new Date(row.expires_at) >= new Date();
+  }
 
   async listForProject(projectId: string): Promise<ApiKeyListItem[]> {
     const result = await this.db

@@ -1,4 +1,5 @@
 import type {
+  CustodyProvider,
   CustodyWalletAggregate,
   PaymentsDashboardWallet,
   PaymentTransferSummary,
@@ -50,6 +51,7 @@ export async function fetchPaymentsWallets(
           walletId?: string;
           publicKey?: string;
           label?: string | null;
+          provider?: string;
           balances?: PaymentsDashboardWallet["balances"];
         }>;
       };
@@ -74,6 +76,7 @@ export async function fetchPaymentsWallets(
         walletId: wallet.walletId,
         publicKey: wallet.publicKey,
         label: wallet.label ?? null,
+        ...(wallet.provider ? { provider: wallet.provider as CustodyProvider } : {}),
         ...(Array.isArray(wallet.balances) ? { balances: wallet.balances } : {}),
       }));
 
@@ -81,7 +84,7 @@ export async function fetchPaymentsWallets(
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load wallets",
+      ...(error instanceof Error ? { error: error.message } : {}),
     };
   }
 }
@@ -110,7 +113,6 @@ export async function fetchPaymentsAggregate(
     if (!json?.data?.aggregate) {
       return {
         ok: false,
-        error: "Aggregate wallet response did not include aggregate data",
       };
     }
 
@@ -118,9 +120,65 @@ export async function fetchPaymentsAggregate(
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load aggregate balances",
+      ...(error instanceof Error ? { error: error.message } : {}),
     };
   }
+}
+
+function normalizePaymentTransfer(
+  transfer: Partial<PaymentTransferSummary>
+): PaymentTransferSummary {
+  const {
+    id,
+    walletId,
+    status,
+    signature,
+    type,
+    direction,
+    source,
+    destination,
+    token,
+    amount,
+    memo,
+    provider,
+    counterpartyId,
+    counterpartyDisplayName,
+    providerReference,
+    deliveryMode,
+    fiatCurrency,
+    fiatAmount,
+    settlement,
+    moneygram,
+    createdAt,
+    updatedAt,
+  } = transfer;
+
+  return Object.fromEntries(
+    Object.entries({
+      id: id ?? "",
+      walletId,
+      status: status ?? "pending",
+      signature: signature ?? null,
+      type,
+      direction,
+      source,
+      destination,
+      token,
+      amount,
+      memo,
+      provider,
+      counterpartyId,
+      counterpartyDisplayName,
+      providerReference,
+      deliveryMode,
+      fiatCurrency,
+      fiatAmount,
+      settlement,
+      moneygram,
+      createdAt,
+      updatedAt,
+    }).filter(([, value]) => value !== undefined)
+  ) as unknown as PaymentTransferSummary;
 }
 
 export async function fetchPaymentTransfers(
@@ -128,6 +186,7 @@ export async function fetchPaymentTransfers(
   pageSize = 20,
   options: {
     walletId?: string;
+    includeObserved?: boolean;
   } = {}
 ): Promise<FetchResult<PaymentTransferSummary[]>> {
   try {
@@ -135,6 +194,7 @@ export async function fetchPaymentTransfers(
       page: "1",
       pageSize: String(pageSize),
       ...(options.walletId ? { wallet: options.walletId } : {}),
+      ...(options.includeObserved === false ? { includeObserved: "false" } : {}),
     }).toString();
     const response = await request(`/v1/payments/transfers?${query}`);
     if (!response.ok) {
@@ -147,44 +207,18 @@ export async function fetchPaymentTransfers(
     }
 
     const json = (await response.json()) as {
-      data?: Array<{
-        id?: string;
-        status?: string;
-        signature?: string | null;
-        type?: string;
-        direction?: string;
-        source?: string;
-        destination?: string;
-        token?: string;
-        amount?: string;
-        memo?: string;
-        createdAt?: string;
-        updatedAt?: string;
-      }>;
+      data?: Array<Partial<PaymentTransferSummary>>;
     };
 
     const transfers = (json?.data ?? [])
-      .filter((transfer): transfer is NonNullable<typeof transfer> => Boolean(transfer?.id))
-      .map((transfer) => ({
-        id: transfer.id ?? "",
-        status: transfer.status ?? "pending",
-        signature: transfer.signature ?? null,
-        ...(transfer.type ? { type: transfer.type } : {}),
-        ...(transfer.direction ? { direction: transfer.direction } : {}),
-        ...(transfer.source ? { source: transfer.source } : {}),
-        ...(transfer.destination ? { destination: transfer.destination } : {}),
-        ...(transfer.token ? { token: transfer.token } : {}),
-        ...(transfer.amount ? { amount: transfer.amount } : {}),
-        ...(transfer.memo ? { memo: transfer.memo } : {}),
-        ...(transfer.createdAt ? { createdAt: transfer.createdAt } : {}),
-        ...(transfer.updatedAt ? { updatedAt: transfer.updatedAt } : {}),
-      }));
+      .filter((transfer) => typeof transfer.id === "string")
+      .map(normalizePaymentTransfer);
 
     return { ok: true, data: transfers };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load transfers",
+      ...(error instanceof Error ? { error: error.message } : {}),
     };
   }
 }
@@ -207,7 +241,14 @@ export async function fetchDashboardPaymentTransfers(
   pageSize = 20
 ): Promise<FetchResult<PaymentTransferSummary[]>> {
   const walletsResult = await fetchPaymentsWallets(request, { view: "summary" });
+  return fetchDashboardPaymentTransfersForWallets(request, walletsResult, pageSize);
+}
 
+export async function fetchDashboardPaymentTransfersForWallets(
+  request: SdpApiClient["request"],
+  walletsResult: FetchResult<PaymentsDashboardWallet[]>,
+  pageSize = 20
+): Promise<FetchResult<PaymentTransferSummary[]>> {
   if (!walletsResult.ok || (walletsResult.data?.length ?? 0) === 0) {
     return fetchPaymentTransfers(request, pageSize);
   }
@@ -223,8 +264,7 @@ export async function fetchDashboardPaymentTransfers(
 
   for (const result of settledTransfers) {
     if (result.status !== "fulfilled") {
-      lastError =
-        result.reason instanceof Error ? result.reason.message : "Unable to load transfers";
+      lastError = result.reason instanceof Error ? result.reason.message : undefined;
       continue;
     }
 
@@ -327,7 +367,7 @@ export async function fetchPaymentsIssuedTokenSymbols(
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load issued token symbols",
+      ...(error instanceof Error ? { error: error.message } : {}),
     };
   }
 }

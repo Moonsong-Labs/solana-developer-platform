@@ -1,3 +1,5 @@
+import { SigningError } from "@sdp/custody/signing";
+import { createFeePaymentAdapter } from "@sdp/payments/fee-payment";
 import { resolveRpcTarget } from "@sdp/rpc/relay";
 import { confirmTransaction, createRpc, getRecentBlockhash } from "@sdp/rpc/solana";
 import type { Address } from "@solana/kit";
@@ -18,14 +20,13 @@ import { getAuth } from "@/lib/auth";
 import { AppError, badRequest } from "@/lib/errors";
 import { resolveKoraUserId } from "@/lib/kora-user";
 import { success } from "@/lib/response";
-import { createFeePaymentAdapter } from "@/services/adapters/fee-payment";
 import { resolveApiKeySigningWalletId } from "@/services/api-key-scope.service";
 import {
   enforceWalletOperationPolicy,
   resolvePolicyCustodyWallet,
   walletOperationActorFromAuth,
 } from "@/services/policy-enforcement.service";
-import { FeePaymentError, SigningError } from "@/services/ports";
+import { FeePaymentError } from "@/services/ports";
 import { createOrgSigner } from "@/services/solana";
 import type { AppContext } from "../context";
 import { type SignerCheckResponse, signerCheckSchema } from "../schemas";

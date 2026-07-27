@@ -1,5 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
+import type { AssetCategory, IssuanceMetadata } from "@sdp/types";
 import { redirect } from "next/navigation";
+import { assetProfiles } from "@/flags";
+import { getTranslations } from "@/i18n/server";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { createTimedTrace } from "@/lib/request-tracing";
 import { createSdpApiClient, type SdpApiClient } from "@/lib/sdp-api";
@@ -13,6 +16,13 @@ interface IssuanceTemplateView {
   description?: string;
 }
 
+interface IssuanceAssetProfileView {
+  assetCategory: AssetCategory;
+  assetType: string;
+  assetTypeVersion: number;
+  issuanceMetadata: IssuanceMetadata;
+}
+
 interface IssuanceTokenView {
   id: string;
   name: string;
@@ -24,6 +34,19 @@ interface IssuanceTokenView {
   totalSupply: string;
   createdAt: string;
   deployedAt: string | null;
+  // Extended fields (already returned by /v1/issuance/tokens as full Token rows;
+  // previously dropped) — power the collapsible list view's expanded card.
+  decimals: number;
+  maxSupply: string | null;
+  isMintable: boolean;
+  isFreezable: boolean;
+  requiresAllowlist: boolean;
+  description: string | null;
+  uri: string | null;
+  signingWalletId: string | null;
+  // Merged from /v1/issuance/asset-profiles by tokenId; null for legacy tokens
+  // without a profile (list falls back to core fields).
+  assetProfile: IssuanceAssetProfileView | null;
 }
 
 interface FetchResult<T> {
@@ -33,32 +56,36 @@ interface FetchResult<T> {
   error?: string;
 }
 
-function resolveTokenListNotice(result: FetchResult<IssuanceTokenView[]>): string | null {
+function resolveTokenListNotice(
+  result: FetchResult<IssuanceTokenView[]>,
+  t: Awaited<ReturnType<typeof getTranslations>>
+): string | null {
   if (result.ok) {
     return null;
   }
 
   if (typeof result.status === "number" && result.status >= 400 && result.status < 500) {
-    return "We couldn't load the token list right now. Refresh the page to try again.";
+    return t("DashboardIssuance.errors.tokenListRetry");
   }
 
-  return "We couldn't load the token list right now. You can still create a token or try again shortly.";
+  return t("DashboardIssuance.errors.tokenListCreateOrRetry");
 }
 
-function parseErrorMessage(body: string): string {
+function parseErrorMessage(body: string, fallback: string): string {
   try {
     const parsed = JSON.parse(body) as {
       error?: { message?: string };
       message?: string;
     };
-    return parsed?.error?.message ?? parsed?.message ?? body;
+    return (parsed?.error?.message ?? parsed?.message ?? body) || fallback;
   } catch {
-    return body;
+    return body || fallback;
   }
 }
 
 async function fetchTemplates(
-  request: SdpApiClient["request"]
+  request: SdpApiClient["request"],
+  t: Awaited<ReturnType<typeof getTranslations>>
 ): Promise<FetchResult<IssuanceTemplateView[]>> {
   try {
     const response = await request("/v1/issuance/templates");
@@ -67,7 +94,7 @@ async function fetchTemplates(
       return {
         ok: false,
         status: response.status,
-        error: parseErrorMessage(body),
+        error: parseErrorMessage(body, t("DashboardIssuance.errors.unknown")),
       };
     }
 
@@ -91,13 +118,17 @@ async function fetchTemplates(
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load templates",
+      error:
+        error instanceof Error
+          ? error.message
+          : t("DashboardIssuance.errors.unableToLoadTemplates"),
     };
   }
 }
 
 async function fetchTokens(
-  request: SdpApiClient["request"]
+  request: SdpApiClient["request"],
+  t: Awaited<ReturnType<typeof getTranslations>>
 ): Promise<FetchResult<IssuanceTokenView[]>> {
   try {
     const tokensPath = `/v1/issuance/tokens?${new URLSearchParams({
@@ -110,7 +141,7 @@ async function fetchTokens(
       return {
         ok: false,
         status: response.status,
-        error: parseErrorMessage(body),
+        error: parseErrorMessage(body, t("DashboardIssuance.errors.unknown")),
       };
     }
 
@@ -126,6 +157,14 @@ async function fetchTokens(
         totalSupply?: string;
         createdAt?: string;
         deployedAt?: string | null;
+        decimals?: number;
+        maxSupply?: string | null;
+        isMintable?: boolean;
+        isFreezable?: boolean;
+        requiresAllowlist?: boolean;
+        description?: string | null;
+        uri?: string | null;
+        signingWalletId?: string | null;
       }>;
     };
 
@@ -133,7 +172,7 @@ async function fetchTokens(
       .filter((token): token is NonNullable<typeof token> => Boolean(token?.id))
       .map((token) => ({
         id: token.id ?? "",
-        name: token.name ?? "Untitled token",
+        name: token.name ?? t("DashboardIssuance.management.untitledToken"),
         symbol: token.symbol ?? "-",
         status: token.status ?? "pending",
         template: token.template ?? "custom",
@@ -142,15 +181,72 @@ async function fetchTokens(
         totalSupply: token.totalSupply ?? "0",
         createdAt: token.createdAt ?? "",
         deployedAt: token.deployedAt ?? null,
+        decimals: typeof token.decimals === "number" ? token.decimals : 0,
+        maxSupply: token.maxSupply ?? null,
+        isMintable: token.isMintable ?? false,
+        isFreezable: token.isFreezable ?? false,
+        requiresAllowlist: token.requiresAllowlist ?? false,
+        description: token.description ?? null,
+        uri: token.uri ?? null,
+        signingWalletId: token.signingWalletId ?? null,
+        assetProfile: null as IssuanceAssetProfileView | null,
       }));
 
     return { ok: true, data: tokens };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to load tokens",
+      error:
+        error instanceof Error ? error.message : t("DashboardIssuance.errors.unableToLoadTokens"),
     };
   }
+}
+
+// Best-effort fetch of asset profiles for the whole project in one call, keyed by
+// tokenId for merging into the token list. This powers the type-aware expanded
+// card in the list view. Soft-fails to an empty map (e.g. the asset-profiles
+// feature flag being off returns 403) so the page never blocks on it.
+async function fetchAssetProfiles(
+  request: SdpApiClient["request"]
+): Promise<Map<string, IssuanceAssetProfileView>> {
+  const byTokenId = new Map<string, IssuanceAssetProfileView>();
+  try {
+    const path = `/v1/issuance/asset-profiles?${new URLSearchParams({
+      page: "1",
+      pageSize: "100",
+    }).toString()}`;
+    const response = await request(path);
+    if (!response.ok) {
+      return byTokenId;
+    }
+
+    const json = (await response.json()) as {
+      data?: {
+        assetProfiles?: Array<{
+          tokenId?: string;
+          assetCategory?: AssetCategory;
+          assetType?: string;
+          assetTypeVersion?: number;
+          issuanceMetadata?: IssuanceMetadata;
+        }>;
+      };
+    };
+
+    for (const profile of json?.data?.assetProfiles ?? []) {
+      if (!profile?.tokenId || !profile.assetCategory || !profile.assetType) {
+        continue;
+      }
+      byTokenId.set(profile.tokenId, {
+        assetCategory: profile.assetCategory,
+        assetType: profile.assetType,
+        assetTypeVersion: profile.assetTypeVersion ?? 1,
+        issuanceMetadata: profile.issuanceMetadata ?? {},
+      });
+    }
+  } catch {
+    // Ignore — the list still renders with core fields only.
+  }
+  return byTokenId;
 }
 
 interface IssuancePageProps {
@@ -158,7 +254,12 @@ interface IssuancePageProps {
 }
 
 export default async function IssuancePage({ searchParams }: IssuancePageProps) {
-  const { userId, orgId } = await auth();
+  const [t, { userId, orgId }, resolvedSearchParams, assetProfilesEnabled] = await Promise.all([
+    getTranslations(),
+    auth(),
+    searchParams ?? Promise.resolve(undefined),
+    assetProfiles(),
+  ]);
   if (!userId) {
     redirect(await getAuthEntryPath());
   }
@@ -169,7 +270,6 @@ export default async function IssuancePage({ searchParams }: IssuancePageProps) 
   const trace = createTimedTrace("dashboard.issuance.page");
 
   try {
-    const resolvedSearchParams = searchParams ? await searchParams : undefined;
     const currentTab =
       resolvedSearchParams?.tab === "playground" ||
       (Array.isArray(resolvedSearchParams?.tab) && resolvedSearchParams.tab[0] === "playground")
@@ -179,20 +279,36 @@ export default async function IssuancePage({ searchParams }: IssuancePageProps) 
     const apiClient = await trace.step("create_sdp_api_client", () =>
       createSdpApiClient(trace.childContext("dashboard.issuance.api"))
     );
-    const [templatesResult, tokensResult, apiKeysResult, signerWalletsResult] = await Promise.all([
-      trace.step("fetch_templates", () => fetchTemplates(apiClient.request)),
-      trace.step("fetch_tokens", () => fetchTokens(apiClient.request)),
+    const [
+      templatesResult,
+      tokensResult,
+      assetProfilesByTokenId,
+      apiKeysResult,
+      signerWalletsResult,
+    ] = await Promise.all([
+      trace.step("fetch_templates", () => fetchTemplates(apiClient.request, t)),
+      trace.step("fetch_tokens", () => fetchTokens(apiClient.request, t)),
+      assetProfilesEnabled
+        ? trace.step("fetch_asset_profiles", () => fetchAssetProfiles(apiClient.request))
+        : Promise.resolve(new Map<string, IssuanceAssetProfileView>()),
       trace.step("fetch_active_api_keys", () => fetchActiveApiKeys(apiClient.request)),
       trace.step("fetch_signer_wallets", () =>
         fetchPaymentsWallets(apiClient.request, { view: "summary" })
       ),
     ]);
 
-    const tokens = tokensResult.data ?? [];
+    const tokens = (tokensResult.data ?? []).map((token) => ({
+      ...token,
+      assetProfile: assetProfilesByTokenId.get(token.id) ?? null,
+    }));
     const apiKeys = apiKeysResult.data ?? [];
     const templatesError = templatesResult.ok
       ? null
-      : `Template API ${templatesResult.status ?? "unavailable"}: ${templatesResult.error ?? "Unknown error"}`;
+      : t("DashboardIssuance.errors.apiRequestFailed", {
+          resource: t("DashboardIssuance.errors.templateResource"),
+          status: templatesResult.status ?? t("DashboardIssuance.errors.unavailable"),
+          error: templatesResult.error ?? t("DashboardIssuance.errors.unknown"),
+        });
 
     trace.log({
       ok: true,
@@ -205,24 +321,29 @@ export default async function IssuancePage({ searchParams }: IssuancePageProps) 
 
     return (
       <IssuanceWorkspace
+        assetProfilesEnabled={assetProfilesEnabled}
         tokens={tokens}
         templates={templatesResult.data ?? []}
         apiKeys={apiKeys}
         signerWallets={signerWalletsResult.data ?? []}
         apiBaseUrl={apiBaseUrl}
         templatesError={templatesError}
-        tokensNotice={resolveTokenListNotice(tokensResult)}
+        tokensNotice={resolveTokenListNotice(tokensResult, t)}
         signerWalletsError={
           signerWalletsResult.ok
             ? null
-            : `Wallet API ${signerWalletsResult.status ?? "unavailable"}: ${signerWalletsResult.error ?? "Unknown error"}`
+            : t("DashboardIssuance.errors.apiRequestFailed", {
+                resource: t("DashboardIssuance.errors.walletResource"),
+                status: signerWalletsResult.status ?? t("DashboardIssuance.errors.unavailable"),
+                error: signerWalletsResult.error ?? t("DashboardIssuance.errors.unknown"),
+              })
         }
       />
     );
   } catch (error) {
     trace.log({
       ok: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error instanceof Error ? error.message : t("DashboardIssuance.errors.unknown"),
     });
     throw error;
   }

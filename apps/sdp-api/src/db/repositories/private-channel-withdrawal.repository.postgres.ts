@@ -20,6 +20,7 @@ function mapRow(row: Record<string, unknown>): PrivateChannelWithdrawalRow {
     destination: row.destination as string,
     mint: row.mint as string,
     amount: row.amount as string,
+    private_channel_user_id: (row.private_channel_user_id ?? null) as string | null,
     gateway_url: (row.gateway_url ?? "") as string,
     chain_rpc_url: (row.chain_rpc_url ?? "") as string,
     escrow_program_id: (row.escrow_program_id ?? "") as string,
@@ -42,9 +43,9 @@ export function createPostgresPrivateChannelWithdrawalRepository(
         .prepare(
           `INSERT INTO private_channel_withdrawals (
                id, organization_id, project_id, instance_id, wallet_id,
-               owner, destination, mint, amount,
+               owner, destination, mint, amount, private_channel_user_id,
                gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING *`
         )
         .bind(
@@ -57,6 +58,7 @@ export function createPostgresPrivateChannelWithdrawalRepository(
           input.destination,
           input.mint,
           input.amount,
+          input.privateChannelUserId,
           input.gatewayUrl,
           input.chainRpcUrl,
           input.escrowProgramId,
@@ -112,7 +114,7 @@ export function createPostgresPrivateChannelWithdrawalRepository(
         .prepare(
           `SELECT * FROM private_channel_withdrawals
              WHERE organization_id = ? AND project_id = ?
-             ORDER BY created_at DESC`
+             ORDER BY created_at DESC, id DESC`
         )
         .bind(scope.organizationId, scope.projectId)
         .all<Record<string, unknown>>();
@@ -126,9 +128,12 @@ export function createPostgresPrivateChannelWithdrawalRepository(
       const placeholders = input.statuses.map(() => "?").join(", ");
       const result = await db
         .prepare(
+          // Tie-broken because of the LIMIT: this is the reconciler's work queue, so
+          // rows sharing an updated_at at the cutoff would otherwise be included or
+          // dropped arbitrarily from tick to tick, and one could be starved.
           `SELECT * FROM private_channel_withdrawals
              WHERE status IN (${placeholders})
-             ORDER BY updated_at ASC
+             ORDER BY updated_at ASC, id ASC
              LIMIT ?`
         )
         .bind(...input.statuses, input.limit)

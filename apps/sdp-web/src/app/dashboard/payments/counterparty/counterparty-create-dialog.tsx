@@ -2,6 +2,7 @@
 
 import type { Counterparty } from "@sdp/types";
 import { Modal } from "@/components/ui/modal";
+import { useTranslations } from "@/i18n/provider";
 import { CounterpartyCreateProvider } from "./counterparty-create-context";
 import { CounterpartyCreatePage } from "./counterparty-create-page";
 
@@ -16,11 +17,18 @@ export function CounterpartyCreateDialog({
   onClose,
   onCreated,
 }: CounterpartyCreateDialogProps) {
+  const t = useTranslations();
+
   return (
-    <Modal isOpen={open} onClose={onClose} ariaLabel="Add counterparty" size="lg">
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      ariaLabel={t("DashboardPayments.counterparty.addCounterparty")}
+      size="lg"
+    >
       <div className="px-6 pt-12 pb-6">
         <CounterpartyCreateProvider onCreated={onCreated}>
-          <CounterpartyCreatePage />
+          <CounterpartyCreatePage embedded onCancel={onClose} />
         </CounterpartyCreateProvider>
       </div>
     </Modal>

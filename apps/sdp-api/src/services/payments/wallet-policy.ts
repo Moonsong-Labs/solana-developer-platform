@@ -1,3 +1,9 @@
+import {
+  addDecimalAmounts,
+  compareDecimalAmounts,
+  getUtcDayWindow,
+  sumDecimalAmounts,
+} from "@sdp/payments/decimal";
 import { isDecimalString } from "@sdp/solana/amount";
 import { parsePostgresJsonOr } from "@/db/postgres-utils";
 import type {
@@ -6,12 +12,6 @@ import type {
 } from "@/db/repositories/payments.repository";
 import { AppError } from "@/lib/errors";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
-import {
-  addDecimalAmounts,
-  compareDecimalAmounts,
-  getUtcDayWindow,
-  sumDecimalAmounts,
-} from "./decimal";
 
 export const PAYMENT_POLICY_VERSION = 1;
 export const DESTINATION_ALLOWLIST_POLICY_TYPE = "destination_allowlist";
@@ -131,7 +131,32 @@ export async function assertWalletPolicyAllowsTransferWithRepository(
   }
 ): Promise<void> {
   const rows = await repository.getWalletPoliciesByCustodyWalletId(input.wallet.id);
+  await assertWalletPolicyAllowsTransferWithRows(repository, rows, input);
+}
 
+/**
+ * Enforces wallet policy against pre-fetched policy rows, so callers checking
+ * many transfers on one wallet fetch the rows once. The repository is still
+ * used for the daily-limit volume query when that check is enabled.
+ *
+ * @param repository - Payments repository, used only for daily-limit volume.
+ * @param rows - Policy rows previously fetched for the wallet.
+ * @param input - Transfer under evaluation.
+ */
+export async function assertWalletPolicyAllowsTransferWithRows(
+  repository: PaymentsRepository,
+  rows: WalletPolicyRow[],
+  input: {
+    organizationId: string;
+    projectId: string | null;
+    wallet: CustodyWallet;
+    destinationAddress?: string | null;
+    enforceDestinationAllowlist?: boolean;
+    enforceDailyLimit?: boolean;
+    token: string;
+    amount: string;
+  }
+): Promise<void> {
   if (rows.length === 0) {
     return;
   }

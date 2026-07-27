@@ -59,25 +59,11 @@ export function createPostgresPrivateChannelVerifiedWalletRepository(
           `SELECT * FROM private_channel_verified_wallets
              WHERE user_id = ?
                AND instance_id = ?
-             ORDER BY verified_at DESC`
+             ORDER BY verified_at DESC, id DESC`
         )
         .bind(userId, instanceId)
         .all<Record<string, unknown>>();
       return (result.results ?? []).map(mapPrivateChannelVerifiedWalletRow);
-    },
-
-    async findByInstanceAndPubkey(instanceId: string, pubkey: string) {
-      const row = await db
-        .prepare(
-          `SELECT * FROM private_channel_verified_wallets
-             WHERE instance_id = ?
-               AND pubkey = ?
-             ORDER BY verified_at DESC
-             LIMIT 1`
-        )
-        .bind(instanceId, pubkey)
-        .first<Record<string, unknown>>();
-      return row ? mapPrivateChannelVerifiedWalletRow(row) : null;
     },
   };
 }

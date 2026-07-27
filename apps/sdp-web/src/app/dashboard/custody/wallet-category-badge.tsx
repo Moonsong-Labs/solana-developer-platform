@@ -1,8 +1,11 @@
+"use client";
+
 import { Shield, WalletMinimal } from "lucide-react";
 import {
   WALLET_PROVIDER_CATEGORY_DETAILS,
   type WalletProviderCategory,
 } from "@/app/dashboard/custody/provider-catalog";
+import { useTranslations } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
 
 interface WalletCategoryBadgeProps {
@@ -12,13 +15,13 @@ interface WalletCategoryBadgeProps {
 }
 
 const categoryTextClassNames: Record<WalletProviderCategory, string> = {
-  server: "text-[#1c1c1d]",
-  institutional: "text-[#1c1c1d]",
+  server: "text-primary",
+  institutional: "text-primary",
 };
 
 const compactCategoryBackgroundClassNames: Record<WalletProviderCategory, string> = {
-  server: "bg-[#f4f1ea]",
-  institutional: "bg-[#f4f1ea]",
+  server: "bg-surface-sunken",
+  institutional: "bg-surface-sunken",
 };
 
 export function WalletCategoryBadge({
@@ -26,8 +29,9 @@ export function WalletCategoryBadge({
   compact = false,
   className,
 }: WalletCategoryBadgeProps) {
+  const t = useTranslations();
   const Icon = category === "server" ? WalletMinimal : Shield;
-  const label = WALLET_PROVIDER_CATEGORY_DETAILS[category].label;
+  const label = t(WALLET_PROVIDER_CATEGORY_DETAILS[category].labelKey);
 
   return (
     <span

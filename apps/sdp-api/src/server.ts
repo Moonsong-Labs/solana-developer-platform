@@ -1,10 +1,8 @@
 /**
  * SDP API — Node.js entrypoint.
  *
- * Mirrors `index.ts` (the Cloudflare entrypoint) but consumes the Node
- * runtime impls: `@hono/node-server` for HTTP, `node-cron` for the
- * reconciliation tick, `@sentry/node` for monitoring, `NodeBackgroundRunner`
- * for tracking fire-and-forget work that needs to survive past response.
+ * Owns the HTTP transport, reconciliation scheduler, observability startup,
+ * and background-task tracking needed for graceful shutdown.
  *
  * The shutdown sequence lives in `runtime/shutdown-node.ts`.
  */
@@ -14,8 +12,9 @@ import { type ServerType, serve } from "@hono/node-server";
 
 import { createApp } from "@/app";
 import { startCron } from "@/cron/runner";
-import { withProcessEnvFallback } from "@/lib/runtime-env";
-import { NodeBackgroundRunner } from "@/runtime/background-node";
+import { getProcessEnv } from "@/lib/runtime-env";
+import { createNodeExecutionContext, NodeBackgroundRunner } from "@/runtime/background-node";
+import { createNodeHttpApp } from "@/runtime/http-node";
 import { getSentryOptions, isSentryEnabled } from "@/runtime/observability";
 import { initNodeSentry, nodeObservability } from "@/runtime/observability-node";
 import { shutdown } from "@/runtime/shutdown-node";
@@ -101,11 +100,7 @@ function assertRequiredEnv(env: Env): void {
 }
 
 async function main(): Promise<void> {
-  // The Node entrypoint IS the Node runtime — don't let a stray process.env
-  // value flip the KV factory back to Cloudflare mode. Set this before
-  // assertRequiredEnv so downstream code (e.g. getRuntime) sees the override.
-  const env = withProcessEnvFallback({} as Env);
-  env.SDP_RUNTIME = "node";
+  const env = getProcessEnv();
   assertRequiredEnv(env);
 
   // Validate boot-time process.env tunables before opening any sockets or
@@ -116,7 +111,7 @@ async function main(): Promise<void> {
 
   initNodeSentry(getSentryOptions(env));
 
-  const app = createApp({ observability: nodeObservability });
+  const app = createNodeHttpApp(createApp({ observability: nodeObservability }));
   const bg = new NodeBackgroundRunner();
   const cron = startCron({
     env,
@@ -126,7 +121,7 @@ async function main(): Promise<void> {
 
   const port = resolvePort();
   const server: ServerType = serve({
-    fetch: (req) => app.fetch(req, env),
+    fetch: (req) => app.fetch(req, env, createNodeExecutionContext(bg)),
     port,
   });
 

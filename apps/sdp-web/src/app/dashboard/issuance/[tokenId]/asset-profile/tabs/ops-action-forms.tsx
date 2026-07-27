@@ -2,6 +2,7 @@
 
 import type { Token } from "@sdp/types";
 import { useState } from "react";
+import { useTranslations } from "@/i18n/provider";
 import { TokenActionForms } from "../../token-action-forms";
 import type { AdminAction } from "../../token-management-workspace.types";
 import { createInitialMetadataForm } from "../../token-management-workspace.utils";
@@ -18,6 +19,8 @@ export function OpsActionForms({
   token,
   activeAction,
   submitAlignment = "start",
+  formVariant = "flat",
+  hideAllowlistTitle = false,
   onMint,
   onBurn,
 }: {
@@ -25,10 +28,16 @@ export function OpsActionForms({
   token: Token;
   activeAction: AdminAction | null;
   submitAlignment?: "start" | "end";
+  // Panel chrome. "flat" (default) draws each form's own bordered panel (the
+  // fund-management modal needs it); "bare" drops it for the compliance tab,
+  // which wraps the whole controls column in one card.
+  formVariant?: "flat" | "bare";
+  hideAllowlistTitle?: boolean;
   // Overridable for modal contexts that need to close before submitting.
   onMint?: () => void;
   onBurn?: () => void;
 }) {
+  const t = useTranslations();
   const [metadataForm, setMetadataForm] = useState(() => createInitialMetadataForm(token));
   const signerProps = ops.getActionSignerProps(activeAction);
 
@@ -57,8 +66,12 @@ export function OpsActionForms({
       allowlistError={ops.allowlistError}
       controlListLabel={ops.controlListCopy?.label ?? null}
       controlListDescription={ops.controlListCopy?.description ?? null}
-      controlListAddActionLabel={ops.controlListCopy?.addActionLabel ?? "Add allowlist entry"}
-      controlListEmptyState={ops.controlListCopy?.emptyState ?? "No allowlist entries yet."}
+      controlListAddActionLabel={
+        ops.controlListCopy?.addActionLabel ?? t("DashboardIssuance.management.addAllowlistEntry")
+      }
+      controlListEmptyState={
+        ops.controlListCopy?.emptyState ?? t("DashboardIssuance.management.noAllowlistEntries")
+      }
       freezeHint={ops.controlListCopy?.freezeHint ?? null}
       signerWallets={signerProps.signerWallets}
       defaultSignerWalletId={signerProps.defaultSignerWalletId}
@@ -73,6 +86,8 @@ export function OpsActionForms({
       forceBurnValidationErrors={ops.forceBurnValidationErrors}
       forceBurnValidationReason={ops.forceBurnValidationReason}
       submitAlignment={submitAlignment}
+      variant={formVariant}
+      hideAllowlistTitle={hideAllowlistTitle}
       onSignerWalletIdChange={signerProps.onSignerWalletIdChange}
       onUpdateMetadata={() => {}}
       onMint={onMint ?? ops.handleMint}

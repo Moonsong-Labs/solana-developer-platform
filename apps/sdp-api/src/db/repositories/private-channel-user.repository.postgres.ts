@@ -120,7 +120,7 @@ export function createPostgresPrivateChannelUserRepository(
              INNER JOIN users u ON u.id = pcu.user_id
             WHERE pcu.organization_id = ?
               AND pcu.project_id = ?
-            ORDER BY pcu.created_at DESC`
+            ORDER BY pcu.created_at DESC, pcu.id DESC`
         )
         .bind(scope.organizationId, scope.projectId)
         .all<Record<string, unknown>>();

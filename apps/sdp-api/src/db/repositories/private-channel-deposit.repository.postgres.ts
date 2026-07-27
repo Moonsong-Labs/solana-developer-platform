@@ -21,6 +21,7 @@ function mapRow(row: Record<string, unknown>): PrivateChannelDepositRow {
     recipient: row.recipient as string,
     mint: row.mint as string,
     amount: row.amount as string,
+    private_channel_user_id: (row.private_channel_user_id ?? null) as string | null,
     baseline_credited: row.baseline_credited as string,
     gateway_url: (row.gateway_url ?? "") as string,
     chain_rpc_url: (row.chain_rpc_url ?? "") as string,
@@ -43,9 +44,10 @@ export function createPostgresPrivateChannelDepositRepository(
         .prepare(
           `INSERT INTO private_channel_deposits (
                id, organization_id, project_id, instance_id, wallet_id,
-               depositor, recipient, mint, amount, baseline_credited,
+               depositor, recipient, mint, amount, private_channel_user_id,
+               baseline_credited,
                gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING *`
         )
         .bind(
@@ -58,6 +60,7 @@ export function createPostgresPrivateChannelDepositRepository(
           input.recipient,
           input.mint,
           input.amount,
+          input.privateChannelUserId,
           input.baselineCredited,
           input.gatewayUrl,
           input.chainRpcUrl,
@@ -112,7 +115,7 @@ export function createPostgresPrivateChannelDepositRepository(
         .prepare(
           `SELECT * FROM private_channel_deposits
              WHERE organization_id = ? AND project_id = ?
-             ORDER BY created_at DESC`
+             ORDER BY created_at DESC, id DESC`
         )
         .bind(scope.organizationId, scope.projectId)
         .all<Record<string, unknown>>();
@@ -126,9 +129,12 @@ export function createPostgresPrivateChannelDepositRepository(
       const placeholders = input.statuses.map(() => "?").join(", ");
       const result = await db
         .prepare(
+          // Tie-broken because of the LIMIT: this is the reconciler's work queue, so
+          // rows sharing an updated_at at the cutoff would otherwise be included or
+          // dropped arbitrarily from tick to tick, and one could be starved.
           `SELECT * FROM private_channel_deposits
              WHERE status IN (${placeholders})
-             ORDER BY updated_at ASC
+             ORDER BY updated_at ASC, id ASC
              LIMIT ?`
         )
         .bind(...input.statuses, input.limit)
@@ -139,9 +145,15 @@ export function createPostgresPrivateChannelDepositRepository(
     async listDepositsForRecipient(scope: DepositRecipientScope) {
       const result = await db
         .prepare(
+          // The `, id ASC` tie-break decides which deposits get credited. deposit-credit
+          // walks this list in order, anchors its threshold on the first row's
+          // baseline_credited and breaks at the first row exceeding balance, and
+          // created_at is sdp_iso_now() at millisecond precision — so untie-broken, two
+          // deposits created in the same millisecond could swap places between
+          // reconciler ticks.
           `SELECT * FROM private_channel_deposits
              WHERE instance_id = ? AND recipient = ? AND mint = ?
-             ORDER BY created_at ASC`
+             ORDER BY created_at ASC, id ASC`
         )
         .bind(scope.instanceId, scope.recipient, scope.mint)
         .all<Record<string, unknown>>();

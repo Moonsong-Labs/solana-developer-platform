@@ -110,7 +110,7 @@ export function createPostgresPrivateChannelRepository(db: AppDb): PrivateChanne
     async listChannels({ instanceId }) {
       const result = await db
         .prepare(
-          "SELECT * FROM private_channels WHERE instance_id = ? AND status = 'active' ORDER BY created_at DESC"
+          "SELECT * FROM private_channels WHERE instance_id = ? AND status = 'active' ORDER BY created_at DESC, id DESC"
         )
         .bind(instanceId)
         .all<Record<string, unknown>>();

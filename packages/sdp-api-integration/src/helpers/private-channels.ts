@@ -3,9 +3,9 @@
  *
  * App-free (imports only `#env-impl`), so the gateway connectivity suite doesn't
  * drag the SDP app into its module graph. The live sandbox gateway URL is read
- * straight from the test env — the app itself no longer uses env config (the
- * connection is persisted per project), but a live-endpoint test legitimately
- * targets a URL from its environment.
+ * straight from the test env: the app resolves each project's connection from its
+ * persisted record, but a live-endpoint test legitimately targets a URL from its
+ * environment.
  *
  * Run (with the gateway reachable):
  *   RUN_INTEGRATION_TESTS=true \

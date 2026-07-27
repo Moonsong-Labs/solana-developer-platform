@@ -1,21 +1,4 @@
-import { getDb } from "@sdp/api/db";
-import app from "@sdp/api/index";
-import { hashString } from "@sdp/api/lib/hash";
-import { createFeePaymentAdapter } from "@sdp/api/services/adapters/fee-payment";
-import { createSigningService } from "@sdp/api/services/domain/signing.service";
-import { createMosaicService } from "@sdp/api/services/mosaic";
-import { createToken2022Service, Token2022Service } from "@sdp/api/services/solana";
-import {
-  CustodyConfigStore,
-  type CustodyWallet,
-} from "@sdp/api/services/stores/custody-config.store";
-import { TEST_ORG, TEST_USER } from "@sdp/api-test/fixtures/organizations";
-import {
-  TEST_PROJECT,
-  TEST_PROJECT_API_KEY,
-  TEST_PROJECT_CACHED_KEY,
-} from "@sdp/api-test/fixtures/tokens";
-import { clearTestDatabase, seedTestDatabase } from "@sdp/api-test/mocks/db";
+import { type ApiTestCustodyWallet, apiTestSupport } from "@sdp/api/test-support";
 import {
   confirmTransaction,
   createRpc,
@@ -36,6 +19,25 @@ import {
 import { getTransferSolInstruction } from "@solana-program/system";
 import { env } from "#env-impl";
 import { getIntegrationCustodyProvider } from "./custody-provider";
+
+const {
+  app,
+  clearTestDatabase,
+  createKVStoreSet,
+  createFeePaymentAdapter,
+  createMosaicService,
+  createSigningService,
+  createToken2022Service,
+  CustodyConfigStore,
+  getDb,
+  hashString,
+  seedTestDatabase,
+  TEST_ORG,
+  TEST_PROJECT,
+  TEST_PROJECT_API_KEY,
+  TEST_PROJECT_CACHED_KEY,
+  TEST_USER,
+} = apiTestSupport;
 
 const PRIVY_CONFIGURED = !!env.PRIVY_APP_ID && !!env.PRIVY_APP_SECRET;
 const KORA_CONFIGURED = !!env.KORA_RPC_URL;
@@ -81,8 +83,9 @@ async function computeApiKeyHash(): Promise<string> {
   }
 
   const pepper = (env as { API_KEY_PEPPER: string }).API_KEY_PEPPER;
-  cachedKeyHash = await hashString(TEST_PROJECT_API_KEY.raw, pepper);
-  return cachedKeyHash;
+  const hash = await hashString(TEST_PROJECT_API_KEY.raw, pepper);
+  cachedKeyHash = hash;
+  return hash;
 }
 
 export async function initIntegrationSuite() {
@@ -98,8 +101,7 @@ export async function resetIntegrationState(
   apiKeyHash: string
 ): Promise<{ custodyAddress: string }> {
   const db = getDb(env);
-  const apiKeysKV = env.SDP_API_KEYS;
-  const rateLimitKV = env.SDP_RATE_LIMITS;
+  const { apiKeys: apiKeysKV, rateLimits: rateLimitKV } = createKVStoreSet(env);
 
   const rateLimitKeys = await rateLimitKV.list();
   for (const key of rateLimitKeys.keys) {
@@ -218,7 +220,9 @@ export async function request(url: string, init: IntegrationRequestInit = {}) {
   }
 
   const controller = new AbortController();
-  const operation = app.request(url, { ...requestInit, signal: controller.signal }, env);
+  const operation = Promise.resolve(
+    app.request(url, { ...requestInit, signal: controller.signal }, env)
+  );
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   void operation.catch(() => undefined);
 
@@ -663,7 +667,7 @@ export async function createFundedPrivyWallet(input: {
   label: string;
   fundLamports?: number;
   setDefault?: boolean;
-}): Promise<CustodyWallet> {
+}): Promise<ApiTestCustodyWallet> {
   const signingService = createSigningService(env);
   const wallet = await signingService.createWallet(TEST_ORG.id, undefined, {
     provider: "privy",
@@ -684,7 +688,7 @@ export async function createFundedIntegrationWallet(input: {
   label: string;
   fundLamports?: number;
   setDefault?: boolean;
-}): Promise<CustodyWallet> {
+}): Promise<ApiTestCustodyWallet> {
   if (INTEGRATION_CUSTODY_PROVIDER === "local") {
     return createFundedLocalWallet(input);
   }
@@ -696,7 +700,7 @@ async function createFundedLocalWallet(input: {
   label: string;
   fundLamports?: number;
   setDefault?: boolean;
-}): Promise<CustodyWallet> {
+}): Promise<ApiTestCustodyWallet> {
   const publicKey = await ensureLocalCustodyAddress();
   const signingService = createSigningService(env);
   const config = await signingService.getConfigurationByProvider(TEST_ORG.id, undefined, "local");
@@ -704,7 +708,7 @@ async function createFundedLocalWallet(input: {
     throw new Error("Integration precondition failed: local signer configuration not found.");
   }
 
-  const configStore = new CustodyConfigStore(getDb(env), env.CUSTODY_ENCRYPTION_KEY);
+  const configStore = new CustodyConfigStore(getDb(env), env);
   // Local custody has one signing key; access tests still need distinct wallet IDs.
   const wallet = await configStore.createWallet(config.id, {
     walletId: `local_${crypto.randomUUID()}`,
@@ -747,5 +751,4 @@ export {
   TEST_PROJECT_API_KEY,
   TEST_PROJECT_CACHED_KEY,
   TEST_USER,
-  Token2022Service,
 };

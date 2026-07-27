@@ -1,11 +1,12 @@
 "use client";
 
 import type { Counterparty, CounterpartyResponse, CreateCounterpartyRequest } from "@sdp/types";
-import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "@/i18n/provider";
 import { dashboardFetch } from "@/lib/dashboard-fetch";
+import { useDashboardRouter } from "@/lib/use-dashboard-router";
 import { useZodForm, type ZodFormApi } from "@/lib/use-zod-form";
 import {
   defaultAddress,
@@ -23,6 +24,7 @@ import {
   type IdentityClean,
   type IdentityData,
   identitySchema,
+  resolveCounterpartyValidationMessage,
   type StepId,
 } from "./counterparty-create-schemas";
 
@@ -60,11 +62,16 @@ export function CounterpartyCreateProvider({
   children,
   onCreated,
 }: CounterpartyCreateProviderProps) {
-  const router = useRouter();
+  const router = useDashboardRouter();
+  const t = useTranslations();
 
-  const basics = useZodForm(basicsSchema, defaultBasics);
-  const identity = useZodForm(identitySchema, defaultIdentity);
-  const address = useZodForm(addressSchema, defaultAddress);
+  const resolveValidationMessage = useMemo(
+    () => (code: string) => resolveCounterpartyValidationMessage(t, code),
+    [t]
+  );
+  const basics = useZodForm(basicsSchema, defaultBasics, resolveValidationMessage);
+  const identity = useZodForm(identitySchema, defaultIdentity, resolveValidationMessage);
+  const address = useZodForm(addressSchema, defaultAddress, resolveValidationMessage);
 
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -106,10 +113,9 @@ export function CounterpartyCreateProvider({
 
     try {
       const basicsResult = basics.validate();
-      const identityResult = identity.validate();
       const addressResult = address.validate();
 
-      if (!basicsResult.ok || !identityResult.ok || !addressResult.ok) {
+      if (!basicsResult.ok || !addressResult.ok) {
         throw new Error("Invalid form state");
       }
 
@@ -118,18 +124,24 @@ export function CounterpartyCreateProvider({
         email: basicsResult.data.email,
         externalId: basicsResult.data.externalId,
       };
-      const body: CreateCounterpartyRequest =
-        basicsResult.data.entityType === "individual"
-          ? {
-              ...commonFields,
-              entityType: "individual",
-              identity: { ...identityResult.data, address: addressResult.data },
-            }
-          : {
-              ...commonFields,
-              entityType: "business",
-              identity: { address: addressResult.data },
-            };
+      let body: CreateCounterpartyRequest;
+      if (basicsResult.data.entityType === "individual") {
+        const identityResult = identity.validate();
+        if (!identityResult.ok) {
+          throw new Error("Invalid form state");
+        }
+        body = {
+          ...commonFields,
+          entityType: "individual",
+          identity: { ...identityResult.data, address: addressResult.data },
+        };
+      } else {
+        body = {
+          ...commonFields,
+          entityType: "business",
+          identity: { address: addressResult.data },
+        };
+      }
 
       const result = await dashboardFetch<{ data: CounterpartyResponse }>(
         "/api/dashboard/counterparty",
@@ -143,14 +155,18 @@ export function CounterpartyCreateProvider({
 
       const created = result.data?.data?.counterparty ?? null;
       if (!created) {
-        setSubmitError("Counterparty was created but could not be loaded.");
+        setSubmitError(t("DashboardPayments.counterparty.createdButUnavailable"));
         return;
       }
 
-      toast.success("Counterparty created", { position: "bottom-right" });
+      toast.success(t("DashboardPayments.counterparty.createdSuccess"), {
+        position: "bottom-right",
+      });
       setCreatedCounterparty(created);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Something went wrong");
+      setSubmitError(
+        err instanceof Error ? err.message : t("DashboardPayments.counterparty.somethingWentWrong")
+      );
     } finally {
       setSubmitting(false);
     }

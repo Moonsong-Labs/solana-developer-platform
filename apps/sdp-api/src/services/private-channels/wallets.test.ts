@@ -1,19 +1,18 @@
+import { SigningError } from "@sdp/custody/signing";
 import { PrivateChannelError } from "@sdp/private-channels";
 import * as authPkg from "@sdp/private-channels/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as repositories from "@/db/repositories";
 import type { ApiKeyContext } from "@/lib/auth";
-import { SigningError } from "@/services/ports";
 import * as solana from "@/services/solana";
 import type { Env } from "@/types/env";
 import * as gatewayAuth from "./auth/gateway-auth";
 import * as spcSession from "./auth/spc-session";
 import { deletePrivateChannelWallet, verifyPrivateChannelWallet } from "./wallets";
 
-// Uses vi.spyOn (+ restoreAllMocks) rather than vi.mock: the sdp-api test pools
-// share module state across files (isolate: false / workers pool), so a
-// module-level vi.mock of widely-used modules like @/db/repositories would leak
-// into unrelated test files. Spies are transient and restored per test.
+// Uses vi.spyOn (+ restoreAllMocks) rather than a module-level vi.mock of
+// widely-used modules like @/db/repositories: spies are transient and restored
+// per test, so this file's mocking cannot reach any other.
 
 const PUBKEY = "So11111111111111111111111111111111111111112";
 const WALLET_ID = "wal_1";

@@ -2,9 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import { hasPermission, type PrivateChannelInstance } from "@sdp/types";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { resolveDashboardAccess } from "@/lib/dashboard-access";
-import { isPrivateChannelsDashboardEnabled } from "@/lib/private-channels-feature";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { PrivateChannelsConnectForm } from "./private-channels-connect-form";
 
@@ -23,7 +23,7 @@ async function fetchInitialInstance(): Promise<PrivateChannelInstance | null> {
 }
 
 export default async function PrivateChannelsPage() {
-  if (!isPrivateChannelsDashboardEnabled()) {
+  if (!(await privateChannels())) {
     notFound();
   }
 
