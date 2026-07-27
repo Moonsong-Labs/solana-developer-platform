@@ -1,4 +1,8 @@
-import type { PrivateChannelWithdrawal, PrivateChannelWithdrawalStatus } from "@sdp/types";
+import type {
+  PrivateChannelTransferContext,
+  PrivateChannelTransferStatus,
+  PrivateChannelWithdrawal,
+} from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelWithdrawalId(): string {
@@ -15,23 +19,14 @@ export interface PrivateChannelWithdrawalRow {
   destination: string;
   mint: string;
   amount: string;
-  /**
-   * Member who created the intent, captured while the request was authenticated.
-   * The reconciler authenticates its gateway reads as this member. Null only for a
-   * row whose member was later revoked (FK is ON DELETE SET NULL).
-   */
-  private_channel_user_id: string | null;
-  /** Instance config snapshotted at intent time — the reconciler's fixed context. */
-  gateway_url: string;
-  chain_rpc_url: string;
-  escrow_program_id: string;
-  escrow_instance_addr: string;
-  status: PrivateChannelWithdrawalStatus;
+  status: PrivateChannelTransferStatus;
   /** Channel-chain burn signature (null until submitted). */
-  burn_signature: string | null;
-  /** Devnet release signature = settlement correlation (null until released). */
-  release_signature: string | null;
+  signature: string | null;
+  /** Devnet release signature (null until settled). */
+  settlement_ref: string | null;
   failure_reason: string | null;
+  /** Read-only audit snapshot; the oracle never reads it. */
+  context: PrivateChannelTransferContext;
   created_at: string;
   updated_at: string;
 }
@@ -48,34 +43,24 @@ export interface CreateWithdrawalInput extends WithdrawalProjectScope {
   destination: string;
   mint: string;
   amount: string;
-  /** Member creating the intent; taken from the request's SPC auth context. */
-  privateChannelUserId: string;
-  /** Instance config snapshot (immutable reconciliation context). */
-  gatewayUrl: string;
-  chainRpcUrl: string;
-  escrowProgramId: string;
-  escrowInstanceAddr: string;
+  /** Audit snapshot at intent time; oracle never reads it. */
+  context: PrivateChannelTransferContext;
 }
 
 export interface UpdateWithdrawalInput {
   id: string;
-  status: PrivateChannelWithdrawalStatus;
-  /** Set on submit; ignored (kept) when omitted on later transitions. */
-  burnSignature?: string | null;
-  /** Set on release; ignored (kept) when omitted. */
-  releaseSignature?: string | null;
-  /** Set on failure; ignored (kept) when omitted. */
+  status: PrivateChannelTransferStatus;
+  /** Set on submit; kept when omitted. */
+  signature?: string | null;
+  /** Set on settle; kept when omitted. */
+  settlementRef?: string | null;
+  /** Set on failure; kept when omitted. */
   failureReason?: string | null;
   /**
-   * Compare-and-swap guard: when set, the update only applies if the row is still
-   * in this status. Prevents concurrent workers from regressing/overwriting state.
+   * Compare-and-swap guard: when set, the update only applies if the row is
+   * still in this status. Prevents concurrent pollers from regressing state.
    */
-  expectedStatus?: PrivateChannelWithdrawalStatus;
-}
-
-export interface ListWithdrawalsByStatusInput {
-  statuses: PrivateChannelWithdrawalStatus[];
-  limit: number;
+  expectedStatus?: PrivateChannelTransferStatus;
 }
 
 export interface PrivateChannelWithdrawalRepositoryContext {
@@ -89,13 +74,17 @@ export interface PrivateChannelWithdrawalRepository {
     scope: WithdrawalProjectScope & { id: string }
   ): Promise<PrivateChannelWithdrawalRow | null>;
   listWithdrawalsByProject(scope: WithdrawalProjectScope): Promise<PrivateChannelWithdrawalRow[]>;
-  /** Reconciler scan across projects — non-terminal withdrawals only. */
-  listWithdrawalsByStatus(
-    input: ListWithdrawalsByStatusInput
-  ): Promise<PrivateChannelWithdrawalRow[]>;
-  /** Count non-terminal withdrawals for an instance — the delete guard: an instance
-   * can't be deleted while withdrawals are in flight. */
+  /** Opportunistic sweep of non-terminal withdrawals for a project. */
+  listNonTerminalByProject(scope: WithdrawalProjectScope): Promise<PrivateChannelWithdrawalRow[]>;
+  /**
+   * Global sweep of non-terminal withdrawals, oldest-updated first. Used by the
+   * cron reconciler; `limit` caps the per-tick work.
+   */
+  listNonTerminal(limit: number): Promise<PrivateChannelWithdrawalRow[]>;
+  /** Delete guard. */
   countNonTerminalByInstance(instanceId: string): Promise<number>;
+  /** Merge `patch` into `context` JSONB atomically (see deposit repo). */
+  patchContext(id: string, patch: PrivateChannelTransferContext): Promise<void>;
 }
 
 export function mapPrivateChannelWithdrawalRow(
@@ -112,9 +101,10 @@ export function mapPrivateChannelWithdrawalRow(
     mint: row.mint,
     amount: row.amount,
     status: row.status,
-    burnSignature: row.burn_signature ?? null,
-    releaseSignature: row.release_signature ?? null,
+    signature: row.signature ?? null,
+    settlementRef: row.settlement_ref ?? null,
     failureReason: row.failure_reason ?? null,
+    context: row.context ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

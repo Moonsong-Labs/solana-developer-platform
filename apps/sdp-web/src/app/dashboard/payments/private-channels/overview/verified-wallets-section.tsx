@@ -14,9 +14,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { deleteVerifiedWalletAction, verifyWalletAction } from "./actions";
 
+/** Channel balance projected for a single verified wallet (per mint). */
+export interface WalletChannelBalance {
+  uiAmount: string;
+  mint: string;
+}
+
 interface Props {
   verifiedWallets: PrivateChannelVerifiedWalletDto[];
   custodyWallets: CustodyWalletSummary[];
+  /** Keyed by wallet pubkey; entry present when the balance read succeeded. */
+  channelBalances: Record<string, WalletChannelBalance>;
   loadError: boolean;
 }
 
@@ -24,7 +32,12 @@ function shortKey(pk: string): string {
   return pk.length > 12 ? `${pk.slice(0, 4)}…${pk.slice(-4)}` : pk;
 }
 
-export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadError }: Props) {
+export function VerifiedWalletsSection({
+  verifiedWallets,
+  custodyWallets,
+  channelBalances,
+  loadError,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
@@ -100,6 +113,14 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
             <div className="flex shrink-0 items-center gap-2">
               {verified ? (
                 <>
+                  {channelBalances[wallet.publicKey] ? (
+                    <span
+                      className="font-mono text-sm text-text-medium"
+                      title={`Channel balance for mint ${channelBalances[wallet.publicKey].mint}`}
+                    >
+                      {channelBalances[wallet.publicKey].uiAmount} USDC
+                    </span>
+                  ) : null}
                   <Badge variant="success">
                     <span className="inline-flex items-center gap-1">
                       <CheckCircle2Icon className="size-3" />
@@ -144,6 +165,14 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
             <span className="text-xs text-text-medium">Custody wallet no longer listed</span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {channelBalances[w.pubkey] ? (
+              <span
+                className="font-mono text-sm text-text-medium"
+                title={`Channel balance for mint ${channelBalances[w.pubkey].mint}`}
+              >
+                {channelBalances[w.pubkey].uiAmount} USDC
+              </span>
+            ) : null}
             <Badge variant="success">Verified</Badge>
             <Button
               variant="ghost"

@@ -2,11 +2,10 @@
  * Private Channels deposit flow.
  *
  * Moves USDC from a custody wallet into the instance escrow on the instance's
- * chain (devnet), then the operator credits it into the channel (detected later
- * via the gateway balance). The tx is server-signed by the custody wallet, which
- * is BOTH the escrow `user` (moves the tokens) and the escrow `payer` / tx fee
- * payer (pays rent + the SOL fee). Broadcast targets `instance.chainRpcUrl`, NOT
- * the default RPC or the gateway.
+ * chain (devnet). The tx is server-signed by the custody wallet, which is BOTH
+ * the escrow `user` (moves the tokens) and the escrow `payer` / tx fee payer
+ * (pays rent + the SOL fee). Broadcast targets `instance.chainRpcUrl`, NOT the
+ * default RPC or the gateway.
  *
  * TODO(gasless): switch to the Kora/native sponsored fee-payer model (the
  * `payer` = `createNoopSigner(feePayment.getFeePayer())`, tx fee payer set via
@@ -17,9 +16,9 @@
  * transactions that touch allow-listed programs, so the depositor pays their own
  * fee for now. See `createFeePaymentAdapter` in `@/services/adapters/fee-payment`.
  *
- * Lifecycle here: prepared (persist) → submitted (broadcast) → confirmed (on
- * devnet). `credited` is detected asynchronously by the reconciler / the page
- * poll via `getChannelBalance`.
+ * Lifecycle here: pending (persist) → submitted (broadcast) → confirmed (on
+ * devnet). `settled` (operator credit on SPC) is unreachable under the current
+ * chain-heuristic oracle — reachable once SPC exposes an event stream.
  */
 
 import * as solanaRpc from "@sdp/rpc/solana";
@@ -51,10 +50,10 @@ import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
 import type { SpcAuthContext } from "./auth/gateway-auth";
-import { getChannelBalance } from "./balance";
 import { confirmAndPersistDeposit } from "./deposit-confirm";
 import { emitDepositEvent } from "./deposit-events";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
+import { describeTxError } from "./tx-error";
 
 /** The instance fields the deposit needs. */
 type DepositInstance = Pick<
@@ -66,6 +65,8 @@ export interface CreateChannelDepositInput {
   instance: DepositInstance;
   organizationId: string;
   projectId: string;
+  /** SDP user creating the intent; recorded on the audit context. */
+  userId: string;
   /** Custody wallet the deposit is signed from (the escrow `user`). */
   wallet: CustodyWallet;
   /** UI decimal amount (e.g. "1.5"). */
@@ -73,9 +74,9 @@ export interface CreateChannelDepositInput {
   /** Address credited in the channel; defaults to the depositor. */
   recipient?: string;
   /**
-   * SPC auth context for the baseline gateway balance read. Required — the
-   * gateway JWT-gates balance reads; resolved by the handler via
-   * `resolveGatewayAuth`.
+   * SPC auth context. Auth-enabled instances gate gateway reads; kept on the
+   * signature only so this module stays symmetric with withdraw.ts, and its
+   * `pcUserId` is recorded on the audit context.
    */
   gatewayAuth: SpcAuthContext;
 }
@@ -165,15 +166,6 @@ export async function createChannelDeposit(
     throw badRequest("amount must be greater than zero");
   }
 
-  // Capture the recipient's current channel balance so the reconciler can detect
-  // the credit delta once the operator credits the deposit.
-  const baseline = await getChannelBalance(env, {
-    instance,
-    owner: recipient,
-    mint,
-    auth: input.gatewayAuth,
-  });
-
   const repo = createPrivateChannelDepositRepository(env);
   const created = await repo.createDeposit({
     organizationId,
@@ -184,15 +176,14 @@ export async function createChannelDeposit(
     recipient,
     mint,
     amount: input.amount,
-    // Record the acting member now, while we still know it. The reconciler needs an
-    // SPC identity for its gateway reads and cannot re-derive this one later.
-    privateChannelUserId: input.gatewayAuth.pcUserId,
-    baselineCredited: baseline.amount,
-    // Snapshot the reconciliation context so a later reconnect can't move it.
-    gatewayUrl: instance.gatewayUrl,
-    chainRpcUrl: instance.chainRpcUrl,
-    escrowProgramId: instance.escrowProgramId,
-    escrowInstanceAddr: instance.escrowInstanceAddr,
+    // Audit-only snapshot; the oracle always reads the current instance row.
+    context: {
+      gatewayUrl: instance.gatewayUrl,
+      chainRpcUrl: instance.chainRpcUrl,
+      escrowProgramId: instance.escrowProgramId,
+      escrowInstanceAddr: instance.escrowInstanceAddr,
+      actingUserId: input.userId,
+    },
   });
   if (!created) {
     throw new AppError("INTERNAL_ERROR", "Failed to persist the deposit intent.");
@@ -214,8 +205,20 @@ export async function createChannelDeposit(
       amountBaseUnits,
     });
   } catch (error) {
-    const failureReason = error instanceof Error ? error.message : "Deposit submission failed.";
-    const failed = await repo.updateDeposit({ id: created.id, status: "failed", failureReason });
+    const failureReason = describeTxError(error, "Deposit submission failed.");
+    console.error("createChannelDeposit: broadcast failed", {
+      depositId: created.id,
+      error,
+    });
+    const failed = await repo.updateDeposit({
+      id: created.id,
+      status: "failed",
+      failureReason,
+      expectedStatus: "pending",
+    });
+    if (failed) {
+      await emitDepositEvent(env, failed, "transfer.deposit.failed", "failed", { failureReason });
+    }
     return mapPrivateChannelDepositRow(failed ?? created);
   }
 
@@ -224,7 +227,7 @@ export async function createChannelDeposit(
       id: created.id,
       status: "submitted",
       signature,
-      expectedStatus: "prepared",
+      expectedStatus: "pending",
     })) ?? latest;
 
   // Best-effort activity event (never bubbles): deposit broadcast.
@@ -240,6 +243,13 @@ export async function createChannelDeposit(
   });
   if (settled) {
     latest = settled;
+    if (latest.status === "confirmed") {
+      await emitDepositEvent(env, latest, "transfer.deposit.confirmed", "confirmed", { signature });
+    } else if (latest.status === "failed") {
+      await emitDepositEvent(env, latest, "transfer.deposit.failed", "failed", {
+        failureReason: latest.failure_reason,
+      });
+    }
   }
 
   return mapPrivateChannelDepositRow(latest);
