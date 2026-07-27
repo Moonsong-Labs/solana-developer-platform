@@ -19,11 +19,10 @@ import type { SolanaRpc } from "@sdp/rpc/solana";
 import {
   createPrivateChannelInstanceRepository,
   createPrivateChannelUserRepository,
-  createPrivateChannelVerifiedWalletRepository,
   type PrivateChannelUserRow,
 } from "@/db/repositories";
 import { forbidden } from "@/lib/errors";
-import { createKVStoreSet } from "@/runtime/factory";
+import { createKVStoreSet } from "@/runtime/kv-redis";
 import type { Env } from "@/types/env";
 import { getSpcSession } from "./spc-session";
 
@@ -40,10 +39,16 @@ export interface GatewayAuthInstance {
 /**
  * A live SPC bearer token that can re-mint itself. `current` is the token to
  * send; `refresh()` re-logins (evicting the cached entry) and updates `current`.
+ *
+ * `pcUserId` is the member the token was minted for. Carried on the context so a
+ * write path can persist the acting member alongside the row it creates: the
+ * background reconciler later needs an SPC identity to read the gateway, and
+ * re-deriving one from an on-chain address is ambiguous and sometimes impossible.
  */
 export interface SpcAuthContext {
   current: string;
   refresh(): Promise<string>;
+  pcUserId: string;
 }
 
 export interface ResolveGatewayAuthInput {
@@ -54,12 +59,15 @@ export interface ResolveGatewayAuthInput {
   userId: string | null | undefined;
 }
 
-/** Best-effort KV `cache` store; `undefined` when KV isn't configured on this runtime. */
+/** Best-effort KV `cache` store; `undefined` when Redis isn't configured. */
 function tryGetCache(env: Env) {
   try {
     return createKVStoreSet(env).cache;
   } catch {
-    return undefined; // No KV binding → no caching, fall back to fresh login each call.
+    // Both server entrypoints assert REDIS_URL, so this is a guard for partially
+    // configured envs (tests, scripts) rather than a path production takes: no
+    // Redis → no caching, fall back to a fresh login each call.
+    return undefined;
   }
 }
 
@@ -83,6 +91,7 @@ export async function openSpcAuthContext(
   const context: SpcAuthContext = {
     current: token,
     refresh: async () => (context.current = (await session(true)).token),
+    pcUserId: pcUser.id,
   };
   return context;
 }
@@ -189,59 +198,60 @@ export type OwnerGatewayAuth =
   | { kind: "token"; context: SpcAuthContext }
   | { kind: "unavailable"; reason: string };
 
-export interface ResolveOwnerGatewayAuthInput {
+export interface ResolveMemberGatewayAuthInput {
   organizationId: string;
   projectId: string;
-  /** The deposit's persisted instance (auth config is read from the CURRENT row). */
+  /** The row's persisted instance (auth config is read from the CURRENT row). */
   instanceId: string;
-  /** On-chain address whose balance is being read (the credit recipient). */
-  owner: string;
+  /**
+   * The member who created the intent, from the row's `private_channel_user_id`.
+   * Null when the member was revoked after the fact (FK is ON DELETE SET NULL).
+   */
+  privateChannelUserId: string | null;
 }
 
 /**
- * Resolve gateway auth for a background job from an on-chain address alone.
+ * Resolve gateway auth for a background job from the member persisted on the row.
  *
- * The cron has no request user, so it derives an SPC identity from the data: the
- * owner pubkey must have been VERIFIED by a member ON THIS INSTANCE, which maps
- * `(instance_id, pubkey) → private_channel_verified_wallets.user_id →
- * private_channel_users` — the member whose SPC credential can mint a token. Reading a member's own balance
- * under their own SPC identity is the natural attribution.
+ * The acting member is captured at intent time, while the request is still
+ * authenticated, so the cron reads it rather than re-deriving it. An on-chain address
+ * cannot stand in for the actor: `private_channel_verified_wallets` answers a
+ * different question (who verified this wallet, unique on
+ * `user_id + instance_id + pubkey`, so 0, 1 or many answers), a cross-member deposit
+ * resolves to the RECIPIENT rather than the actor, and an external recipient has no
+ * row at all.
  *
- * Returns `unavailable` (never throws) when no identity can be derived — e.g. the
- * recipient is an external/unverified address. The caller should skip that group
- * and leave the deposits for manual resolution rather than fail the whole tick.
+ * Returns `unavailable` (never throws) when no identity is available — a revoked
+ * member, a deleted instance, or a failed SPC login. The caller should skip that
+ * row and leave it for manual resolution rather than fail the whole tick.
  *
- * NOTE: `auth_url` comes from the instance's CURRENT row, not the deposit's
- * snapshot (the snapshot pins the chain/gateway, and carries no auth endpoint).
+ * NOTE: `auth_url` comes from the instance's CURRENT row, not the row's snapshot
+ * (the snapshot pins the chain/gateway, and carries no auth endpoint).
  * Authenticating against the current auth service is the desired behaviour; if
  * that ever needs pinning too, add it to the snapshot.
  */
-export async function resolveOwnerGatewayAuth(
+export async function resolveMemberGatewayAuth(
   env: Env,
-  { organizationId, projectId, instanceId, owner }: ResolveOwnerGatewayAuthInput
+  { organizationId, projectId, instanceId, privateChannelUserId }: ResolveMemberGatewayAuthInput
 ): Promise<OwnerGatewayAuth> {
+  if (!privateChannelUserId) {
+    return {
+      kind: "unavailable",
+      reason: "the member who created this intent has been revoked",
+    };
+  }
+
   const instance = await createPrivateChannelInstanceRepository(env).getById(instanceId);
   if (!instance) {
     return { kind: "unavailable", reason: `instance ${instanceId} no longer exists` };
   }
 
-  const scope = { organizationId, projectId };
-  // Verifications are INSTANCE-scoped (uniqueness is user_id + instance_id + pubkey),
-  // so resolve the owner against the deposit's own instance.
-  const verified = await createPrivateChannelVerifiedWalletRepository(env).findByInstanceAndPubkey(
-    instanceId,
-    owner
+  const pcUser = await createPrivateChannelUserRepository(env).getById(
+    { organizationId, projectId },
+    privateChannelUserId
   );
-  if (!verified) {
-    return {
-      kind: "unavailable",
-      reason: `no verified wallet maps ${owner} to a Private Channels member`,
-    };
-  }
-
-  const pcUser = await createPrivateChannelUserRepository(env).getById(scope, verified.user_id);
   if (!pcUser) {
-    return { kind: "unavailable", reason: `member ${verified.user_id} no longer exists` };
+    return { kind: "unavailable", reason: `member ${privateChannelUserId} no longer exists` };
   }
 
   try {

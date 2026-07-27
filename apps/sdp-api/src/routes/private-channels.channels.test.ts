@@ -1,11 +1,11 @@
+import { hashString } from "@sdp/payments/hash";
 import type { CachedApiKey, PrivateChannelDto } from "@sdp/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
 import app from "@/index";
-import { hashString } from "@/lib/hash";
 import { env } from "@/test/helpers/env";
 import { clearTestDatabase, seedTestDatabase } from "@/test/mocks/db";
-import { clearKVNamespaces, seedCachedApiKey } from "@/test/mocks/kv";
+import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
 
 const TEST_ORG = { id: "org_pc_test", name: "Private Channels Test Org", slug: "pc-test-org" };
 const TEST_PROJECT = { id: "prj_pc_test", slug: "pc-test-project" };
@@ -106,7 +106,7 @@ describe("Private Channels — channel routes", () => {
   afterEach(async () => {
     env.PRIVATE_CHANNELS_ENABLED = originalEnabled;
     await clearTestDatabase(env);
-    await clearKVNamespaces(env);
+    await clearKVStores(env);
   });
 
   it("returns 403 when the feature is disabled", async () => {

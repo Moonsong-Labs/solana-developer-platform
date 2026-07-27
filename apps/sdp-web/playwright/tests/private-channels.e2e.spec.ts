@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { getPrivateChannelsDefault } from "@/lib/feature-flag-defaults";
 import { getPlaywrightAdminSession } from "../support/auth-session";
 import {
   ensureLinkedOrg,
@@ -7,7 +8,15 @@ import {
 } from "../support/local-dashboard-bootstrap";
 import { getBootstrapApiBaseUrl } from "../support/local-issuance-bootstrap";
 
-const privateChannelsEnabled = process.env.NEXT_PUBLIC_PAYMENTS_PRIVATE_CHANNELS_ENABLED === "true";
+// The dashboard gates on the `private-channels` Vercel flag, whose default is
+// derived from this server-side env var (see src/lib/feature-flag-defaults.ts).
+// Local Playwright runs have no Vercel flag provider, so the default decides.
+// Call the real resolver rather than re-implementing it: it accepts 1/true/yes/on,
+// so a hand-rolled `=== "true"` would skip the wrong branch for e.g. "1" and assert
+// the nav link is absent against a dashboard that renders it.
+const privateChannelsEnabled = getPrivateChannelsDefault({
+  privateChannelsEnabled: process.env.PRIVATE_CHANNELS_ENABLED,
+});
 
 test.describe
   .serial("dashboard private channels feature flag", () => {
@@ -38,10 +47,7 @@ test.describe
     });
 
     test("shows private channels when the dashboard feature flag is enabled", async ({ page }) => {
-      test.skip(
-        !privateChannelsEnabled,
-        "Requires NEXT_PUBLIC_PAYMENTS_PRIVATE_CHANNELS_ENABLED=true"
-      );
+      test.skip(!privateChannelsEnabled, "Requires PRIVATE_CHANNELS_ENABLED=true");
 
       await page.goto("/dashboard/payments");
       await expect(page.getByRole("link", { name: "Private Channels" })).toBeVisible();

@@ -3,8 +3,11 @@
 import { ORGANIZATION_RPC_PROVIDERS, type OrganizationRpcProvider } from "@sdp/types";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { RpcProviderMark } from "@/app/dashboard/onboarding/rpc-provider-mark";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Select, SelectItem } from "@/components/ui/select";
+import { useTranslations } from "@/i18n/provider";
 import { updateOrganizationRpcSettingsAction } from "./actions";
 
 type OrganizationSettings = {
@@ -42,15 +45,16 @@ type RpcTestResult = {
   latencyMs?: number;
 };
 
-function toRpcTestErrorMessage(error: unknown): string {
+function toRpcTestErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return "Failed to test RPC provider.";
+  return fallback;
 }
 
 async function runRpcProviderTest(
-  requestedProvider: OrganizationRpcProvider
+  requestedProvider: OrganizationRpcProvider,
+  t: ReturnType<typeof useTranslations>
 ): Promise<RpcTestResult> {
   const startedAt = Date.now();
 
@@ -88,7 +92,7 @@ async function runRpcProviderTest(
     if (!executeResponse.ok || envelope.status === undefined || envelope.statusText === undefined) {
       return {
         status: "error",
-        message: envelope.error ?? "RPC test failed.",
+        message: envelope.error ?? t("DashboardCustody.rpcTestFailed"),
         requestedProvider,
         latencyMs,
       };
@@ -97,7 +101,9 @@ async function runRpcProviderTest(
     if (!envelope.ok || !envelope.body?.data) {
       return {
         status: "error",
-        message: envelope.body?.error?.message || `RPC test failed (${envelope.status}).`,
+        message:
+          envelope.body?.error?.message ||
+          t("DashboardCustody.rpcTestFailedStatus", { status: envelope.status }),
         requestedProvider,
         latencyMs,
       };
@@ -111,7 +117,10 @@ async function runRpcProviderTest(
     if (requestedProvider !== "default" && resolvedProvider !== requestedProvider) {
       return {
         status: "error",
-        message: `RPC test mismatch (requested ${requestedProvider}, resolved ${resolvedProvider}).`,
+        message: t("DashboardCustody.rpcTestMismatch", {
+          requested: requestedProvider,
+          resolved: resolvedProvider,
+        }),
         requestedProvider,
         resolvedProvider,
         selectionMode,
@@ -125,7 +134,10 @@ async function runRpcProviderTest(
     if (!upstream.ok) {
       return {
         status: "error",
-        message: `RPC upstream returned ${upstream.status} ${upstream.statusText}.`,
+        message: t("DashboardCustody.rpcUpstreamReturned", {
+          status: upstream.status,
+          statusText: upstream.statusText,
+        }),
         requestedProvider,
         resolvedProvider,
         selectionMode,
@@ -138,7 +150,11 @@ async function runRpcProviderTest(
 
     return {
       status: "success",
-      message: `RPC test passed (${upstream.status} ${upstream.statusText}) in ${latencyMs}ms.`,
+      message: t("DashboardCustody.rpcTestPassed", {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        latency: latencyMs,
+      }),
       requestedProvider,
       resolvedProvider,
       selectionMode,
@@ -150,7 +166,7 @@ async function runRpcProviderTest(
   } catch (error) {
     return {
       status: "error",
-      message: toRpcTestErrorMessage(error),
+      message: toRpcTestErrorMessage(error, t("DashboardCustody.failedToTestRpcProvider")),
       requestedProvider,
       latencyMs: Date.now() - startedAt,
     };
@@ -166,6 +182,69 @@ const RPC_PROVIDER_LABELS: Record<OrganizationRpcProvider, string> = {
   validationcloud: "Validation Cloud",
 };
 
+function RpcTestResultPanel({ result }: { result: RpcTestResult }) {
+  const t = useTranslations();
+  return (
+    <div className="rounded-xl border border-border-default bg-fill-subtle p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-primary">
+          {t("DashboardCustody.rpcDetailTitle")}
+        </span>
+        <Badge variant={result.status === "success" ? "success" : "danger"}>
+          {result.status === "success"
+            ? t("DashboardCustody.rpcDetailReachable")
+            : t("DashboardCustody.rpcDetailUnreachable")}
+        </Badge>
+      </div>
+      {result.status === "error" ? (
+        <p className="mt-2 text-sm text-error">{result.message}</p>
+      ) : null}
+      <dl className="mt-3 grid gap-2 text-sm">
+        {result.resolvedProvider ? (
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-tertiary">{t("DashboardCustody.rpcDetailResolvedProvider")}</dt>
+            <dd className="text-primary">
+              {RPC_PROVIDER_LABELS[result.resolvedProvider as OrganizationRpcProvider] ??
+                result.resolvedProvider}
+            </dd>
+          </div>
+        ) : null}
+        {result.selectionMode ? (
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-tertiary">{t("DashboardCustody.rpcDetailSelectionMode")}</dt>
+            <dd className="text-primary">{result.selectionMode}</dd>
+          </div>
+        ) : null}
+        {result.endpoint ? (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="shrink-0 text-tertiary">{t("DashboardCustody.rpcDetailEndpoint")}</dt>
+            <dd className="min-w-0 break-all text-right font-mono text-xs text-primary">
+              {result.endpoint}
+            </dd>
+          </div>
+        ) : null}
+        {result.upstreamStatus !== undefined ? (
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-tertiary">{t("DashboardCustody.rpcDetailUpstream")}</dt>
+            <dd className="text-primary">
+              {result.upstreamStatus}
+              {result.upstreamStatusText ? ` ${result.upstreamStatusText}` : ""}
+            </dd>
+          </div>
+        ) : null}
+        {result.latencyMs !== undefined ? (
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-tertiary">{t("DashboardCustody.rpcDetailLatency")}</dt>
+            <dd className="text-primary">
+              {t("DashboardCustody.rpcDetailLatencyValue", { ms: result.latencyMs })}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
+  );
+}
+
 export function OrganizationRpcSettingsForm({
   canManageSettings,
   enabledProviders,
@@ -175,6 +254,7 @@ export function OrganizationRpcSettingsForm({
   enabledProviders: OrganizationRpcProvider[];
   organization: SettingsOrganization;
 }) {
+  const t = useTranslations();
   const rpcProvider = organization.settings?.rpcProvider ?? "default";
   const availableProviders = useMemo(
     () =>
@@ -197,6 +277,7 @@ export function OrganizationRpcSettingsForm({
   const [isTesting, setIsTesting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isApplyingFallback, setIsApplyingFallback] = useState(false);
+  const [lastTest, setLastTest] = useState<RpcTestResult | null>(null);
 
   useEffect(() => {
     setSelectedProvider(hasPersistedProviderEnabled ? rpcProvider : fallbackProvider);
@@ -211,7 +292,7 @@ export function OrganizationRpcSettingsForm({
     try {
       const result = await updateOrganizationRpcSettingsAction(formData);
       if (result.status !== "success") {
-        setErrorMessage(result.message || "Failed to save RPC settings.");
+        setErrorMessage(result.message || t("DashboardCustody.failedToSaveRpcSettings"));
         return;
       }
 
@@ -233,20 +314,21 @@ export function OrganizationRpcSettingsForm({
 
   const testProvider = async () => {
     if (isSaving) {
-      toast.error("Save in progress.", {
-        description: "Try again in a moment.",
+      toast.error(t("DashboardCustody.saveInProgress"), {
+        description: t("DashboardCustody.tryAgainSoon"),
         position: "bottom-right",
       });
       return;
     }
 
     setIsTesting(true);
-    const toastId = toast.loading("Checking RPC provider.", {
+    const toastId = toast.loading(t("DashboardCustody.checkingRpcProvider"), {
       position: "bottom-right",
     });
 
     try {
-      const result = await runRpcProviderTest(selectedProvider);
+      const result = await runRpcProviderTest(selectedProvider, t);
+      setLastTest(result);
       const requestedLabel =
         RPC_PROVIDER_LABELS[result.requestedProvider] ?? result.requestedProvider;
       const resolvedLabel = result.resolvedProvider
@@ -256,7 +338,7 @@ export function OrganizationRpcSettingsForm({
       const latency = result.latencyMs !== undefined ? `${result.latencyMs}ms` : null;
 
       if (result.status === "success") {
-        toast.success("RPC check passed.", {
+        toast.success(t("DashboardCustody.rpcCheckPassed"), {
           id: toastId,
           description: [requestedLabel, latency].filter(Boolean).join(" • "),
           position: "bottom-right",
@@ -267,20 +349,28 @@ export function OrganizationRpcSettingsForm({
           !!result.resolvedProvider &&
           result.resolvedProvider !== result.requestedProvider;
 
-        toast.error(isProviderMismatch ? "Provider mismatch." : "RPC check failed.", {
-          id: toastId,
-          description: isProviderMismatch
-            ? `${requestedLabel} requested, ${resolvedLabel ?? "another provider"} resolved.`
-            : [resolvedLabel ?? requestedLabel, result.upstreamStatus, latency]
-                .filter((value) => value !== undefined && value !== null && value !== "")
-                .join(" • "),
-          position: "bottom-right",
-        });
+        toast.error(
+          isProviderMismatch
+            ? t("DashboardCustody.providerMismatch")
+            : t("DashboardCustody.rpcCheckFailed"),
+          {
+            id: toastId,
+            description: isProviderMismatch
+              ? t("DashboardCustody.rpcTestMismatch", {
+                  requested: requestedLabel,
+                  resolved: resolvedLabel ?? t("DashboardCustody.anotherProvider"),
+                })
+              : [resolvedLabel ?? requestedLabel, result.upstreamStatus, latency]
+                  .filter((value) => value !== undefined && value !== null && value !== "")
+                  .join(" • "),
+            position: "bottom-right",
+          }
+        );
       }
     } catch (error) {
-      toast.error("RPC check failed.", {
+      toast.error(t("DashboardCustody.rpcCheckFailed"), {
         id: toastId,
-        description: error instanceof Error ? error.message : "RPC check failed.",
+        description: error instanceof Error ? error.message : t("DashboardCustody.rpcCheckFailed"),
         position: "bottom-right",
       });
     } finally {
@@ -291,33 +381,29 @@ export function OrganizationRpcSettingsForm({
   return (
     <div className="grid gap-5">
       <div className="w-full max-w-3xl space-y-5">
-        <div className="rounded-xl border border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.03)] px-3 py-2">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[rgba(28,28,29,0.7)]">
-              Editing organization: {organization.name}
-            </span>
-          </div>
+        <div className="flex h-10 w-full items-center rounded-xl border border-border-default bg-fill-subtle px-3 text-sm text-secondary">
+          {t("DashboardCustody.editingOrganization", { name: organization.name })}
         </div>
 
         {!canManageSettings ? (
-          <div className="rounded-xl border border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.03)] px-3 py-2 text-sm text-[rgba(28,28,29,0.72)]">
-            You can view organization RPC settings, but only admins can change them.
+          <div className="rounded-xl border border-border-default bg-fill-subtle px-3 py-2 text-sm text-secondary">
+            {t("DashboardCustody.viewOnlyRpcSettings")}
           </div>
         ) : null}
 
         {!hasEnabledProviders ? (
-          <div className="rounded-xl border border-[rgba(158,43,56,0.2)] bg-[rgba(158,43,56,0.06)] px-3 py-2 text-sm text-[#9e2b38]">
-            No RPC providers are enabled for this organization in the current environment.
+          <div className="rounded-xl border border-destructive-border bg-destructive-bg px-3 py-2 text-sm text-destructive-strong">
+            {t("DashboardCustody.noRpcProviders")}
           </div>
         ) : null}
 
         {hasEnabledProviders && !hasPersistedProviderEnabled ? (
-          <div className="rounded-xl border border-[rgba(180,83,9,0.22)] bg-[rgba(245,158,11,0.12)] px-3 py-2 text-sm text-[#8a5a00]">
+          <div className="rounded-xl border border-warning-border bg-warning-bg px-3 py-2 text-sm text-warning">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                The saved RPC provider for this organization is no longer available on the current
-                tier. The form has fallen back to {RPC_PROVIDER_LABELS[fallbackProvider]} until you
-                save an enabled provider.
+                {t("DashboardCustody.rpcFallback", {
+                  provider: RPC_PROVIDER_LABELS[fallbackProvider],
+                })}
               </p>
               {canManageSettings ? (
                 <Button
@@ -329,7 +415,9 @@ export function OrganizationRpcSettingsForm({
                     void applyFallbackProvider();
                   }}
                 >
-                  {isApplyingFallback ? "Saving..." : "Save fallback"}
+                  {isApplyingFallback
+                    ? t("DashboardCustody.saving")
+                    : t("DashboardCustody.saveFallback")}
                 </Button>
               ) : null}
             </div>
@@ -337,44 +425,52 @@ export function OrganizationRpcSettingsForm({
         ) : null}
 
         <div className="grid gap-2">
-          <Label htmlFor="rpcProvider">RPC provider</Label>
+          {/* Not a <label>: the DS Select has no associable id, so a bound label
+              would be a dead click target. The Select carries its own ariaLabel. */}
+          <span className="text-sm font-medium text-primary">
+            {t("DashboardCustody.rpcProvider")}
+          </span>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_112px] sm:items-center">
-            <select
-              id="rpcProvider"
-              name="rpcProvider"
-              className="h-10 w-full min-w-0 rounded-lg border border-[rgba(28,28,29,0.16)] bg-white px-3 text-sm text-[#1c1c1d]"
+            <Select
+              ariaLabel={t("DashboardCustody.rpcProvider")}
+              className="w-full"
               value={selectedProvider}
               disabled={!canManageSettings || !hasEnabledProviders || isSaving || isTesting}
-              onChange={(event) => {
-                const nextProvider = event.currentTarget.value as typeof selectedProvider;
+              onValueChange={(value) => {
+                if (!value) return;
+                const nextProvider = value as typeof selectedProvider;
                 setSelectedProvider(nextProvider);
                 void saveProvider(nextProvider);
               }}
             >
               {availableProviders.map((provider) => (
-                <option key={provider} value={provider}>
-                  {RPC_PROVIDER_LABELS[provider]}
-                </option>
+                <SelectItem key={provider} value={provider}>
+                  <span className="flex items-center gap-2">
+                    <RpcProviderMark provider={provider} />
+                    {RPC_PROVIDER_LABELS[provider]}
+                  </span>
+                </SelectItem>
               ))}
-            </select>
+            </Select>
             <Button
               type="button"
-              size="sm"
               variant="secondary"
-              className="w-full sm:w-[112px] sm:justify-center"
+              className="w-full sm:justify-center"
               disabled={!hasEnabledProviders || isTesting || isSaving}
               onClick={() => {
                 void testProvider();
               }}
             >
-              {isTesting ? "Testing..." : "Test RPC"}
+              {isTesting ? t("DashboardCustody.testing") : t("DashboardCustody.testRpc")}
             </Button>
           </div>
         </div>
+
+        {lastTest ? <RpcTestResultPanel result={lastTest} /> : null}
       </div>
 
       {errorMessage ? (
-        <div className="w-full max-w-3xl rounded-xl border border-[rgba(158,43,56,0.2)] bg-[rgba(158,43,56,0.06)] px-3 py-2 text-sm text-[#9e2b38]">
+        <div className="w-full max-w-3xl rounded-xl border border-destructive-border bg-destructive-bg px-3 py-2 text-sm text-destructive-strong">
           {errorMessage}
         </div>
       ) : null}

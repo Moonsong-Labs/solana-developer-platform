@@ -1,11 +1,11 @@
 // biome-ignore-all lint/security/noSecrets: public Solana program ID, not a secret.
 /**
  * Generate the Private Channels escrow `@solana/kit` client from the vendored
- * Codama rootNode IDL. JS renderer only (upstream also renders Rust; SDP needs
- * only the TS client).
+ * Codama rootNode IDL. JS renderer only: the program repository also renders Rust,
+ * and only the TS client is needed here.
  *
  * Run: `pnpm --filter @sdp/spc-escrow generate`
- * Re-run whenever `idl/private_channel_escrow_program.json` changes upstream.
+ * Re-run whenever `idl/private_channel_escrow_program.json` is re-vendored.
  */
 
 import { readFileSync } from "node:fs";

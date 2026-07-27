@@ -42,8 +42,8 @@ export async function probeSolanaRpc(url: string): Promise<SolanaRpcProbeResult>
     const res = await fetch(target, {
       method: "POST",
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-      // User-Agent is required — public RPCs behind Cloudflare's WAF 403
-      // Workers' default (empty-UA) fetch.
+      // Set an explicit User-Agent: some public RPC providers reject or
+      // throttle requests without one.
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",

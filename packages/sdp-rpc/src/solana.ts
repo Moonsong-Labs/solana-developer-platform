@@ -146,7 +146,7 @@ function withRequestTimeout(transport: RpcTransport, timeoutMs: number): RpcTran
       return await transport<TResponse>(config);
     }
     // AbortController + setTimeout (not AbortSignal.timeout) so the timer is
-    // cleared on settle and behaves consistently across runtimes (workerd/Node).
+    // cleared on settle and behaves consistently in Node and test environments.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -267,6 +267,24 @@ export async function sendTransaction(
 }
 
 /**
+ * One signature-status poll that tolerates transient RPC failures: a stalled
+ * or timed-out request returns `null` ("not yet confirmed") so the caller's
+ * confirmation budget — not a single poll — decides the outcome.
+ * Non-transient errors propagate immediately.
+ */
+async function getSignatureStatusOrNull(rpc: SolanaRpc, signature: Signature) {
+  try {
+    const status = await rpc.getSignatureStatuses([signature]).send();
+    return status.value[0];
+  } catch (error) {
+    if (isTransientRpcError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
  * Send a signed transaction and wait for confirmation
  */
 export async function sendAndConfirmTransaction(
@@ -277,58 +295,22 @@ export async function sendAndConfirmTransaction(
     skipPreflight?: boolean;
     maxRetries?: bigint;
     timeoutMs?: number;
+    pollIntervalMs?: number;
   }
 ): Promise<TransactionConfirmation> {
-  const commitment = options?.commitment ?? "confirmed";
-  const timeoutMs = options?.timeoutMs ?? 60000;
-
-  // Send the transaction
   const signature = await sendTransaction(rpc, signedTransaction, {
     skipPreflight: options?.skipPreflight,
     maxRetries: options?.maxRetries,
   });
 
-  // Poll for confirmation
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeoutMs) {
-    const status = await rpc.getSignatureStatuses([signature]).send();
-
-    const result = status.value[0];
-
-    if (result) {
-      // Check if confirmed to required level
-      const isConfirmed =
-        result.confirmationStatus === commitment ||
-        (commitment === "confirmed" && result.confirmationStatus === "finalized") ||
-        result.confirmationStatus === "finalized";
-
-      if (isConfirmed) {
-        return {
-          signature,
-          slot: result.slot,
-          confirmationStatus: result.confirmationStatus ?? commitment,
-          err: result.err,
-        };
-      }
-
-      // Check for error
-      if (result.err) {
-        return {
-          signature,
-          slot: result.slot,
-          confirmationStatus: result.confirmationStatus ?? "processed",
-          err: result.err,
-        };
-      }
-    }
-
-    // Wait before polling again
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-
-  throw solanaRpcError(`Transaction ${signature} confirmation timed out after ${timeoutMs}ms`);
+  return confirmTransaction(rpc, signature, options);
 }
+
+export type ConfirmTransactionOptions = {
+  commitment?: Commitment;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+};
 
 /**
  * Confirm an already-sent transaction
@@ -336,19 +318,15 @@ export async function sendAndConfirmTransaction(
 export async function confirmTransaction(
   rpc: SolanaRpc,
   signature: Signature,
-  options?: {
-    commitment?: Commitment;
-    timeoutMs?: number;
-  }
+  options?: ConfirmTransactionOptions
 ): Promise<TransactionConfirmation> {
   const commitment = options?.commitment ?? "confirmed";
   const timeoutMs = options?.timeoutMs ?? 60000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 1000;
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeoutMs) {
-    const status = await rpc.getSignatureStatuses([signature]).send();
-
-    const result = status.value[0];
+    const result = await getSignatureStatusOrNull(rpc, signature);
 
     if (result) {
       const isConfirmed =
@@ -366,7 +344,7 @@ export async function confirmTransaction(
       }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
   throw solanaRpcError(`Transaction ${signature} confirmation timed out after ${timeoutMs}ms`);

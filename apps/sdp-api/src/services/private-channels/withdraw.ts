@@ -7,7 +7,7 @@
  * server-signed by the custody wallet (the burn `user`) and broadcast to the
  * GATEWAY (the channel chain) — NOT devnet, unlike the deposit escrow tx.
  *
- * Signing model (locked): SDP custody wallet, server-signed — same as deposits;
+ * Signing model: SDP custody wallet, server-signed — same as deposits;
  * the wallet is the sole signer and (for now) self-pays the channel-chain fee.
  * TODO(gasless/fees): confirm the gateway fee model for gateway-broadcast txs and
  * wire a sponsored fee payer if the gateway requires one.
@@ -15,7 +15,7 @@
  * Gateway auth: broadcasting the burn is a gateway WRITE and confirming it a
  * gateway READ — both JWT-gated. The caller's SPC session is resolved by the
  * handler and passed in as `gatewayAuth` (a self-refreshing handle, shared across
- * broadcast + confirm); verified end-to-end on devnet against an auth-enabled gateway.
+ * broadcast + confirm).
  *
  * Lifecycle here: pending (persist) → submitted (broadcast) → burn_confirmed
  * (confirmed on the gateway). `release_pending` → `released` is detected
@@ -163,6 +163,9 @@ export async function createChannelWithdrawal(
     destination,
     mint,
     amount: input.amount,
+    // Record the acting member now, while we still know it. The reconciler needs an
+    // SPC identity for its gateway reads and cannot re-derive this one later.
+    privateChannelUserId: input.gatewayAuth.pcUserId,
     // Snapshot the reconciliation context so a later reconnect can't move it.
     gatewayUrl: instance.gatewayUrl,
     chainRpcUrl: instance.chainRpcUrl,

@@ -114,10 +114,12 @@ export class WalletPolicyEnforcementService {
   async approveApprovalRequest(
     organizationId: string,
     approvalRequestId: string,
-    resolvedBy?: string | null
+    resolvedBy?: string | null,
+    projectId?: string | null
   ) {
     const approvalRequest = await this.repository.updateApprovalRequestStatus({
       organizationId,
+      projectId,
       approvalRequestId,
       status: "approved",
       operationStatus: "executing",
@@ -130,10 +132,12 @@ export class WalletPolicyEnforcementService {
   async cancelApprovalRequest(
     organizationId: string,
     approvalRequestId: string,
-    resolvedBy?: string | null
+    resolvedBy?: string | null,
+    projectId?: string | null
   ) {
     const approvalRequest = await this.repository.updateApprovalRequestStatus({
       organizationId,
+      projectId,
       approvalRequestId,
       status: "canceled",
       operationStatus: "canceled",
@@ -141,6 +145,24 @@ export class WalletPolicyEnforcementService {
     });
 
     return requireApprovalRequestStatus(approvalRequest, "canceled");
+  }
+
+  async rejectApprovalRequest(
+    organizationId: string,
+    approvalRequestId: string,
+    resolvedBy?: string | null,
+    projectId?: string | null
+  ) {
+    const approvalRequest = await this.repository.updateApprovalRequestStatus({
+      organizationId,
+      projectId,
+      approvalRequestId,
+      status: "rejected",
+      operationStatus: "canceled",
+      resolvedBy,
+    });
+
+    return requireApprovalRequestStatus(approvalRequest, "rejected");
   }
 }
 
@@ -264,7 +286,7 @@ export async function resolvePolicyCustodyWallet(
   auth: ApiKeyContext,
   walletId: string
 ): Promise<CustodyWalletLookup | null> {
-  const store = new CustodyConfigStore(getDb(env), env.CUSTODY_ENCRYPTION_KEY);
+  const store = new CustodyConfigStore(getDb(env), env);
   return store.findActiveWalletByIdentifier(
     auth.organizationId,
     auth.projectId ?? undefined,

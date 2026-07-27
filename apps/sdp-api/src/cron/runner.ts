@@ -1,22 +1,16 @@
 /**
- * node-cron wrapper for the Node runtime. Schedules the same reconciliation
- * job that the Cloudflare `scheduled` handler triggers, going through the
- * shared `runPendingTransfersReconciliation` so observability and background
- * tracking are wired identically across runtimes.
+ * node-cron wrapper for the API runtime. Schedules reconciliation through the
+ * shared helpers so observability and background tracking are wired
+ * consistently.
  *
- * `DISABLE_CRON=true` skips registration entirely, leaving the process free
- * to run as one of many web replicas without firing the reconciliation N
- * times per minute. A distributed lock would let every replica schedule
- * safely; until that lands, single-replica + DISABLE_CRON elsewhere is the
- * agreed-upon strategy.
+ * Cloud Run services skip registration by default, leaving reconciliation to
+ * the dedicated Cloud Run job rather than firing once per web replica.
+ * `DISABLE_CRON=false` explicitly opts a service back in; self-hosted runtimes
+ * keep the historical enabled-by-default behavior.
  */
 
 import { type ScheduledTask, schedule } from "node-cron";
-import {
-  isPrivateChannelsEnabled,
-  isRecurringPaymentCollectionEnabled,
-  isRecurringPaymentsEnabled,
-} from "@/lib/feature-flags";
+import { isPrivateChannelsEnabled, isRecurringPaymentCollectionEnabled } from "@/lib/feature-flags";
 import type { BackgroundRunner } from "@/runtime/background";
 import type { Observability } from "@/runtime/observability";
 import type { Env } from "@/types/env";
@@ -49,7 +43,7 @@ const FALSY_DISABLE_CRON: ReadonlySet<string> = new Set(["false", "0"]);
 function isCronDisabled(env: Env): boolean {
   const raw = env.DISABLE_CRON;
   if (raw === undefined) {
-    return false;
+    return Boolean(env.K_SERVICE);
   }
   const normalised = raw.trim().toLowerCase();
   if (TRUTHY_DISABLE_CRON.has(normalised)) {
@@ -89,7 +83,7 @@ export function startCron(deps: CronDeps): CronHandle | null {
     })
   );
 
-  if (isRecurringPaymentsEnabled(deps.env) && isRecurringPaymentCollectionEnabled(deps.env)) {
+  if (isRecurringPaymentCollectionEnabled(deps.env)) {
     tasks.push(
       schedule(RECURRING_PAYMENTS_COLLECTION_CRON, () => {
         if (stopping) {

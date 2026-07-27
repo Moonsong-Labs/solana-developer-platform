@@ -1,14 +1,14 @@
 // biome-ignore-all lint/security/noSecrets: public Solana program ID, not a secret.
 /**
  * Generate the Private Channels withdraw `@solana/kit` client from the vendored
- * Codama rootNode IDL. JS renderer only (upstream also renders Rust; SDP needs
- * only the TS client).
+ * Codama rootNode IDL. JS renderer only: the program repository also renders Rust,
+ * and only the TS client is needed here.
  *
  * Unlike escrow, the withdraw IDL already declares the REAL deployed program id
  * (`J231K9…`), so there is no program-id override step here.
  *
  * Run: `pnpm --filter @sdp/spc-withdraw generate`
- * Re-run whenever `idl/private_channel_withdraw_program.json` changes upstream.
+ * Re-run whenever `idl/private_channel_withdraw_program.json` is re-vendored.
  */
 
 import { readFileSync } from "node:fs";

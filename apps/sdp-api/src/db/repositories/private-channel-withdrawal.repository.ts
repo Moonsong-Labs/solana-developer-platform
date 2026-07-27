@@ -15,6 +15,12 @@ export interface PrivateChannelWithdrawalRow {
   destination: string;
   mint: string;
   amount: string;
+  /**
+   * Member who created the intent, captured while the request was authenticated.
+   * The reconciler authenticates its gateway reads as this member. Null only for a
+   * row whose member was later revoked (FK is ON DELETE SET NULL).
+   */
+  private_channel_user_id: string | null;
   /** Instance config snapshotted at intent time — the reconciler's fixed context. */
   gateway_url: string;
   chain_rpc_url: string;
@@ -42,6 +48,8 @@ export interface CreateWithdrawalInput extends WithdrawalProjectScope {
   destination: string;
   mint: string;
   amount: string;
+  /** Member creating the intent; taken from the request's SPC auth context. */
+  privateChannelUserId: string;
   /** Instance config snapshot (immutable reconciliation context). */
   gatewayUrl: string;
   chainRpcUrl: string;

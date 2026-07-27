@@ -1,7 +1,7 @@
 import type { SpcAuthClient } from "@sdp/private-channels/auth";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { PrivateChannelUserRow } from "@/db/repositories";
-import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
 import type { KVPutOptions, KVStore } from "@/runtime/kv";
 import { generateEncryptionKey } from "@/services/encryption.service";
 import type { Env } from "@/types/env";
@@ -35,8 +35,7 @@ beforeAll(async () => {
   const key = await generateEncryptionKey();
   env = { SPC_CREDENTIAL_ENCRYPTION_KEY: key } as unknown as Env;
   // A ciphertext the same key can decrypt — the stored SPC password.
-  credentialCiphertext = (await createSpcCredentialEncryption(env).encrypt(ORG, "s3cret"))
-    .ciphertext;
+  credentialCiphertext = await createSpcCredentialCipher(env).encrypt(ORG, "s3cret");
 });
 
 function pcUser(overrides: Partial<PrivateChannelUserRow> = {}): PrivateChannelUserRow {
@@ -84,7 +83,7 @@ function authClient(token: string) {
 }
 
 async function seedEntry(kv: ReturnType<typeof memoryKv>, token: string, expiresAt: number) {
-  const { ciphertext } = await createSpcCredentialEncryption(env).encrypt(ORG, token);
+  const ciphertext = await createSpcCredentialCipher(env).encrypt(ORG, token);
   kv.store.set(KEY, JSON.stringify({ tokenCiphertext: ciphertext, expiresAt }));
 }
 

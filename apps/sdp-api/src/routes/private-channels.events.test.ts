@@ -1,3 +1,4 @@
+import { hashString } from "@sdp/payments/hash";
 import * as privateChannelsPkg from "@sdp/private-channels";
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
 import {
@@ -11,11 +12,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
 import app from "@/index";
-import { hashString } from "@/lib/hash";
 import * as pcServices from "@/services/private-channels";
 import { env } from "@/test/helpers/env";
 import { clearTestDatabase, seedTestDatabase } from "@/test/mocks/db";
-import { clearKVNamespaces, seedCachedApiKey } from "@/test/mocks/kv";
+import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
 
 const probeConnectionMock = vi.spyOn(privateChannelsPkg, "probeConnection");
 const overviewMock = vi.spyOn(pcServices, "getInstanceOverview");
@@ -160,7 +160,7 @@ describe("Private Channels — event routes", () => {
   afterEach(async () => {
     env.PRIVATE_CHANNELS_ENABLED = originalEnabled;
     await clearTestDatabase(env);
-    await clearKVNamespaces(env);
+    await clearKVStores(env);
   });
 
   it("connect emits lifecycle.instance.connected visible on the default channel feed", async () => {

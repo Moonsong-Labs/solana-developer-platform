@@ -10,6 +10,8 @@ import {
   createTransfer,
   postMoneygramRampEvent,
 } from "@/app/dashboard/payments/payments-workspace.data";
+import { useTranslations } from "@/i18n/provider";
+import { MONEYGRAM_SDK_URL } from "@/lib/moneygram-sdk";
 
 const SESSION_REFRESH_MS = 50 * 60 * 1000;
 
@@ -224,7 +226,19 @@ function buildOfframpTransactionPrefill(
   };
 }
 
+function buildOnrampTransactionPrefill(
+  fiatAmount: string,
+  cryptoAsset: CryptoAssetSymbol
+): MoneygramRampsConfig["transaction"] {
+  return {
+    type: "on-ramp",
+    amount: toNumberAmount(fiatAmount),
+    asset: cryptoAsset,
+  };
+}
+
 export interface MoneygramRampWidgetProps {
+  direction: "onramp" | "offramp";
   quote: Extract<PaymentRampQuote, { provider: "moneygram" }>;
   counterparty: Counterparty | null;
   sourceWalletId: string;
@@ -238,6 +252,7 @@ export interface MoneygramRampWidgetProps {
 }
 
 export function MoneygramRampWidget({
+  direction,
   quote,
   counterparty,
   sourceWalletId,
@@ -249,6 +264,7 @@ export function MoneygramRampWidget({
   fiatCurrency,
   onSessionExpiring,
 }: MoneygramRampWidgetProps) {
+  const t = useTranslations();
   const containerRef = useRef<HTMLDivElement>(null);
   const signedTransferIdRef = useRef<string | null>(null);
   const onSessionExpiringRef = useRef(onSessionExpiring);
@@ -271,7 +287,7 @@ export function MoneygramRampWidget({
     if (!container) {
       return;
     }
-    const { sessionId, sessionToken, widgetUrl, sdkUrl } = quote;
+    const { sessionId, sessionToken, widgetUrl } = quote;
     const mountPoint = document.createElement("div");
     mountPoint.className = "h-full w-full";
     container.appendChild(mountPoint);
@@ -279,15 +295,18 @@ export function MoneygramRampWidget({
     let handle: MoneygramRampsHandle | null = null;
 
     const post = (event: MoneygramRampEvent) => {
-      postMoneygramRampEvent(event).catch((error) => {
-        toast.error("Failed to record MoneyGram event.", {
-          description: error instanceof Error ? error.message : "Event request failed.",
+      postMoneygramRampEvent(event, t).catch((error) => {
+        toast.error(t("DashboardPayments.ramps.moneygramEventFailed"), {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("DashboardPayments.ramps.eventRequestFailed"),
           position: "bottom-right",
         });
       });
     };
 
-    loadRampsSdk(sdkUrl)
+    loadRampsSdk(MONEYGRAM_SDK_URL)
       .then((sdk) => {
         if (cancelled) {
           return;
@@ -305,44 +324,74 @@ export function MoneygramRampWidget({
             displayName: sourceWalletName,
           },
           customer: buildCustomerPrefill(counterparty),
-          transaction: buildOfframpTransactionPrefill(
-            fiatCurrency,
-            cryptoAsset,
-            cryptoAmount,
-            counterparty
-          ),
+          transaction:
+            direction === "onramp"
+              ? buildOnrampTransactionPrefill(cryptoAmount, cryptoAsset)
+              : buildOfframpTransactionPrefill(
+                  fiatCurrency,
+                  cryptoAsset,
+                  cryptoAmount,
+                  counterparty
+                ),
           onSignTransaction: async (tx) => {
             if (tx.chain !== "solana" || tx.asset !== cryptoAsset) {
-              throw new Error(`Unsupported transaction: ${tx.asset} on ${tx.chain}.`);
+              throw new Error(
+                t("DashboardPayments.ramps.unsupportedMoneygramTransaction", {
+                  asset: tx.asset,
+                  chain: tx.chain,
+                })
+              );
             }
             if (!sourceTokenMint) {
-              throw new Error("Source wallet has no USDC balance to send.");
+              throw new Error(t("DashboardPayments.ramps.sourceWalletNoUsdc"));
             }
-            const transfer = await createTransfer({
-              source: sourceWalletId,
-              destination: tx.to,
-              token: sourceTokenMint,
-              amount: tx.amount,
-              ...(tx.memo ? { memo: tx.memo } : {}),
-            });
+            const transfer = await createTransfer(
+              {
+                source: sourceWalletId,
+                destination: tx.to,
+                token: sourceTokenMint,
+                amount: tx.amount,
+                ...(tx.memo ? { memo: tx.memo } : {}),
+              },
+              t
+            );
             if (!transfer.signature) {
-              throw new Error(`Transfer did not return a signature (status: ${transfer.status}).`);
+              throw new Error(
+                t("DashboardPayments.ramps.transferSignatureMissing", {
+                  status: transfer.status,
+                })
+              );
             }
             signedTransferIdRef.current = transfer.id;
-            await postMoneygramRampEvent({
-              kind: "signed",
-              sessionId,
-              cryptoTransferId: transfer.id,
-            });
+            await postMoneygramRampEvent(
+              {
+                kind: "signed",
+                sessionId,
+                cryptoTransferId: transfer.id,
+              },
+              t
+            );
             return transfer.signature;
           },
           onComplete: (transaction) => {
+            if (direction === "onramp") {
+              post({
+                kind: "onramp_completed",
+                sessionId,
+                transactionId: transaction.id,
+                status: transaction.status,
+                amount: transaction.amount,
+                ...(transaction.referenceNumber
+                  ? { referenceNumber: transaction.referenceNumber }
+                  : {}),
+              });
+              return;
+            }
             const cryptoTransferId = signedTransferIdRef.current;
             if (!cryptoTransferId) {
-              toast.error(
-                "MoneyGram reported completion before the crypto transfer was recorded.",
-                { position: "bottom-right" }
-              );
+              toast.error(t("DashboardPayments.ramps.moneygramCompletionBeforeTransfer"), {
+                position: "bottom-right",
+              });
               return;
             }
             post({
@@ -376,7 +425,9 @@ export function MoneygramRampWidget({
       .catch((error) => {
         if (!cancelled) {
           setLoadError(
-            error instanceof Error ? error.message : "Failed to load the MoneyGram widget."
+            error instanceof Error
+              ? error.message
+              : t("DashboardPayments.ramps.moneygramWidgetLoadFailed")
           );
         }
       });
@@ -389,6 +440,7 @@ export function MoneygramRampWidget({
   }, [
     quote,
     counterparty,
+    direction,
     fiatCurrency,
     cryptoAsset,
     sourceWalletId,
@@ -396,11 +448,12 @@ export function MoneygramRampWidget({
     sourceWalletAddress,
     sourceTokenMint,
     cryptoAmount,
+    t,
   ]);
 
   if (loadError) {
     return (
-      <div className="rounded-2xl border border-status-error-border bg-status-error-bg px-5 py-5 text-sm text-status-error-text">
+      <div className="rounded-2xl border border-error-border bg-error-bg px-5 py-5 text-sm text-error">
         {loadError}
       </div>
     );

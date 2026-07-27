@@ -15,6 +15,11 @@ export interface PaymentRequestTokenOption {
   symbol: string;
 }
 
+export type PaymentRequestsLocalErrorCode = "paymentRequestsLoadFailed";
+export type PaymentRequestsResult = PaginatedResponse<PaymentRequest> & {
+  localErrorCode?: PaymentRequestsLocalErrorCode;
+};
+
 /**
  * Well-known tokens deployed on the given cluster. Payment requests are
  * receives, so options are not gated by wallet balances — any requestable
@@ -40,10 +45,15 @@ export function deriveTokenOptions(cluster: SolanaCluster): PaymentRequestTokenO
  *   network error) `{ ok: false, data: [], total: 0, error }` — never throws.
  */
 export async function fetchPaymentRequests(
-  request: SdpApiClient["request"]
-): Promise<PaginatedResponse<PaymentRequest>> {
+  request: SdpApiClient["request"],
+  options: { pageSize?: number; status?: PaymentRequest["status"] } = {}
+): Promise<PaymentRequestsResult> {
   try {
-    const response = await request(`/v1/payments/requests?pageSize=${PAYMENT_REQUESTS_PAGE_SIZE}`);
+    const query = new URLSearchParams({
+      pageSize: String(options.pageSize ?? PAYMENT_REQUESTS_PAGE_SIZE),
+      ...(options.status ? { status: options.status } : {}),
+    });
+    const response = await request(`/v1/payments/requests?${query.toString()}`);
     if (!response.ok) {
       return { ok: false, data: [], total: 0, error: await response.text() };
     }
@@ -54,7 +64,8 @@ export async function fetchPaymentRequests(
       ok: false,
       data: [],
       total: 0,
-      error: error instanceof Error ? error.message : "Unable to load payment requests",
+      error: error instanceof Error ? error.message : undefined,
+      localErrorCode: error instanceof Error ? undefined : "paymentRequestsLoadFailed",
     };
   }
 }

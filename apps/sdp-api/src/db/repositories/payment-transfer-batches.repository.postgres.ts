@@ -1,7 +1,8 @@
-import type { DatabaseExecutor } from "@/db";
+import type { AppDb, DatabaseExecutor } from "@/db";
 import { internalError } from "@/lib/errors";
 import type {
   CreatePaymentTransferBatchInput,
+  CreatePaymentTransferBatchWithRecipientsInput,
   CreatePaymentTransferRecipientInput,
   DeletePaymentTransferBatchInput,
   DeletePaymentTransferRecipientInput,
@@ -14,6 +15,8 @@ import type {
   PaymentTransferBatchesRepository,
   PaymentTransferBatchRow,
   PaymentTransferRecipientRow,
+  RecomputeTransferBatchStatusInput,
+  SettlePaymentTransferBatchInput,
   UpdatePaymentTransferBatchInput,
   UpdatePaymentTransferRecipientInput,
   UpdatePaymentTransferRecipientsStatusInput,
@@ -21,6 +24,7 @@ import type {
   UpsertPaymentTransferRecipientInput,
 } from "./payment-transfer-batches.repository";
 import {
+  deriveTransferBatchStatus,
   generatePaymentTransferBatchId,
   generatePaymentTransferRecipientId,
 } from "./payment-transfer-batches.repository";
@@ -41,6 +45,8 @@ function mapPaymentTransferBatchRow(row: Record<string, unknown>): PaymentTransf
     options: row.options as Record<string, unknown>,
     error: (row.error as string | null | undefined) ?? null,
     initiated_by_key_id: (row.initiated_by_key_id as string | null | undefined) ?? null,
+    idempotency_key: (row.idempotency_key as string | null | undefined) ?? null,
+    idempotency_fingerprint: (row.idempotency_fingerprint as string | null | undefined) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -130,54 +136,137 @@ async function getTransferRecipientByIdInternal(
   return row ? mapPaymentTransferRecipientRow(row) : null;
 }
 
+async function insertTransferBatch(
+  db: DatabaseExecutor,
+  input: CreatePaymentTransferBatchInput
+): Promise<PaymentTransferBatchRow> {
+  const batchId = generatePaymentTransferBatchId();
+  const row = await db
+    .prepare(
+      `INSERT INTO payment_transfer_batches (
+         id,
+         organization_id,
+         project_id,
+         external_id,
+         source_wallet_id,
+         source_address,
+         token,
+         status,
+         total_amount,
+         recipient_count,
+         transaction_count,
+         options,
+         error,
+         initiated_by_key_id,
+         idempotency_key,
+         idempotency_fingerprint
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::jsonb, '{}'::jsonb), ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      batchId,
+      input.organizationId,
+      input.projectId,
+      input.externalId ?? null,
+      input.sourceWalletId,
+      input.sourceAddress,
+      input.token,
+      input.status ?? "pending",
+      input.totalAmount ?? null,
+      input.recipientCount ?? 0,
+      input.transactionCount ?? 0,
+      jsonParam(input.options),
+      input.error ?? null,
+      input.initiatedByKeyId ?? null,
+      input.idempotencyKey ?? null,
+      input.idempotencyFingerprint ?? null
+    )
+    .first<Record<string, unknown>>();
+
+  if (!row) {
+    throw internalError("payment_transfer_batches INSERT ... RETURNING returned no row");
+  }
+  return mapPaymentTransferBatchRow(row);
+}
+
+async function insertTransferRecipients(
+  db: DatabaseExecutor,
+  inputs: CreatePaymentTransferRecipientInput[]
+): Promise<PaymentTransferRecipientRow[]> {
+  if (inputs.length === 0) {
+    return [];
+  }
+
+  const rowPlaceholder = `(${Array(12).fill("?").join(", ")})`;
+  const values = inputs.flatMap((input) => [
+    generatePaymentTransferRecipientId(),
+    input.batchId,
+    input.organizationId,
+    input.projectId,
+    input.transferId ?? null,
+    input.externalId ?? null,
+    input.counterpartyId,
+    input.counterpartyAccountId,
+    input.destinationAddress,
+    input.amount,
+    input.status ?? "pending",
+    input.error ?? null,
+  ]);
+
+  const result = await db
+    .prepare(
+      `INSERT INTO payment_transfer_recipients (
+         id,
+         batch_id,
+         organization_id,
+         project_id,
+         transfer_id,
+         external_id,
+         counterparty_id,
+         counterparty_account_id,
+         destination_address,
+         amount,
+         status,
+         error
+       ) VALUES ${inputs.map(() => rowPlaceholder).join(", ")}
+       RETURNING *`
+    )
+    .bind(...values)
+    .all<Record<string, unknown>>();
+
+  if (result.results.length !== inputs.length) {
+    throw internalError("payment_transfer_recipients bulk INSERT returned an unexpected count");
+  }
+  return result.results.map(mapPaymentTransferRecipientRow);
+}
+
 export function createPostgresPaymentTransferBatchesRepository(
-  db: DatabaseExecutor
+  db: AppDb
 ): PaymentTransferBatchesRepository {
   return {
-    async createTransferBatch(input: CreatePaymentTransferBatchInput) {
-      const batchId = generatePaymentTransferBatchId();
+    async createTransferBatchWithRecipients(input: CreatePaymentTransferBatchWithRecipientsInput) {
+      return db.transaction(async (tx) => {
+        const batch = await insertTransferBatch(tx, input.batch);
+        const recipients = await insertTransferRecipients(
+          tx,
+          input.recipients.map((recipient) => ({ ...recipient, batchId: batch.id }))
+        );
+        return { batch, recipients };
+      });
+    },
+
+    async findTransferBatchByIdempotency({ organizationId, projectId, idempotencyKey }) {
       const row = await db
         .prepare(
-          `INSERT INTO payment_transfer_batches (
-             id,
-             organization_id,
-             project_id,
-             external_id,
-             source_wallet_id,
-             source_address,
-             token,
-             status,
-             total_amount,
-             recipient_count,
-             transaction_count,
-             options,
-             error,
-             initiated_by_key_id
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::jsonb, '{}'::jsonb), ?, ?)
-           RETURNING *`
+          `SELECT * FROM payment_transfer_batches
+           WHERE organization_id = ?
+             AND project_id = ?
+             AND idempotency_key = ?`
         )
-        .bind(
-          batchId,
-          input.organizationId,
-          input.projectId,
-          input.externalId ?? null,
-          input.sourceWalletId,
-          input.sourceAddress,
-          input.token,
-          input.status ?? "pending",
-          input.totalAmount ?? null,
-          input.recipientCount ?? 0,
-          input.transactionCount ?? 0,
-          jsonParam(input.options),
-          input.error ?? null,
-          input.initiatedByKeyId ?? null
-        )
+        .bind(organizationId, projectId, idempotencyKey)
         .first<Record<string, unknown>>();
 
-      if (!row) {
-        throw internalError("payment_transfer_batches INSERT ... RETURNING returned no row");
-      }
-      return mapPaymentTransferBatchRow(row);
+      return row ? mapPaymentTransferBatchRow(row) : null;
     },
 
     async upsertTransferBatch(input: UpsertPaymentTransferBatchInput) {
@@ -432,54 +521,6 @@ export function createPostgresPaymentTransferBatchesRepository(
       return mapPaymentTransferRecipientRow(row);
     },
 
-    async createTransferRecipients(inputs: CreatePaymentTransferRecipientInput[]) {
-      if (inputs.length === 0) {
-        return [];
-      }
-
-      const rowPlaceholder = `(${Array(12).fill("?").join(", ")})`;
-      const values = inputs.flatMap((input) => [
-        generatePaymentTransferRecipientId(),
-        input.batchId,
-        input.organizationId,
-        input.projectId,
-        input.transferId ?? null,
-        input.externalId ?? null,
-        input.counterpartyId,
-        input.counterpartyAccountId,
-        input.destinationAddress,
-        input.amount,
-        input.status ?? "pending",
-        input.error ?? null,
-      ]);
-
-      const result = await db
-        .prepare(
-          `INSERT INTO payment_transfer_recipients (
-             id,
-             batch_id,
-             organization_id,
-             project_id,
-             transfer_id,
-             external_id,
-             counterparty_id,
-             counterparty_account_id,
-             destination_address,
-             amount,
-             status,
-             error
-           ) VALUES ${inputs.map(() => rowPlaceholder).join(", ")}
-           RETURNING *`
-        )
-        .bind(...values)
-        .all<Record<string, unknown>>();
-
-      if (result.results.length !== inputs.length) {
-        throw internalError("payment_transfer_recipients bulk INSERT returned an unexpected count");
-      }
-      return result.results.map(mapPaymentTransferRecipientRow);
-    },
-
     async upsertTransferRecipient(input: UpsertPaymentTransferRecipientInput) {
       const recipientId = input.recipientId ?? generatePaymentTransferRecipientId();
       const row = await db
@@ -666,7 +707,7 @@ export function createPostgresPaymentTransferBatchesRepository(
             `SELECT *
                FROM payment_transfer_recipients
               WHERE ${scope.where}
-              ORDER BY created_at ASC
+              ORDER BY created_at ASC, id ASC
               LIMIT ? OFFSET ?`
           )
           .bind(...scope.values, input.limit, input.offset)
@@ -686,5 +727,141 @@ export function createPostgresPaymentTransferBatchesRepository(
         total: countRow?.total ?? 0,
       };
     },
+
+    async settleTransferBatch(input: SettlePaymentTransferBatchInput) {
+      return db.transaction(async (tx) => {
+        const claimed = await tx
+          .prepare(
+            `UPDATE payment_transfers
+                SET status = ?,
+                    slot = CASE WHEN ?::boolean THEN ? ELSE slot END,
+                    error = ?,
+                    updated_at = ?
+              WHERE id = ?
+                AND organization_id = ?
+                AND project_id IS NOT DISTINCT FROM ?
+                AND status = 'processing'
+              RETURNING id`
+          )
+          .bind(
+            input.transferStatus,
+            input.slot !== null,
+            input.slot,
+            input.error,
+            input.updatedAt,
+            input.transferId,
+            input.organizationId,
+            input.projectId
+          )
+          .all<{ id: string }>();
+
+        if (claimed.results.length === 0) {
+          return;
+        }
+
+        const recipientStatus = input.transferStatus === "failed" ? "failed" : "confirmed";
+        const recipients = await tx
+          .prepare(
+            `UPDATE payment_transfer_recipients
+                SET status = ?,
+                    error = ?,
+                    updated_at = sdp_iso_now()
+              WHERE organization_id = ?
+                AND project_id = ?
+                AND transfer_id = ?
+                AND status = 'processing'
+              RETURNING *`
+          )
+          .bind(
+            recipientStatus,
+            recipientStatus === "failed" ? input.error : null,
+            input.organizationId,
+            input.projectId,
+            input.transferId
+          )
+          .all<{ batch_id: string }>();
+
+        if (recipients.results.length === 0) {
+          throw internalError("Transfer batch recipients not found for settlement");
+        }
+
+        await recomputeBatchStatusInTransaction(tx, {
+          batchId: recipients.results[0].batch_id,
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+        });
+      });
+    },
+
+    async recomputeTransferBatchStatus(input: RecomputeTransferBatchStatusInput) {
+      return db.transaction((tx) => recomputeBatchStatusInTransaction(tx, input));
+    },
   };
+}
+
+/**
+ * Locks the batch row, derives the batch status from its recipient rows, and
+ * writes it — inside the caller's transaction. Taking the lock before the
+ * scan serializes concurrent recomputes of one batch, so each scan observes
+ * the previous writer's committed recipient statuses.
+ *
+ * @param tx - Transaction executor the recompute runs in.
+ * @param input.batchId - Batch to recompute.
+ * @returns The batch row after the recompute.
+ */
+async function recomputeBatchStatusInTransaction(
+  tx: DatabaseExecutor,
+  input: RecomputeTransferBatchStatusInput
+): Promise<PaymentTransferBatchRow> {
+  const locked = await tx
+    .prepare(
+      `SELECT id
+         FROM payment_transfer_batches
+        WHERE id = ?
+          AND organization_id = ?
+          AND project_id = ?
+          FOR UPDATE`
+    )
+    .bind(input.batchId, input.organizationId, input.projectId)
+    .first<{ id: string }>();
+  if (!locked) {
+    throw internalError("Transfer batch not found for settlement");
+  }
+
+  const statusRows = await tx
+    .prepare(
+      `SELECT status
+         FROM payment_transfer_recipients
+        WHERE batch_id = ?
+          AND organization_id = ?
+          AND project_id = ?
+          AND status <> 'archived'`
+    )
+    .bind(input.batchId, input.organizationId, input.projectId)
+    .all<{ status: PaymentTransferRecipientRow["status"] }>();
+  const batchStatus = deriveTransferBatchStatus(statusRows.results.map((row) => row.status));
+  const batchError =
+    batchStatus === "failed" || batchStatus === "partially_failed"
+      ? "One or more transfer batch transactions failed during execution"
+      : null;
+
+  const updated = await tx
+    .prepare(
+      `UPDATE payment_transfer_batches
+          SET status = ?,
+              error = ?,
+              updated_at = sdp_iso_now()
+        WHERE id = ?
+          AND organization_id = ?
+          AND project_id = ?
+          AND status <> 'archived'
+        RETURNING *`
+    )
+    .bind(batchStatus, batchError, input.batchId, input.organizationId, input.projectId)
+    .first<Record<string, unknown>>();
+  if (!updated) {
+    throw internalError("Transfer batch not found for settlement");
+  }
+
+  return mapPaymentTransferBatchRow(updated);
 }

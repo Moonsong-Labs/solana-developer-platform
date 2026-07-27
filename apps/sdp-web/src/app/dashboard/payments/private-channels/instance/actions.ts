@@ -10,8 +10,8 @@ import { createSdpApiClient } from "@/lib/sdp-api";
 
 export type TestConnectionResult = ConnectionProbeResult;
 
-// Routes through the API so the probe runs in the same Worker runtime as
-// Connect's re-probe — a success here means Connect will not fail on the probe.
+// Routes through the API so the probe runs in the same runtime as Connect's
+// re-probe — a success here means Connect will not fail on the probe.
 export async function testConnectionAction(input: {
   gatewayUrl: string;
   chainRpcUrl: string;

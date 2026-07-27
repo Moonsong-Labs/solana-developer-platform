@@ -1,21 +1,29 @@
+import type {
+  DeletedObjectJSON,
+  OrganizationJSON,
+  OrganizationMembershipJSON,
+  UserDeletedJSON,
+  UserJSON,
+} from "@clerk/backend";
+import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
 import type { SdpEnvironment } from "@sdp/types";
 import type { RampProviderId } from "@sdp/types/provider-access";
 import type { Context } from "hono";
-import { Webhook } from "svix";
 import { getDb } from "@/db";
-import { isPostgresUniqueViolation } from "@/db/postgres-utils";
 import { mapClerkRoleToOrgRole } from "@/lib/clerk-role";
 import { AppError, badRequest } from "@/lib/errors";
-import { readString } from "@/lib/json";
 import { success } from "@/lib/response";
-import { isSelfHostedDeployment } from "@/lib/runtime-env";
 import {
-  type ClerkOrganization,
-  ClerkOrganizationsService,
-} from "@/services/clerk-organizations.service";
-import { type ClerkUser, ClerkUsersService } from "@/services/clerk-users.service";
+  ensureClerkOrganizationMapping,
+  findClerkOrganizationMapping,
+  syncClerkOrganization,
+} from "@/services/clerk-organization-provisioning.service";
+import {
+  ClerkUsersService,
+  verifiedPrimaryEmailFromClerkUser,
+} from "@/services/clerk-users.service";
 import { ProjectService } from "@/services/project.service";
-import { syncProviderAccessFromClerk } from "@/services/provider-availability.service";
+import { SessionService } from "@/services/session.service";
 import type { Env } from "@/types/env";
 import { BvnkWebhookProcessor } from "./ramps/bvnk";
 import { CoinbaseWebhookProcessor } from "./ramps/coinbase";
@@ -39,42 +47,7 @@ const RAMP_PROVIDER_WEBHOOK_PROCESSOR = {
   WebhookProcessor<unknown, unknown>
 >;
 
-type ClerkWebhookEvent = {
-  type: string;
-  data: Record<string, unknown>;
-};
-
 type WebhookRampProvider = keyof typeof RAMP_PROVIDER_WEBHOOK_PROCESSOR;
-
-type ClerkOrgData = {
-  id: string | undefined;
-  name: string | undefined;
-  slug: string | undefined;
-};
-
-type ClerkMemberData = {
-  userId: string | undefined;
-  role: string | undefined;
-  email: string | undefined;
-};
-
-type ClerkUserData = {
-  id: string | undefined;
-  email: string | undefined;
-  name: string | undefined;
-};
-
-type OrganizationMapping = {
-  organizationId: string;
-  clerkOrganization: ClerkOrganization | null;
-};
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function parseRampWebhookProvider(value: string | undefined): WebhookRampProvider {
   if (value !== undefined && Object.hasOwn(RAMP_PROVIDER_WEBHOOK_PROCESSOR, value)) {
@@ -84,289 +57,34 @@ function parseRampWebhookProvider(value: string | undefined): WebhookRampProvide
   throw badRequest("Unsupported ramp webhook provider");
 }
 
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-async function ensureUniqueSlug(
-  db: DatabaseClient,
-  base: string,
-  excludeOrganizationId?: string
-): Promise<string> {
-  const normalized = slugify(base) || `org-${crypto.randomUUID().slice(0, 8)}`;
-  const existing = await db
-    .prepare(
-      excludeOrganizationId
-        ? "SELECT id FROM organizations WHERE slug = ? AND id <> ?"
-        : "SELECT id FROM organizations WHERE slug = ?"
-    )
-    .bind(...(excludeOrganizationId ? [normalized, excludeOrganizationId] : [normalized]))
-    .first();
-
-  if (!existing) {
-    return normalized;
-  }
-
-  let suffix = crypto.randomUUID().slice(0, 6);
-  let candidate = `${normalized}-${suffix}`;
-
-  for (let i = 0; i < 3; i += 1) {
-    const taken = await db
-      .prepare(
-        excludeOrganizationId
-          ? "SELECT id FROM organizations WHERE slug = ? AND id <> ?"
-          : "SELECT id FROM organizations WHERE slug = ?"
-      )
-      .bind(...(excludeOrganizationId ? [candidate, excludeOrganizationId] : [candidate]))
-      .first();
-    if (!taken) {
-      return candidate;
-    }
-    suffix = crypto.randomUUID().slice(0, 6);
-    candidate = `${normalized}-${suffix}`;
-  }
-
-  return candidate;
-}
-
-function extractOrganization(data: Record<string, unknown>): ClerkOrgData {
-  const organization = asRecord(data.organization) ?? data;
-  const id =
-    readString(data.organization_id) ||
-    readString(data.organizationId) ||
-    readString(organization?.id);
-  const name = readString(organization?.name) || readString(data.name);
-  const slug = readString(organization?.slug) || readString(data.slug);
-
-  return { id, name, slug };
-}
-
-function extractMember(data: Record<string, unknown>): ClerkMemberData {
-  const publicUser = asRecord(data.public_user_data) ?? asRecord(data.publicUserData);
-  const userId =
-    readString(data.user_id) ||
-    readString(data.userId) ||
-    readString(publicUser?.user_id) ||
-    readString(publicUser?.userId);
-  const role = readString(data.role);
-  const email =
-    readString(publicUser?.identifier) ||
-    readString(publicUser?.email_address) ||
-    readString(publicUser?.emailAddress);
-
-  return { userId, role, email };
-}
-
-function extractPrimaryEmail(data: Record<string, unknown>): string | undefined {
-  const emailAddresses = Array.isArray(data.email_addresses) ? data.email_addresses : [];
-  const primaryEmailId = readString(data.primary_email_address_id);
-
-  for (const item of emailAddresses) {
-    const emailRecord = asRecord(item);
-    if (!emailRecord) {
-      continue;
-    }
-
-    const email = readString(emailRecord.email_address);
-    if (email && readString(emailRecord.id) === primaryEmailId) {
-      return email;
-    }
-  }
-
-  for (const item of emailAddresses) {
-    const emailRecord = asRecord(item);
-    const email = emailRecord ? readString(emailRecord.email_address) : undefined;
-    if (email) {
-      return email;
-    }
-  }
-
-  return readString(data.email_address);
-}
-
-function extractUser(data: Record<string, unknown>): ClerkUserData {
-  const firstName = readString(data.first_name);
-  const lastName = readString(data.last_name);
-  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
-  const name = fullName || readString(data.name) || readString(data.username);
-
-  return {
-    id: readString(data.id) || readString(data.user_id) || readString(data.userId),
-    email: extractPrimaryEmail(data),
-    name,
-  };
-}
-
 async function findOrganizationMapping(c: AppContext, clerkOrgId: string) {
-  return getDb(c.env)
-    .prepare(
-      `SELECT organization_id, slug
-       FROM auth_organization_identities
-       WHERE provider = 'clerk' AND provider_org_id = ?`
-    )
-    .bind(clerkOrgId)
-    .first<{ organization_id: string; slug: string | null }>();
+  const mapping = await findClerkOrganizationMapping(getDb(c.env), clerkOrgId);
+  return mapping ? { organization_id: mapping.organizationId, slug: mapping.slug } : null;
 }
 
-async function resolveClerkOrganization(
-  c: AppContext,
-  org: ClerkOrgData,
-  privateMetadata?: unknown
-): Promise<ClerkOrganization> {
-  if (!org.id) {
-    throw badRequest("Clerk organization id missing");
-  }
-
-  if (org.name && org.slug) {
-    return {
-      id: org.id,
-      name: org.name,
-      slug: org.slug,
-      ...(privateMetadata !== undefined ? { private_metadata: asRecord(privateMetadata) } : {}),
-    };
-  }
-
-  const clerkOrg = await new ClerkOrganizationsService(c.env).getOrganization(org.id);
-  return {
-    id: org.id,
-    name: org.name ?? clerkOrg.name,
-    slug: org.slug ?? clerkOrg.slug,
-    private_metadata:
-      privateMetadata !== undefined ? asRecord(privateMetadata) : clerkOrg.private_metadata,
-  };
+async function ensureOrganizationMapping(c: AppContext, org: OrganizationJSON): Promise<string> {
+  const mapping = await ensureClerkOrganizationMapping({
+    env: c.env,
+    db: getDb(c.env),
+    organization: org,
+  });
+  return mapping.organizationId;
 }
 
-async function ensureOrganizationMapping(
-  c: AppContext,
-  org: ClerkOrgData,
-  privateMetadata?: unknown
-): Promise<OrganizationMapping> {
-  if (!org.id) {
-    throw badRequest("Clerk organization id missing");
-  }
-
-  const existing = await findOrganizationMapping(c, org.id);
-  if (existing) {
-    return {
-      organizationId: existing.organization_id,
-      clerkOrganization: null,
-    };
-  }
-
-  const clerkOrg = await resolveClerkOrganization(c, org, privateMetadata);
-  const orgName = clerkOrg.name?.trim() || "New Organization";
-  const slug = await ensureUniqueSlug(getDb(c.env), clerkOrg.slug || orgName || org.id);
-  const orgId = `org_${crypto.randomUUID()}`;
-  const authOrgId = `aoi_${crypto.randomUUID()}`;
-
-  try {
-    await getDb(c.env).batch([
-      getDb(c.env)
-        .prepare(
-          `INSERT INTO organizations (id, name, slug, tier, status)
-           VALUES (?, ?, ?, 'enterprise', 'active')`
-        )
-        .bind(orgId, orgName, slug),
-      getDb(c.env)
-        .prepare(
-          `INSERT INTO auth_organization_identities (id, provider, provider_org_id, organization_id, slug)
-           VALUES (?, 'clerk', ?, ?, ?)`
-        )
-        .bind(authOrgId, org.id, orgId, slug),
-    ]);
-
-    if (!isSelfHostedDeployment(c.env)) {
-      await syncProviderAccessFromClerk(getDb(c.env), {
-        organizationId: orgId,
-        clerkOrganization: clerkOrg,
-      });
-    }
-  } catch (err) {
-    if (isPostgresUniqueViolation(err)) {
-      const retry = await findOrganizationMapping(c, org.id);
-      if (retry) {
-        return {
-          organizationId: retry.organization_id,
-          clerkOrganization: clerkOrg,
-        };
-      }
-    }
-    throw err;
-  }
-
-  return {
-    organizationId: orgId,
-    clerkOrganization: clerkOrg,
-  };
+async function syncOrganization(c: AppContext, data: OrganizationJSON) {
+  await syncClerkOrganization({
+    env: c.env,
+    db: getDb(c.env),
+    organization: data,
+  });
 }
 
-async function syncOrganization(c: AppContext, data: Record<string, unknown>) {
-  const db = getDb(c.env);
-  const org = extractOrganization(data);
-  const mapping = await ensureOrganizationMapping(c, org, data.private_metadata);
-  const { organizationId } = mapping;
-  const clerkOrg =
-    mapping.clerkOrganization ?? (await resolveClerkOrganization(c, org, data.private_metadata));
-
-  const updates: string[] = [];
-  const params: string[] = [];
-  let nextSlug: string | null = null;
-
-  if (clerkOrg.name?.trim()) {
-    updates.push("name = ?");
-    params.push(clerkOrg.name.trim());
-  }
-
-  if (clerkOrg.slug?.trim()) {
-    const slug = await ensureUniqueSlug(db, clerkOrg.slug, organizationId);
-    nextSlug = slug;
-    updates.push("slug = ?");
-    params.push(slug);
-  }
-
-  if (updates.length > 0) {
-    updates.push("updated_at = datetime('now')");
-    params.push(organizationId);
-
-    const organizationUpdate = db
-      .prepare(`UPDATE organizations SET ${updates.join(", ")} WHERE id = ?`)
-      .bind(...params);
-
-    if (nextSlug) {
-      await db.batch([
-        db
-          .prepare(
-            `UPDATE auth_organization_identities
-             SET slug = ?, updated_at = datetime('now')
-             WHERE provider = 'clerk' AND provider_org_id = ?`
-          )
-          .bind(nextSlug, clerkOrg.id),
-        organizationUpdate,
-      ]);
-    } else {
-      await organizationUpdate.run();
-    }
-  }
-
-  if (!isSelfHostedDeployment(c.env)) {
-    await syncProviderAccessFromClerk(db, {
-      organizationId,
-      clerkOrganization: clerkOrg,
-    });
-  }
-}
-
-async function deleteOrganization(c: AppContext, data: Record<string, unknown>) {
-  const org = extractOrganization(data);
-  if (!org.id) {
+async function deleteOrganization(c: AppContext, data: DeletedObjectJSON) {
+  if (!data.id) {
     return;
   }
 
-  const mapping = await findOrganizationMapping(c, org.id);
+  const mapping = await findOrganizationMapping(c, data.id);
   if (!mapping) {
     return;
   }
@@ -390,36 +108,26 @@ async function deleteOrganization(c: AppContext, data: Record<string, unknown>) 
       )
       .bind(mapping.organization_id),
   ]);
+
+  const sessionService = new SessionService(getDb(c.env));
+  await sessionService
+    .revokeOrganizationSessions(mapping.organization_id)
+    .catch((error) =>
+      console.error("Failed to revoke sessions after organization deletion:", error)
+    );
 }
 
-function primaryEmailFromClerkUser(user: ClerkUser): string | null {
-  const emails = user.email_addresses || [];
-  const primary = emails.find((item) => item.id === user.primary_email_address_id) || emails[0];
-  return primary?.email_address?.toLowerCase() ?? null;
-}
-
-async function resolveUserEmail(env: Env, userId: string, fallbackEmail?: string | null) {
-  if (fallbackEmail?.includes("@")) {
-    return fallbackEmail.toLowerCase();
-  }
-
+async function resolveVerifiedUserEmail(env: Env, userId: string): Promise<string | null> {
   const user = await new ClerkUsersService(env).getUser(userId);
-  const email = primaryEmailFromClerkUser(user);
-
-  if (!email) {
-    throw badRequest("Clerk user missing email");
-  }
-
-  return email;
+  return verifiedPrimaryEmailFromClerkUser(user);
 }
 
-async function ensureUserMapping(c: AppContext, user: ClerkUserData): Promise<string> {
-  if (!user.id) {
-    throw badRequest("Clerk user id missing");
-  }
-
+async function ensureUserMapping(
+  c: AppContext,
+  user: { id: string; email: string; name?: string | null }
+): Promise<string> {
   const db = getDb(c.env);
-  const email = await resolveUserEmail(c.env, user.id, user.email);
+  const email = user.email.toLowerCase();
   const existing = await db
     .prepare(
       `SELECT aui.user_id, u.email
@@ -495,13 +203,32 @@ async function ensureUserMapping(c: AppContext, user: ClerkUserData): Promise<st
   return userId;
 }
 
-async function syncUser(c: AppContext, data: Record<string, unknown>) {
-  await ensureUserMapping(c, extractUser(data));
+async function syncUser(c: AppContext, data: UserJSON) {
+  const email = verifiedPrimaryEmailFromClerkUser(data);
+  if (!email) {
+    return;
+  }
+  const fullName = [data.first_name, data.last_name].filter(Boolean).join(" ").trim();
+  const userId = await ensureUserMapping(c, {
+    id: data.id,
+    email,
+    name: fullName || data.username,
+  });
+  const memberships = await new ClerkUsersService(c.env).getOrganizationMemberships(data.id);
+  await Promise.all(
+    memberships.map((membership) =>
+      upsertVerifiedMembership(c, {
+        organization: membership.organization,
+        userId,
+        role: membership.role,
+        reactivateRemoved: false,
+      })
+    )
+  );
 }
 
-async function deleteUser(c: AppContext, data: Record<string, unknown>) {
-  const user = extractUser(data);
-  if (!user.id) {
+async function deleteUser(c: AppContext, data: UserDeletedJSON) {
+  if (!data.id) {
     return;
   }
 
@@ -511,7 +238,7 @@ async function deleteUser(c: AppContext, data: Record<string, unknown>) {
        FROM auth_user_identities
        WHERE provider = 'clerk' AND provider_user_id = ?`
     )
-    .bind(user.id)
+    .bind(data.id)
     .first<{ user_id: string }>();
 
   if (!identity) {
@@ -524,27 +251,33 @@ async function deleteUser(c: AppContext, data: Record<string, unknown>) {
       .prepare("UPDATE organization_members SET status = 'removed' WHERE user_id = ?")
       .bind(identity.user_id),
   ]);
+
+  const sessionService = new SessionService(getDb(c.env));
+  await sessionService
+    .revokeAllUserSessions(identity.user_id)
+    .catch((error) => console.error("Failed to revoke sessions after user deletion:", error));
 }
 
-async function upsertMembership(c: AppContext, data: Record<string, unknown>) {
-  const org = extractOrganization(data);
-  const member = extractMember(data);
-
-  if (!org.id) {
-    throw badRequest("Clerk organization id missing");
+async function upsertVerifiedMembership(
+  c: AppContext,
+  data: {
+    organization: OrganizationJSON;
+    userId: string;
+    role: string;
+    reactivateRemoved: boolean;
   }
-  if (!member.userId) {
-    throw badRequest("Clerk member user id missing");
-  }
-
-  const { organizationId } = await ensureOrganizationMapping(c, org);
-  const userId = await ensureUserMapping(c, {
-    id: member.userId,
-    email: member.email,
-    name: undefined,
-  });
-  const role = mapClerkRoleToOrgRole(member.role);
+) {
+  const organizationId = await ensureOrganizationMapping(c, data.organization);
+  const role = mapClerkRoleToOrgRole(data.role);
   const memberId = `mem_${crypto.randomUUID()}`;
+  const existing = await getDb(c.env)
+    .prepare(
+      `SELECT role, status
+       FROM organization_members
+       WHERE organization_id = ? AND user_id = ?`
+    )
+    .bind(organizationId, data.userId)
+    .first<{ role: string; status: string }>();
 
   await getDb(c.env)
     .prepare(
@@ -553,27 +286,50 @@ async function upsertMembership(c: AppContext, data: Record<string, unknown>) {
        ON CONFLICT(organization_id, user_id)
        DO UPDATE SET
          role = excluded.role,
-         status = 'active'`
+         status = CASE
+           WHEN organization_members.status = 'removed' AND ? = 0
+             THEN organization_members.status
+           ELSE 'active'
+         END`
     )
-    .bind(memberId, organizationId, userId, role)
+    .bind(memberId, organizationId, data.userId, role, data.reactivateRemoved ? 1 : 0)
     .run();
+
+  if (existing?.status === "active" && existing.role !== role) {
+    const sessionService = new SessionService(getDb(c.env));
+    await sessionService
+      .revokeUserOrganizationSessions(data.userId, organizationId)
+      .catch((error) =>
+        console.error("Failed to revoke sessions after membership role change:", error)
+      );
+  }
 
   const projectService = new ProjectService(getDb(c.env));
   await Promise.all([
-    projectService.findOrCreateDefault(organizationId, "sandbox", userId),
-    projectService.findOrCreateDefault(organizationId, "production", userId),
+    projectService.findOrCreateDefault(organizationId, "sandbox", data.userId),
+    projectService.findOrCreateDefault(organizationId, "production", data.userId),
   ]);
 }
 
-async function deleteMembership(c: AppContext, data: Record<string, unknown>) {
-  const org = extractOrganization(data);
-  const member = extractMember(data);
-
-  if (!org.id || !member.userId) {
+async function upsertMembership(c: AppContext, data: OrganizationMembershipJSON) {
+  const email = await resolveVerifiedUserEmail(c.env, data.public_user_data.user_id);
+  if (!email) {
     return;
   }
+  const userId = await ensureUserMapping(c, {
+    id: data.public_user_data.user_id,
+    email,
+  });
+  await upsertVerifiedMembership(c, {
+    organization: data.organization,
+    userId,
+    role: data.role,
+    reactivateRemoved: true,
+  });
+}
 
-  const mapping = await findOrganizationMapping(c, org.id);
+async function deleteMembership(c: AppContext, data: OrganizationMembershipJSON) {
+  const mapping = await findOrganizationMapping(c, data.organization.id);
   if (!mapping) {
     return;
   }
@@ -584,7 +340,7 @@ async function deleteMembership(c: AppContext, data: Record<string, unknown>) {
        FROM auth_user_identities
        WHERE provider = 'clerk' AND provider_user_id = ?`
     )
-    .bind(member.userId)
+    .bind(data.public_user_data.user_id)
     .first<{ user_id: string }>();
 
   if (!identity) {
@@ -599,14 +355,11 @@ async function deleteMembership(c: AppContext, data: Record<string, unknown>) {
     )
     .bind(mapping.organization_id, identity.user_id)
     .run();
-}
 
-function requiredHeader(c: AppContext, name: string) {
-  const value = c.req.header(name);
-  if (!value) {
-    throw badRequest(`Missing webhook header: ${name}`);
-  }
-  return value;
+  const sessionService = new SessionService(getDb(c.env));
+  await sessionService
+    .revokeUserOrganizationSessions(identity.user_id, mapping.organization_id)
+    .catch((error) => console.error("Failed to revoke sessions after membership deletion:", error));
 }
 
 export const handleRampProviderWebhook = async (c: AppContext, environment: SdpEnvironment) => {
@@ -651,49 +404,36 @@ export const handleClerkWebhook = async (c: AppContext) => {
     throw new AppError("INTERNAL_ERROR", "CLERK_WEBHOOK_SECRET is required");
   }
 
-  const payload = await c.req.raw.text();
-  const headers = {
-    "svix-id": requiredHeader(c, "svix-id"),
-    "svix-timestamp": requiredHeader(c, "svix-timestamp"),
-    "svix-signature": requiredHeader(c, "svix-signature"),
-  };
-
-  let event: ClerkWebhookEvent;
+  let event: WebhookEvent;
   try {
-    event = new Webhook(secret).verify(payload, headers) as ClerkWebhookEvent;
+    event = await verifyWebhook(c.req.raw, { signingSecret: secret });
   } catch (err) {
     throw new AppError("UNAUTHORIZED", "Invalid webhook signature", {
       cause: err instanceof Error ? err.message : String(err),
     });
   }
 
-  if (!event?.type) {
-    throw badRequest("Webhook event type missing");
-  }
-
-  const data = (event.data ?? {}) as Record<string, unknown>;
-
   switch (event.type) {
     case "organization.created":
     case "organization.updated":
-      await syncOrganization(c, data);
+      await syncOrganization(c, event.data);
       break;
     case "organization.deleted":
-      await deleteOrganization(c, data);
+      await deleteOrganization(c, event.data);
       break;
     case "user.created":
     case "user.updated":
-      await syncUser(c, data);
+      await syncUser(c, event.data);
       break;
     case "user.deleted":
-      await deleteUser(c, data);
+      await deleteUser(c, event.data);
       break;
     case "organizationMembership.created":
     case "organizationMembership.updated":
-      await upsertMembership(c, data);
+      await upsertMembership(c, event.data);
       break;
     case "organizationMembership.deleted":
-      await deleteMembership(c, data);
+      await deleteMembership(c, event.data);
       break;
     default:
       break;

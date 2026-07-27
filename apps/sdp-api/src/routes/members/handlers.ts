@@ -1,12 +1,13 @@
+import { hashString } from "@sdp/payments/hash";
 import { normalizeOrganizationRole, type OrganizationRole } from "@sdp/types";
 import type { Context } from "hono";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { AppError, badRequest, notFound } from "@/lib/errors";
-import { hashString } from "@/lib/hash";
 import { created, noContent, success } from "@/lib/response";
 import { AuditService } from "@/services/audit.service";
 import { ClerkOrganizationsService } from "@/services/clerk-organizations.service";
+import { SessionService } from "@/services/session.service";
 import type { Env } from "@/types/env";
 import { acceptSchema, inviteSchema } from "./schemas";
 
@@ -372,6 +373,11 @@ export const removeMember = async (c: AppContext) => {
     .prepare("UPDATE organization_members SET status = 'removed' WHERE id = ?")
     .bind(memberId)
     .run();
+
+  const sessionService = new SessionService(getDb(c.env));
+  await sessionService
+    .revokeUserOrganizationSessions(member.user_id, organizationId)
+    .catch((error) => console.error("Failed to revoke sessions after member removal:", error));
 
   // Audit log
   const auditService = new AuditService(getDb(c.env));

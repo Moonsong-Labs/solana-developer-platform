@@ -2,14 +2,17 @@
 
 import { ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
+import { useTranslations } from "@/i18n/provider";
 import type { TemplateSelection } from "./create-token-modal.types";
-import { templateCards } from "./create-token-modal.utils";
+import { getTemplateCards } from "./create-token-modal.utils";
 
 interface TemplateSelectionStepProps {
   onSelect: (template: TemplateSelection) => void;
 }
 
 export function TemplateSelectionStep({ onSelect }: TemplateSelectionStepProps) {
+  const t = useTranslations();
+  const templateCards = getTemplateCards(t);
   return (
     <motion.div
       key="template-selection"
@@ -31,7 +34,7 @@ function TemplateCard({
   descriptor,
   onSelect,
 }: {
-  descriptor: (typeof templateCards)[number];
+  descriptor: ReturnType<typeof getTemplateCards>[number];
   onSelect: (template: TemplateSelection) => void;
 }) {
   const Icon = descriptor.icon;
@@ -40,7 +43,7 @@ function TemplateCard({
     return (
       <div
         aria-disabled
-        className="cursor-not-allowed flex items-center justify-between rounded-2xl border border-[rgba(28,28,29,0.12)] bg-[rgba(28,28,29,0.02)] px-5 py-4 opacity-70"
+        className="cursor-not-allowed flex items-center justify-between rounded-2xl border border-border-default bg-fill-subtle px-5 py-4 opacity-70"
       >
         <div className="flex min-w-0 items-center gap-4">
           <div
@@ -52,8 +55,8 @@ function TemplateCard({
             <Icon className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xl leading-none font-semibold text-[#1c1c1d]">{descriptor.name}</p>
-            <p className="mt-2 text-base text-[rgba(28,28,29,0.58)]">{descriptor.description}</p>
+            <p className="text-xl leading-none font-semibold text-primary">{descriptor.name}</p>
+            <p className="mt-2 text-base text-tertiary">{descriptor.description}</p>
           </div>
         </div>
       </div>
@@ -64,7 +67,7 @@ function TemplateCard({
     <button
       type="button"
       onClick={() => onSelect(descriptor.template as TemplateSelection)}
-      className="cursor-pointer flex w-full items-center justify-between rounded-2xl border border-[rgba(28,28,29,0.12)] bg-white px-5 py-4 text-left transition-colors hover:bg-[rgba(28,28,29,0.03)]"
+      className="cursor-pointer flex w-full items-center justify-between rounded-2xl border border-border-default bg-surface-raised px-5 py-4 text-left transition-colors hover:bg-fill-subtle"
     >
       <div className="flex min-w-0 items-center gap-4">
         <div
@@ -76,11 +79,11 @@ function TemplateCard({
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-xl leading-none font-semibold text-[#1c1c1d]">{descriptor.name}</p>
-          <p className="mt-2 text-base text-[rgba(28,28,29,0.66)]">{descriptor.description}</p>
+          <p className="text-xl leading-none font-semibold text-primary">{descriptor.name}</p>
+          <p className="mt-2 text-base text-secondary">{descriptor.description}</p>
         </div>
       </div>
-      <ChevronRight className="ml-3 h-5 w-5 shrink-0 text-[rgba(28,28,29,0.56)]" />
+      <ChevronRight className="ml-3 h-5 w-5 shrink-0 text-tertiary" />
     </button>
   );
 }

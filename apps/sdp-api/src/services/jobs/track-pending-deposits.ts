@@ -24,7 +24,7 @@ import {
   type PrivateChannelDepositRow,
 } from "@/db/repositories";
 import { getChannelBalance } from "@/services/private-channels";
-import { resolveOwnerGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
+import { resolveMemberGatewayAuth } from "@/services/private-channels/auth/gateway-auth";
 import { emitDepositEvent } from "@/services/private-channels/deposit-events";
 import type { Env } from "@/types/env";
 import { planDepositCredits } from "./deposit-credit";
@@ -93,7 +93,7 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
 }
 
 interface DepositCreditGroup {
-  /** Tenancy scope — needed to resolve the recipient's SPC identity for gateway auth. */
+  /** Tenancy scope — needed to resolve the acting member's SPC identity for gateway auth. */
   organizationId: string;
   projectId: string;
   instanceId: string;
@@ -189,14 +189,13 @@ async function reconcileCreditGroup(
   }
 
   // Read the recipient's channel balance via the group's snapshotted gateway.
-  // A deposit row written before the snapshot columns existed can carry EMPTY urls.
+  // A deposit row can carry EMPTY snapshot urls — those columns default to ''.
   // Never build a gateway client from an empty URL — that throws "Invalid URL: " and
   // takes down the whole group, including healthy deposits that DO have a snapshot.
   // Pick a deposit that actually carries one; skip the group if none does.
   //
-  // NOTE: this still assumes every deposit in the group shares one config. When
-  // snapshots legitimately diverge, the group should be keyed by the snapshot
-  // itself — tracked as finding #3 in DEPOSIT_REVIEW_FIXES.md.
+  // NOTE: this assumes every deposit in the group shares one config. If snapshots can
+  // diverge, the group has to be keyed by the snapshot itself.
   const snapshot = deposits.find((deposit) => deposit.gateway_url && deposit.chain_rpc_url);
   if (!snapshot) {
     console.warn("trackPendingDeposits: skipping credit group with no usable config snapshot", {
@@ -210,16 +209,23 @@ async function reconcileCreditGroup(
   // Resolved AFTER the snapshot guard on purpose: this does DB lookups plus an SPC
   // login (a network round-trip), so never pay for it on a group we're about to skip.
   //
-  // The gateway JWT-gates balance reads. The cron has no request user, so derive
-  // the SPC identity from the data: the recipient's VERIFIED wallet maps the pubkey
-  // back to the member whose credential can mint a token. `unavailable` (e.g. an
-  // external/unverified recipient) skips this group rather than failing the tick —
-  // those deposits stay `confirmed` for manual resolution.
-  const gatewayAuth = await resolveOwnerGatewayAuth(env, {
+  // The gateway JWT-gates balance reads. The cron has no request user, so it uses the
+  // member persisted on the deposit at intent time — the actor, not the recipient.
+  // Picked from the row list the same way as the snapshot above: any member in the
+  // group can mint a token for this read, so take the first row that still has one
+  // (a revoked member leaves null). Deterministic because listDepositsForRecipient
+  // orders by (created_at, id).
+  //
+  // `unavailable` (e.g. every member in the group was revoked) skips this group
+  // rather than failing the tick — those deposits stay `confirmed` for manual
+  // resolution.
+  const actingMemberId =
+    deposits.find((deposit) => deposit.private_channel_user_id)?.private_channel_user_id ?? null;
+  const gatewayAuth = await resolveMemberGatewayAuth(env, {
     organizationId: group.organizationId,
     projectId: group.projectId,
     instanceId: group.instanceId,
-    owner: group.recipient,
+    privateChannelUserId: actingMemberId,
   });
   if (gatewayAuth.kind === "unavailable") {
     console.warn("trackPendingDeposits: skipping credit group, gateway auth unavailable", {

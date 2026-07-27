@@ -37,7 +37,7 @@ import { openSpcAuthContext, type SpcAuthContext, withSpcAuth } from "./auth/gat
 const base58 = getBase58Codec();
 
 // Verify chains up to three sequential SPC calls (login → challenge → verify) in
-// one Worker request; cap each below the client's 15s default so a degraded auth
+// one API request; cap each below the client's 15s default so a degraded auth
 // service can't stack into a ~45s request.
 const SPC_AUTH_TIMEOUT_MS = 8_000;
 

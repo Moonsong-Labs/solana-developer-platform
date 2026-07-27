@@ -1,143 +1,71 @@
 import {
   CUSTODY_PROVIDER_CAPABILITIES,
+  CUSTODY_PROVIDER_CATEGORIES,
+  CUSTODY_PROVIDER_CATEGORY_DETAILS,
+  CUSTODY_PROVIDER_USE_CASE_LABEL_KEYS,
   type CustodyProvider,
   type CustodyProviderCapabilities,
+  type CustodyProviderCategory,
+  type CustodyProviderSetupField,
+  type CustodyProviderSetupFieldOption,
+  type CustodyProviderUseCase,
+  CUSTODY_PROVIDER_CATALOG as SHARED_CUSTODY_PROVIDER_CATALOG,
+} from "@sdp/types";
+import type { MessageKey } from "@/i18n/messages";
+
+export {
+  CUSTODY_PROVIDER_DISPLAY_STATUSES,
+  type CustodyProviderDisplayStatus,
 } from "@sdp/types";
 
-const DEFAULT_CUSTODY_CAPABILITIES = ["Issuance", "Transfers", "Compliance"] as const;
+export const CUSTODY_CAPABILITY_LABEL_KEYS: Record<CustodyProviderUseCase, MessageKey> =
+  CUSTODY_PROVIDER_USE_CASE_LABEL_KEYS;
 
-export const WALLET_PROVIDER_CATEGORIES = ["server", "institutional"] as const;
-export type WalletProviderCategory = (typeof WALLET_PROVIDER_CATEGORIES)[number];
+export const WALLET_PROVIDER_CATEGORIES = CUSTODY_PROVIDER_CATEGORIES;
+export type WalletProviderCategory = CustodyProviderCategory;
 
 export const WALLET_PROVIDER_CATEGORY_DETAILS: Record<
   WalletProviderCategory,
   {
-    label: string;
-    description: string;
+    labelKey: MessageKey;
+    descriptionKey: MessageKey;
   }
-> = {
-  server: {
-    label: "API",
-    description: "Wallet infrastructure for API-driven product, operations, and automated flows.",
-  },
-  institutional: {
-    label: "Institutional",
-    description: "Policy-based custody for treasury, settlement, and multi-party approval flows.",
-  },
-};
+> = CUSTODY_PROVIDER_CATEGORY_DETAILS;
 
 export type KnownCustodyProvider = CustodyProvider;
+
+type DashboardCustodyProviderSetupField = CustodyProviderSetupField & {
+  labelKey: MessageKey;
+  helpTextKey: MessageKey;
+  options?: readonly (CustodyProviderSetupFieldOption & { labelKey: MessageKey })[];
+};
+
+type DashboardCustodyProviderStoredCredentialSetup =
+  | { mode: "self_service"; fields: readonly DashboardCustodyProviderSetupField[] }
+  | { mode: "request_access"; requestAccessUrl: string }
+  | { mode: "unavailable" };
 
 export interface CustodyProviderCatalogEntry {
   id: KnownCustodyProvider;
   label: string;
-  description: string;
+  descriptionKey: MessageKey;
   category: WalletProviderCategory;
+  visible: boolean;
+  technicalCapabilities: CustodyProviderCapabilities;
+  useCases: readonly CustodyProviderUseCase[];
+  storedCredentialSetup: DashboardCustodyProviderStoredCredentialSetup;
   supportsAdditionalWallets: boolean;
   supportsSigning: boolean;
-  capabilities: readonly string[];
+  capabilities: readonly CustodyProviderUseCase[];
 }
 
-type CustodyProviderCatalogById = {
-  [Provider in KnownCustodyProvider]: CustodyProviderCatalogEntry & { id: Provider };
-};
-
-const CUSTODY_PROVIDER_CATALOG_BY_ID = {
-  local: {
-    id: "local",
-    label: "Local Signer",
-    description: "Self-hosted Ed25519 keypair signer from CUSTODY_PRIVATE_KEY.",
-    category: "server",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("local"),
-    supportsSigning: providerSupportsSigning("local"),
-    capabilities: ["Issuance", "Transfers"],
-  },
-  privy: {
-    id: "privy",
-    label: "Privy",
-    description: "Hosted wallet infrastructure for API signing.",
-    category: "server",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("privy"),
-    supportsSigning: providerSupportsSigning("privy"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  fireblocks: {
-    id: "fireblocks",
-    label: "Fireblocks",
-    description: "MPC custody with vault-based wallet controls.",
-    category: "institutional",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("fireblocks"),
-    supportsSigning: providerSupportsSigning("fireblocks"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  coinbase_cdp: {
-    id: "coinbase_cdp",
-    label: "Coinbase CDP",
-    description: "Programmatic wallet provisioning through Coinbase CDP.",
-    category: "server",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("coinbase_cdp"),
-    supportsSigning: providerSupportsSigning("coinbase_cdp"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  para: {
-    id: "para",
-    label: "Para",
-    description: "Embedded wallet custody for organization-level operations.",
-    category: "server",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("para"),
-    supportsSigning: providerSupportsSigning("para"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  turnkey: {
-    id: "turnkey",
-    label: "Turnkey",
-    description: "Policy-based key custody for production signing workloads.",
-    category: "server",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("turnkey"),
-    supportsSigning: providerSupportsSigning("turnkey"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  dfns: {
-    id: "dfns",
-    label: "DFNS",
-    description: "MPC wallet orchestration with secure API-driven signing.",
-    category: "institutional",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("dfns"),
-    supportsSigning: providerSupportsSigning("dfns"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  ibm_haven: {
-    id: "ibm_haven",
-    label: "IBM Digital Asset Haven",
-    description: "Institutional custody on IBM Digital Asset Haven.",
-    category: "institutional",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("ibm_haven"),
-    supportsSigning: providerSupportsSigning("ibm_haven"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-  anchorage: {
-    id: "anchorage",
-    label: "Anchorage",
-    description: "Institutional custody with wallet lifecycle management.",
-    category: "institutional",
-    capabilities: ["Transfers", "Compliance"],
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("anchorage"),
-    supportsSigning: providerSupportsSigning("anchorage"),
-  },
-  utila: {
-    id: "utila",
-    label: "Utila",
-    description: "Vault-backed Solana wallet signing through Utila service accounts.",
-    category: "institutional",
-    supportsAdditionalWallets: providerSupportsAdditionalWallets("utila"),
-    supportsSigning: providerSupportsSigning("utila"),
-    capabilities: DEFAULT_CUSTODY_CAPABILITIES,
-  },
-} satisfies CustodyProviderCatalogById;
-
-export const CUSTODY_PROVIDER_CATALOG: CustodyProviderCatalogEntry[] = Object.values(
-  CUSTODY_PROVIDER_CATALOG_BY_ID
-);
+export const CUSTODY_PROVIDER_CATALOG: CustodyProviderCatalogEntry[] =
+  SHARED_CUSTODY_PROVIDER_CATALOG.map((provider) => ({
+    ...provider,
+    supportsAdditionalWallets: provider.technicalCapabilities.supportsAdditionalWalletCreation,
+    supportsSigning: provider.technicalCapabilities.supportsSigning,
+    capabilities: provider.useCases,
+  }));
 
 function getSharedProviderCapabilities(
   provider: KnownCustodyProvider
@@ -161,6 +89,10 @@ const PROVIDER_SET = new Set<KnownCustodyProvider>(
   CUSTODY_PROVIDER_CATALOG.map((provider) => provider.id)
 );
 
+const PROVIDER_CATALOG_BY_ID = new Map(
+  CUSTODY_PROVIDER_CATALOG.map((provider) => [provider.id, provider])
+);
+
 export function isKnownCustodyProvider(value: string): value is KnownCustodyProvider {
   return PROVIDER_SET.has(value as KnownCustodyProvider);
 }
@@ -172,7 +104,7 @@ export function formatCustodyProviderName(provider: string): string {
 export function getCustodyProviderEntry(
   provider: KnownCustodyProvider
 ): CustodyProviderCatalogEntry {
-  return CUSTODY_PROVIDER_CATALOG_BY_ID[provider];
+  return PROVIDER_CATALOG_BY_ID.get(provider)!;
 }
 
 export function getCustodyProviderCategory(provider: KnownCustodyProvider): WalletProviderCategory {

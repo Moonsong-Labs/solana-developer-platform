@@ -18,10 +18,9 @@ import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/t
 
 export interface GatewayClientOptions {
   /**
-   * Extra request headers for the gateway. Reserved for the future JWT
-   * `Authorization` seam — when the gateway switches to `authMode: "jwt"`, pass
-   * `{ Authorization: \`Bearer \${token}\` }` here. `Authorization` is already
-   * permitted by `@sdp/rpc`'s header policy, so no plumbing change is needed then.
+   * Extra request headers for the gateway. JWT-gated methods take
+   * `{ Authorization: \`Bearer \${token}\` }` here; `Authorization` is permitted by
+   * `@sdp/rpc`'s header policy.
    */
   headers?: Readonly<Record<string, string>>;
 }
@@ -62,7 +61,7 @@ export interface ChannelTokenBalanceResult {
 
 /**
  * Read an owner's channel token balance for `mint`. Channel token accounts derive
- * under the CLASSIC Token program (per the SPC devnet guide), so its program id is
+ * under the CLASSIC Token program, not Token-2022, so its program id is
  * used as the ATA `tokenProgram` seed. Returns `balance: null` (not an error) when
  * the owner has no token account on the channel yet.
  */

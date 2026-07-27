@@ -1,7 +1,13 @@
+/**
+ * Master list of every env key the SDP API reads. The local development and
+ * self-hosted Docker projections derive from it, so a key absent from this
+ * list reaches neither surface.
+ */
 export const API_LOCAL_ENV_KEYS = [
   "DATABASE_URL",
   "REDIS_URL",
-  "SDP_RUNTIME",
+  "PUBLIC_API_ORIGIN",
+  "DISABLE_CRON",
   "SENTRY_DSN",
   "SENTRY_TRACES_SAMPLE_RATE",
   "SDP_DEPLOYMENT_MODE",
@@ -99,7 +105,9 @@ export const API_LOCAL_ENV_KEYS = [
   "MAGICBLOCK_PRIVATE_PAYMENTS_API_BASE_URL",
   "MAGICBLOCK_PRIVATE_PAYMENTS_AUTH_TOKEN",
   "MAGICBLOCK_PRIVATE_PAYMENTS_EPHEMERAL_RPC_URL",
-  "PAYMENTS_RECURRING_ENABLED",
+  "PAYMENTS_RECURRING_COLLECTION_ENABLED",
+  "PAYMENTS_RECURRING_COLLECTION_BATCH_SIZE",
+  "PAYMENTS_RECURRING_COLLECTION_RETRY_AFTER_MINUTES",
   "PRIVATE_CHANNELS_ENABLED",
   "MOONPAY_API_KEY",
   "MOONPAY_SECRET_KEY",
@@ -150,37 +158,22 @@ export const API_LOCAL_ENV_KEYS = [
   "GOOGLE_ADDRESS_COMPLETION_API_KEY",
 ];
 
-export const LOCAL_ONLY_API_ENV_KEYS = new Set([
+/**
+ * Keys supplied directly by Docker Compose or reserved for local tests, so
+ * they must not be copied into the generated self-hosted Docker env file.
+ */
+const DOCKER_EXCLUDED_API_ENV_KEYS = new Set([
   "DATABASE_URL",
   "REDIS_URL",
   "SOLANA_MOCK",
   "RUN_INTEGRATION_TESTS",
 ]);
 
-export const COMMITTED_WORKER_VAR_KEYS = new Set([
-  "SDP_RUNTIME",
-  "SDP_DEPLOYMENT_MODE",
-  "EMAIL_FROM",
-  "SOLANA_NETWORK",
-  "SOLANA_RPC_URL",
-  "SOLANA_RPC_DEFAULT_PROVIDER",
-  "SOLANA_RPC_TRITON_URL",
-  "SOLANA_RPC_HELIUS_URL",
-  "SOLANA_RPC_ALCHEMY_URL",
-  "SOLANA_RPC_QUICKNODE_URL",
-  "SOLANA_RPC_VALIDATIONCLOUD_URL",
-  "FEE_PAYMENT_PROVIDER",
-  "KORA_RPC_URL",
-  "PAYMENTS_RECURRING_ENABLED",
-  "PRIVATE_CHANNELS_ENABLED",
-]);
-
-export const CLOUDFLARE_SECRET_KEYS = API_LOCAL_ENV_KEYS.filter(
-  (key) => !LOCAL_ONLY_API_ENV_KEYS.has(key) && !COMMITTED_WORKER_VAR_KEYS.has(key)
-);
-
-// Docker has no wrangler.toml, so COMMITTED_WORKER_VAR_KEYS must ship inside
-// the env file alongside true secrets.
+/**
+ * Keys the self-hosted docker env file ships (project-secrets.mjs `docker`).
+ * Connection URLs are composed by the stack itself, while test-only switches
+ * remain local.
+ */
 export const DOCKER_ENV_KEYS = API_LOCAL_ENV_KEYS.filter(
-  (key) => !LOCAL_ONLY_API_ENV_KEYS.has(key)
+  (key) => !DOCKER_EXCLUDED_API_ENV_KEYS.has(key)
 );

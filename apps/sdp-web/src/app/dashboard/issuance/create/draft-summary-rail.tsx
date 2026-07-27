@@ -17,9 +17,10 @@ import {
   ShieldCheck,
   Tag,
 } from "lucide-react";
+import { useLocale, useTranslations } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
 import { accessControlLabel, getPegSummary } from "./asset-details-config";
-import { getAssetTypeLabel, getCategoryLabel } from "./asset-taxonomy";
+import { getAssetTypeLabel, getCategoryLabelKey } from "./asset-taxonomy";
 import { safeLinkHref } from "./draft-mapping";
 import type { DraftState } from "./issuance-draft-wizard.types";
 
@@ -43,16 +44,16 @@ interface SummaryRowProps {
 function SummaryRow({ icon: Icon, label, value, href }: SummaryRowProps) {
   const hasValue = value !== null && value.trim().length > 0;
   return (
-    <div className="flex items-start gap-2.5 border-b border-[rgba(28,28,29,0.06)] py-2.5 last:border-b-0">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[rgba(28,28,29,0.4)]" />
-      <span className="shrink-0 text-sm text-[rgba(28,28,29,0.58)]">{label}</span>
+    <div className="flex items-start gap-2.5 border-b border-border-subtle py-2.5 last:border-b-0">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+      <span className="shrink-0 text-sm text-tertiary">{label}</span>
       <span className="ml-auto min-w-0 max-w-[60%] text-right">
         {hasValue && href ? (
           <a
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 break-all text-sm font-medium text-[#1c1c1d] hover:underline"
+            className="inline-flex items-center gap-1 break-all text-sm font-medium text-primary hover:underline"
           >
             {value}
             <ExternalLink className="h-3 w-3 shrink-0" />
@@ -61,7 +62,7 @@ function SummaryRow({ icon: Icon, label, value, href }: SummaryRowProps) {
           <span
             className={cn(
               "block break-words text-sm font-medium",
-              hasValue ? "text-[#1c1c1d]" : "text-[rgba(28,28,29,0.4)]"
+              hasValue ? "text-primary" : "text-muted"
             )}
           >
             {hasValue ? value : "—"}
@@ -72,7 +73,7 @@ function SummaryRow({ icon: Icon, label, value, href }: SummaryRowProps) {
   );
 }
 
-function formatUpdatedAt(updatedAt: string | null): string | null {
+function formatUpdatedAt(updatedAt: string | null, locale: string): string | null {
   if (!updatedAt) {
     return null;
   }
@@ -80,7 +81,7 @@ function formatUpdatedAt(updatedAt: string | null): string | null {
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  return date.toLocaleString("en-US", {
+  return date.toLocaleString(locale, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -89,86 +90,130 @@ function formatUpdatedAt(updatedAt: string | null): string | null {
 }
 
 export function DraftSummaryRail({ draft, updatedAt, review }: DraftSummaryRailProps) {
-  const categoryLabel = getCategoryLabel(draft.assetCategory);
-  const typeLabel = getAssetTypeLabel(draft.assetCategory, draft.assetType);
+  const t = useTranslations();
+  const locale = useLocale();
+  const categoryLabelKey = getCategoryLabelKey(draft.assetCategory);
+  const categoryLabel = categoryLabelKey ? t(categoryLabelKey) : null;
+  const typeLabel = getAssetTypeLabel(draft.assetCategory, draft.assetType, t);
   const transferRestrictionsEnabled =
     draft.accessControl === "allowlist" ||
     draft.accessControl === "blocklist" ||
-    draft.capacities.transferApprovals;
+    draft.capacities.transferApprovals.enabled;
   const website = draft.website.trim();
   const pegSummary = getPegSummary(draft);
 
+  // `top-0` (not `top-4`): the rail sits at the very top of the scroll area, so
+  // any positive inset would shove it below the step header even at rest. With
+  // `top-0` it stays flush with the header and pins to the top on scroll.
   return (
-    <aside className="lg:sticky lg:top-4">
-      <div className="rounded-2xl border border-[rgba(28,28,29,0.1)] bg-white p-5">
-        <p className="text-base font-medium text-[#1c1c1d]">Summary</p>
+    <aside className="lg:sticky lg:top-0">
+      <div className="rounded-2xl border border-border-default bg-surface-raised p-5">
+        <p className="text-base font-medium text-primary">{t("DashboardIssuance.summary.title")}</p>
 
         <div className="mt-3">
-          <SummaryRow icon={Layers} label="Asset category" value={categoryLabel} />
-          <SummaryRow icon={Tag} label="Asset type" value={typeLabel} />
-          <SummaryRow icon={FileText} label="Name" value={draft.name} />
-          <SummaryRow icon={DollarSign} label="Symbol" value={draft.symbol} />
-          <SummaryRow icon={Hash} label="Decimals" value={draft.decimals} />
-          {pegSummary ? <SummaryRow icon={Anchor} label="Pegged to" value={pegSummary} /> : null}
+          <SummaryRow
+            icon={Layers}
+            label={t("DashboardIssuance.summary.assetCategory")}
+            value={categoryLabel}
+          />
+          <SummaryRow
+            icon={Tag}
+            label={t("DashboardIssuance.summary.assetType")}
+            value={typeLabel}
+          />
+          <SummaryRow
+            icon={FileText}
+            label={t("DashboardIssuance.forms.name")}
+            value={draft.name}
+          />
+          <SummaryRow
+            icon={DollarSign}
+            label={t("DashboardIssuance.create.symbol")}
+            value={draft.symbol}
+          />
+          <SummaryRow
+            icon={Hash}
+            label={t("DashboardIssuance.create.decimals")}
+            value={draft.decimals}
+          />
+          {pegSummary ? (
+            <SummaryRow
+              icon={Anchor}
+              label={t("DashboardIssuance.summary.peggedTo")}
+              value={pegSummary}
+            />
+          ) : null}
           <SummaryRow
             icon={ShieldCheck}
-            label="Access control"
-            value={accessControlLabel(draft.accessControl)}
+            label={t("DashboardIssuance.summary.accessControl")}
+            value={accessControlLabel(draft.accessControl, t)}
           />
           <SummaryRow
             icon={ArrowLeftRight}
-            label="Transfer restrictions"
-            value={transferRestrictionsEnabled ? "Enabled" : null}
+            label={t("DashboardIssuance.summary.transferRestrictions")}
+            value={transferRestrictionsEnabled ? t("DashboardIssuance.summary.enabled") : null}
           />
           <SummaryRow
             icon={ClipboardList}
-            label="Investor reporting"
-            value={draft.capacities.investorReporting ? "Enabled" : null}
+            label={t("DashboardIssuance.summary.investorReporting")}
+            value={
+              draft.capacities.investorReporting.enabled
+                ? t("DashboardIssuance.summary.enabled")
+                : null
+            }
           />
           <SummaryRow
             icon={Globe}
-            label="Website"
+            label={t("DashboardIssuance.assetDetails.website")}
             value={website || null}
             href={safeLinkHref(website) ?? null}
           />
-          <SummaryRow icon={Clock} label="Last updated" value={formatUpdatedAt(updatedAt)} />
+          <SummaryRow
+            icon={Clock}
+            label={t("DashboardIssuance.summary.lastUpdated")}
+            value={formatUpdatedAt(updatedAt, locale)}
+          />
         </div>
 
         {review ? (
           <div className="mt-4">
             {review.blockers.length > 0 ? (
-              <div className="rounded-xl border border-[rgba(199,31,55,0.25)] bg-[rgba(199,31,55,0.06)] p-3">
-                <div className="flex items-center gap-2 text-[#8a1f2a]">
+              <div className="rounded-xl border border-destructive-border bg-destructive-bg p-3">
+                <div className="flex items-center gap-2 text-destructive-strongest">
                   <CircleAlert className="h-4 w-4 shrink-0" />
-                  <p className="text-sm font-semibold">Resolve before creating</p>
+                  <p className="text-sm font-semibold">
+                    {t("DashboardIssuance.summary.resolveBeforeCreating")}
+                  </p>
                 </div>
-                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-[#8a1f2a]">
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-destructive-strongest">
                   {review.blockers.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
               </div>
             ) : (
-              <div className="flex items-start gap-2 rounded-xl border border-[rgba(12,128,76,0.2)] bg-[rgba(12,128,76,0.06)] p-3">
-                <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#0c804c]" />
+              <div className="flex items-start gap-2 rounded-xl border border-success-border bg-success-bg p-3">
+                <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 <div>
-                  <p className="text-sm font-semibold text-[#0c804c]">
-                    You&apos;re ready to create a draft
+                  <p className="text-sm font-semibold text-success">
+                    {t("DashboardIssuance.summary.readyToCreate")}
                   </p>
-                  <p className="mt-0.5 text-xs text-[rgba(12,128,76,0.85)]">
-                    You can review, edit, and publish when you&apos;re ready.
+                  <p className="mt-0.5 text-xs text-success">
+                    {t("DashboardIssuance.summary.readyDescription")}
                   </p>
                 </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="mt-4 flex items-start gap-2 rounded-xl bg-[rgba(28,28,29,0.03)] p-3">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[rgba(28,28,29,0.5)]" />
+          <div className="mt-4 flex items-start gap-2 rounded-xl bg-fill-subtle p-3">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-tertiary" />
             <div>
-              <p className="text-xs font-semibold text-[#1c1c1d]">Private by default</p>
-              <p className="mt-0.5 text-xs text-[rgba(28,28,29,0.58)]">
-                Details you provide are private and only used to configure your asset.
+              <p className="text-xs font-semibold text-primary">
+                {t("DashboardIssuance.summary.privateByDefault")}
+              </p>
+              <p className="mt-0.5 text-xs text-tertiary">
+                {t("DashboardIssuance.summary.privateDescription")}
               </p>
             </div>
           </div>

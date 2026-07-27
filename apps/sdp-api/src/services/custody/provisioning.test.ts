@@ -1,3 +1,4 @@
+import { provisionUtilaWallet as provisionUtilaWalletInCustody } from "@sdp/custody/provisioning";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   provisionCoinbaseCdpAccount,
@@ -241,12 +242,95 @@ describe("utila wallet provisioning", () => {
     expect(result.vaultId).toBe("vault_123");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("uses the injected clock for service account JWTs", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      jsonResponse(
+        {
+          wallet: {
+            name: "vaults/vault_123/wallets/wallet_clock",
+            solanaDetails: { address: CREATED_ADDRESS },
+          },
+        },
+        200
+      )
+    );
+    const now = 1_725_000_000_000;
+
+    await provisionUtilaWalletInCustody(
+      {
+        fetch: fetchMock,
+        sleep: async () => undefined,
+        now: () => now,
+        randomUUID: () => "test-uuid",
+        getRandomValues: (values) => values,
+        sha256: (data) => crypto.subtle.digest("SHA-256", new Uint8Array(data)),
+      },
+      {
+        serviceAccountEmail: "service-account@example.com",
+        serviceAccountPrivateKeyPem: utilaPrivateKeyPem,
+        vaultId: "vaults/vault_123",
+        apiBaseUrl: "https://api.utila.io",
+      },
+      {}
+    );
+
+    const authorization = new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization");
+    expect(authorization).toBeTruthy();
+    expect(decodeJwtPayload(authorization?.slice("Bearer ".length) ?? "")).toMatchObject({
+      iat: now / 1_000,
+      exp: now / 1_000 + 5 * 60,
+    });
+  });
 });
 
 describe("para wallet provisioning", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("uses only the server-configured Para endpoint", async () => {
+    const walletId = "wal_para_env";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = toUrlString(input);
+        expect(url.startsWith("https://trusted.para.test/")).toBe(true);
+
+        if (url.endsWith("/v1/wallets") && init?.method === "POST") {
+          return jsonResponse({ data: { id: walletId, status: "creating" } }, 200);
+        }
+
+        if (url.endsWith(`/v1/wallets/${walletId}`) && init?.method === "GET") {
+          return jsonResponse(
+            {
+              data: {
+                id: walletId,
+                type: "SOLANA",
+                scheme: "ED25519",
+                status: "ready",
+                address: CREATED_ADDRESS,
+              },
+            },
+            200
+          );
+        }
+
+        throw new Error(`Unexpected fetch call: ${init?.method ?? "GET"} ${url}`);
+      });
+
+    await provisionParaWallet(
+      createParaEnv({
+        PARA_API_BASE_URL: "https://trusted.para.test",
+      }),
+      {
+        orgId: "org_abc",
+        orgSlug: "Acme Labs",
+      }
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("retries transient address-not-ready errors while waiting for wallet readiness", async () => {
@@ -469,6 +553,15 @@ function jsonResponse(body: unknown, status: number): Response {
       "Content-Type": "application/json",
     },
   });
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const payload = token.split(".")[1] ?? "";
+  const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+  return JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="))) as Record<
+    string,
+    unknown
+  >;
 }
 
 async function createEs256KeyMaterial(): Promise<{

@@ -1,6 +1,7 @@
 /**
  * Integration test for SPC gateway auth: the KV token cache + 401 invalidate-and-retry,
- * exercised against Miniflare's `SDP_CACHE` KV and the test Postgres.
+ * exercised against the real `createKVStoreSet(env).cache` (Redis) and the test
+ * Postgres, both provisioned by the testcontainers global setup.
  *
  * Only the external SPC boundary is mocked: `createAuthClient().login` (so no live SPC auth
  * service). Everything else is the production path — `resolveGatewayAuth` does its DB
@@ -15,8 +16,8 @@ import * as spcAuth from "@sdp/private-channels/auth";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
 import { createPrivateChannelUserRepository } from "@/db/repositories";
-import { createSpcCredentialEncryption } from "@/lib/spc-credential-crypto";
-import { createKVStoreSet } from "@/runtime/factory";
+import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
+import { createKVStoreSet } from "@/runtime/kv-redis";
 import { generateEncryptionKey } from "@/services/encryption.service";
 import {
   openSpcAuthContext,
@@ -58,7 +59,7 @@ let loginMock: ReturnType<typeof vi.fn>;
 
 beforeAll(async () => {
   const key = await generateEncryptionKey();
-  // The base workers env lacks the SPC key; add it so encryption is consistent across
+  // The shared test env lacks the SPC key; add it so encryption is consistent across
   // seeding (the stored credential) and getSpcSession (the cached token).
   testEnv = { ...(baseEnv as Env), SPC_CREDENTIAL_ENCRYPTION_KEY: key };
   await seedTestDatabase(baseEnv as Parameters<typeof seedTestDatabase>[0]);
@@ -93,10 +94,7 @@ beforeEach(async () => {
     .run();
 
   // The member row resolveGatewayAuth looks up, with an encrypted SPC credential.
-  const { ciphertext } = await createSpcCredentialEncryption(testEnv).encrypt(
-    TEST_ORG.id,
-    "spc-password"
-  );
+  const ciphertext = await createSpcCredentialCipher(testEnv).encrypt(TEST_ORG.id, "spc-password");
   await db
     .prepare(
       `INSERT INTO private_channel_users
@@ -118,13 +116,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("SPC gateway auth — KV cache + 401 retry (Miniflare KV + Postgres)", () => {
+describe("SPC gateway auth — KV cache + 401 retry (Redis KV + Postgres)", () => {
   it("caches the SPC token in KV so a second resolve does not re-login", async () => {
     const first = await resolveGatewayAuth(testEnv, resolveInput);
     expect(first?.current).toBeTruthy();
     expect(loginMock).toHaveBeenCalledTimes(1);
 
-    // The token is really in Miniflare KV (encrypted).
+    // The token is really in the KV store (encrypted).
     const cached = await createKVStoreSet(testEnv).cache.get<{ tokenCiphertext: string }>(
       CACHE_KEY,
       "json"

@@ -1,3 +1,4 @@
+import { normalizeTemplateId, resolveTemplateConfig } from "@sdp/issuance/templates";
 import { assertValidAddress } from "@sdp/solana/address";
 import type { TokenResponse } from "@sdp/types";
 import type { Context } from "hono";
@@ -7,7 +8,6 @@ import { badRequest, notFound } from "@/lib/errors";
 import { created, paginated, success } from "@/lib/response";
 import { resolveApiKeySigningWalletId } from "@/services/api-key-scope.service";
 import { AuditService } from "@/services/audit.service";
-import { normalizeTemplateId, resolveTemplateConfig } from "@/services/issuance/templates";
 import { createMosaicService } from "@/services/mosaic";
 import { createOrgSigner } from "@/services/solana";
 import { TokenService } from "@/services/token.service";
@@ -101,7 +101,6 @@ export const createToken = async (c: AppContext) => {
     requiresAllowlist: resolved.requiresAllowlist,
   });
 
-  // Audit log
   const auditService = new AuditService(getDb(c.env));
   await auditService.log(c, {
     action: "create",
@@ -186,6 +185,15 @@ export const updateToken = async (c: AppContext) => {
     (existing.mintAddress || existing.status !== "pending")
   ) {
     throw badRequest("requiresAllowlist cannot be changed after deployment");
+  }
+
+  // Symbol and decimals define the mint itself, so they're immutable once the
+  // token is deployed on-chain — only editable while it's an undeployed draft.
+  if (
+    (parsed.data.symbol !== undefined || parsed.data.decimals !== undefined) &&
+    (existing.mintAddress || existing.status !== "pending")
+  ) {
+    throw badRequest("symbol and decimals cannot be changed after deployment");
   }
 
   try {

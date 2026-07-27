@@ -16,17 +16,15 @@ import { balanceQuerySchema } from "../schemas";
  * cluster's USDC mint. The connection is the project's ACTIVE persisted instance.
  * Feature-gated (router middleware) + `payments:read`.
  *
- * TODO(visibility, per implementation notes): balance is per (wallet, mint) at the
- * SPC layer and shared across channels — the read primitive is correct, but this
- * endpoint is UNDER-GATED for the notes' visibility model. Today any project member
- * with `payments:read` can read ANY `owner`'s balance; the model requires "no
- * visibility beyond your own channels" — a caller may read a balance only when they
- * are a project ADMIN, the wallet's own user, or share an active channel with it
- * (needs the `private_channel_members` / `private_channel_project_wallets` tables,
- * which land in a later slice). Add that authorization gate then, likely surfacing
- * balance under a channel-scoped route. Web must also show the mandated copy:
- * "Balances belong to your wallet; if you're in multiple channels, they all show
- * the same amount."
+ * TODO(visibility): balance is per (wallet, mint) at the SPC layer and shared across
+ * channels, so the read primitive is correct but this endpoint is UNDER-GATED: any
+ * project member with `payments:read` can read ANY `owner`'s balance. The intended
+ * rule is no visibility beyond your own channels — a caller may read a balance only
+ * when they are a project ADMIN, the wallet's own user, or share an active channel
+ * with it, which `private_channel_memberships` and
+ * `private_channel_verified_wallets` can answer. Adding the gate likely means moving
+ * balance under a channel-scoped route. The UI should also say: "Balances belong to
+ * your wallet; if you're in multiple channels, they all show the same amount."
  */
 export async function getPrivateChannelBalance(c: AppContext) {
   const parsed = balanceQuerySchema.safeParse({

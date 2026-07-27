@@ -1,3 +1,4 @@
+import { NativeAdapter } from "@sdp/payments/fee-payment/native";
 import * as solanaRpc from "@sdp/rpc/solana";
 import {
   type Address,
@@ -20,7 +21,6 @@ import {
 import { getTransferSolInstruction } from "@solana-program/system";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "@/types/env";
-import { NativeAdapter } from "./native.adapter";
 
 const base58 = getBase58Codec();
 const decoder = getTransactionDecoder();
@@ -76,7 +76,7 @@ async function buildSourceSignedTransfer(feePayer: Address): Promise<{
 }
 
 describe("NativeAdapter", () => {
-  // The Workers test pool shares one module registry across files (isolate: false),
+  // The test suite shares one module registry across files (isolate: false),
   // so a top-level `vi.mock("@sdp/rpc/solana")` doesn't reliably intercept once
   // another test file has already imported the real module.
   beforeEach(() => {

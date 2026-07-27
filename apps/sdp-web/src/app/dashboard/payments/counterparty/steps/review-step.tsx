@@ -1,81 +1,105 @@
 "use client";
 
+import { useTranslations } from "@/i18n/provider";
 import { ReviewRow } from "../components/review-row";
 import { SectionDivider } from "../components/section-divider";
 import { useCounterpartyCreate } from "../counterparty-create-context";
 import { addressSchema, basicsSchema, identitySchema } from "../counterparty-create-schemas";
 
 export function ReviewStep() {
+  const t = useTranslations();
   const { basics, identity, address, steps, submitError } = useCounterpartyCreate();
 
+  const hasIdentityStep = steps.includes("identity");
   const basicsParsed = basicsSchema.safeParse(basics.values);
-  const identityParsed = identitySchema.safeParse(identity.values);
+  const identityParsed = hasIdentityStep ? identitySchema.safeParse(identity.values) : null;
   const addressParsed = addressSchema.safeParse(address.values);
 
-  if (!basicsParsed.success || !identityParsed.success || !addressParsed.success) {
+  if (
+    !basicsParsed.success ||
+    !addressParsed.success ||
+    (identityParsed !== null && !identityParsed.success)
+  ) {
     return null;
   }
 
   const basicsValues = basicsParsed.data;
-  const identityValues = identityParsed.data;
   const addressValues = addressParsed.data;
-
-  const hasIdentityStep = steps.includes("identity");
-  const hasAnyIdentity = !!(
-    identityValues.firstName ||
-    identityValues.lastName ||
-    identityValues.dateOfBirth ||
-    identityValues.phone
-  );
 
   return (
     <div className="space-y-6">
-      <SectionDivider label="Basics" />
+      <SectionDivider label={t("DashboardPayments.counterparty.basics")} />
       <div className="space-y-1">
         <ReviewRow
-          label="Entity type"
-          value={basicsValues.entityType === "individual" ? "Individual" : "Business"}
+          label={t("DashboardPayments.counterparty.entityType")}
+          value={t(`DashboardPayments.counterparty.${basicsValues.entityType}`)}
         />
-        <ReviewRow label="Display name" value={basicsValues.displayName} />
-        <ReviewRow label="Email" value={basicsValues.email} />
+        <ReviewRow
+          label={t("DashboardPayments.counterparty.displayName")}
+          value={basicsValues.displayName}
+        />
+        <ReviewRow label={t("DashboardPayments.counterparty.email")} value={basicsValues.email} />
         {basicsValues.externalId ? (
-          <ReviewRow label="External ID" value={basicsValues.externalId} />
+          <ReviewRow
+            label={t("DashboardPayments.counterparty.externalId")}
+            value={basicsValues.externalId}
+          />
         ) : null}
       </div>
 
-      {hasIdentityStep && hasAnyIdentity ? (
+      {identityParsed?.success ? (
         <>
-          <SectionDivider label="Personal info" />
+          <SectionDivider label={t("DashboardPayments.counterparty.personalInfo")} />
           <div className="space-y-1">
-            {identityValues.firstName ? (
-              <ReviewRow label="First name" value={identityValues.firstName} />
-            ) : null}
-            {identityValues.lastName ? (
-              <ReviewRow label="Last name" value={identityValues.lastName} />
-            ) : null}
-            {identityValues.dateOfBirth ? (
-              <ReviewRow label="Date of birth" value={identityValues.dateOfBirth} />
-            ) : null}
-            {identityValues.phone ? <ReviewRow label="Phone" value={identityValues.phone} /> : null}
+            <ReviewRow
+              label={t("DashboardPayments.counterparty.firstName")}
+              value={identityParsed.data.firstName}
+            />
+            <ReviewRow
+              label={t("DashboardPayments.counterparty.lastName")}
+              value={identityParsed.data.lastName}
+            />
+            <ReviewRow
+              label={t("DashboardPayments.counterparty.dateOfBirth")}
+              value={identityParsed.data.dateOfBirth}
+            />
+            <ReviewRow
+              label={t("DashboardPayments.counterparty.phone")}
+              value={identityParsed.data.phone}
+            />
           </div>
         </>
       ) : null}
 
-      <SectionDivider label="Address" />
+      <SectionDivider label={t("DashboardPayments.counterparty.address")} />
       <div className="space-y-1">
-        <ReviewRow label="Line 1" value={addressValues.line1} />
-        {addressValues.line2 ? <ReviewRow label="Line 2" value={addressValues.line2} /> : null}
-        <ReviewRow label="City" value={addressValues.city} />
-        {addressValues.postalCode ? (
-          <ReviewRow label="Postal code" value={addressValues.postalCode} />
+        <ReviewRow label={t("DashboardPayments.counterparty.line1")} value={addressValues.line1} />
+        {addressValues.line2 ? (
+          <ReviewRow
+            label={t("DashboardPayments.counterparty.line2")}
+            value={addressValues.line2}
+          />
         ) : null}
-        <ReviewRow label="Country" value={addressValues.countryCode} />
+        <ReviewRow label={t("DashboardPayments.counterparty.city")} value={addressValues.city} />
+        {addressValues.postalCode ? (
+          <ReviewRow
+            label={t("DashboardPayments.counterparty.postalCode")}
+            value={addressValues.postalCode}
+          />
+        ) : null}
+        <ReviewRow
+          label={t("DashboardPayments.counterparty.country")}
+          value={addressValues.countryCode}
+        />
         {addressValues.subdivisionCode ? (
-          <ReviewRow label="State / Province" value={addressValues.subdivisionCode} />
+          <ReviewRow
+            label={t("DashboardPayments.counterparty.stateProvince")}
+            value={addressValues.subdivisionCode}
+          />
         ) : null}
       </div>
 
-      {submitError ? <p className="text-sm text-status-error-text">{submitError}</p> : null}
+      {submitError ? <p className="text-sm text-error">{submitError}</p> : null}
     </div>
   );
 }

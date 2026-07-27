@@ -1,8 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
+import { getTranslations } from "@/i18n/server";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import { withDashboardPageTrace } from "@/lib/dashboard-page-trace";
-import { isRecurringPaymentsDashboardEnabled } from "@/lib/recurring-payments-feature";
 import { fetchCounterparty } from "../counterparty/counterparty-page.data";
 import { fetchPaymentsWallets } from "../payments-page.data";
 import { fetchRecurringPayments } from "./recurring-payments.data";
@@ -11,10 +11,6 @@ import { RecurringPaymentsWorkspace } from "./recurring-payments-workspace";
 export const dynamic = "force-dynamic";
 
 export default async function RecurringPaymentsPage() {
-  if (!isRecurringPaymentsDashboardEnabled()) {
-    notFound();
-  }
-
   const { userId, orgId } = await auth();
   if (!userId) {
     redirect(await getAuthEntryPath());
@@ -26,8 +22,9 @@ export default async function RecurringPaymentsPage() {
   return withDashboardPageTrace(
     "dashboard.recurring-payments.page",
     async ({ trace, apiClient }) => {
+      const t = await getTranslations();
       const [recurringPaymentsResult, walletsResult] = await Promise.all([
-        trace.step("fetch_recurring_payments", () => fetchRecurringPayments(apiClient.request)),
+        trace.step("fetch_recurring_payments", () => fetchRecurringPayments(apiClient.request, t)),
         trace.step("fetch_wallets", () =>
           fetchPaymentsWallets(apiClient.request, { includeBalances: true })
         ),

@@ -1,11 +1,13 @@
 "use client";
 
 import { Badge } from "@solana/design-system/badge";
-import { Clock3, Copy, Loader2, Play, Sparkles } from "lucide-react";
-import type { ComponentProps, CSSProperties, ReactNode } from "react";
+import { Braces, Clock3, Copy, Loader2, Play, Sparkles } from "lucide-react";
+import type { ComponentProps, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { MessageKey, TranslationValues } from "@/i18n/messages";
+import { useTranslations } from "@/i18n/provider";
 import { useDashboardUrlState } from "@/lib/dashboard-url-state";
 import { normalizeApiKeyInput } from "@/lib/playground-api-keys";
 import { cn } from "@/lib/utils";
@@ -74,10 +76,21 @@ function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function buildInitialFieldValues(endpoint: ApiPlaygroundEndpointConfig): Record<string, string> {
+function buildInitialFieldValues(
+  endpoint: ApiPlaygroundEndpointConfig,
+  preselect?: Record<string, string>
+): Record<string, string> {
   return [...endpoint.pathFields, ...endpoint.bodyFields].reduce<Record<string, string>>(
     (values, field) => {
-      values[field.key] = field.defaultValue ?? "";
+      // A URL-provided preselection (e.g. ?tokenId=…) wins over the field's
+      // default, but only when it's usable: any value for a text field, or a
+      // valid option for a select field. Otherwise fall back to the default.
+      const desired = preselect?.[field.key];
+      const isUsable =
+        desired != null &&
+        desired !== "" &&
+        (field.kind !== "select" || (field.options ?? []).some((o) => o.value === desired));
+      values[field.key] = isUsable ? desired : (field.defaultValue ?? "");
       return values;
     },
     {}
@@ -202,6 +215,7 @@ function buildFetchSnippet(
     `const response = await fetch(\`${apiBaseUrl || "https://api.example.com"}${resolvedPath}\`, {`,
     `  method: "${endpoint.method}",`,
     "  headers: {",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: Generated code intentionally contains a template placeholder.
     "    Authorization: `Bearer ${API_KEY}`,",
     '    "Content-Type": "application/json",',
     "  },",
@@ -220,32 +234,42 @@ function buildAiInstructions(
   endpoint: ApiPlaygroundEndpointConfig,
   fieldValues: Record<string, string>,
   requestBody: Record<string, unknown> | null,
-  productName: string
+  productName: string,
+  t: (key: MessageKey, values?: TranslationValues) => string
 ): string {
   const pathParameterLines = endpoint.pathFields.length
     ? endpoint.pathFields
         .map(
-          (field) => `- ${field.label}: ${fieldValues[field.key]?.trim() || "fill before sending"}`
+          (field) =>
+            `- ${field.label}: ${fieldValues[field.key]?.trim() || t("Shared.SharedComponents.fillBeforeSending")}`
         )
         .join("\n")
-    : "- none";
+    : t("Shared.SharedComponents.noValue");
   const requestBodySection =
     requestBody && Object.keys(requestBody).length > 0 ? prettyJson(requestBody) : "{}";
 
   return [
-    `Use the ${productName} API endpoint ${endpoint.method} ${endpoint.path}.`,
+    t("Shared.SharedComponents.aiInstructionIntro", {
+      productName,
+      method: endpoint.method,
+      path: endpoint.path,
+    }),
     "",
-    "Path parameters:",
+    t("Shared.SharedComponents.aiPathParameters"),
     pathParameterLines,
     "",
-    "Request body:",
+    t("Shared.SharedComponents.aiRequestBody"),
     requestBodySection,
     "",
-    "Return the response body as formatted JSON and call out any validation or auth errors.",
+    t("Shared.SharedComponents.aiInstructionOutro"),
   ].join("\n");
 }
 
-function buildResponseBody(executionResult: ExecutionResult | null, executeError: string | null) {
+function buildResponseBody(
+  executionResult: ExecutionResult | null,
+  executeError: string | null,
+  t: (key: MessageKey, values?: TranslationValues) => string
+) {
   if (executionResult) {
     return prettyJson(executionResult.body);
   }
@@ -255,7 +279,7 @@ function buildResponseBody(executionResult: ExecutionResult | null, executeError
   }
 
   return prettyJson({
-    message: "Run request to inspect the live API output for this endpoint.",
+    message: t("Shared.SharedComponents.runRequestToInspectOutput"),
   });
 }
 
@@ -278,7 +302,8 @@ function resolvePanelContent(
 
 function getExecutionStatus(
   executionResult: ExecutionResult | null,
-  executeError: string | null
+  executeError: string | null,
+  t: (key: MessageKey, values?: TranslationValues) => string
 ): {
   statusToneVariant: ComponentProps<typeof Badge>["variant"];
   statusLabel: string;
@@ -293,13 +318,13 @@ function getExecutionStatus(
   if (executeError) {
     return {
       statusToneVariant: "danger",
-      statusLabel: "Request failed",
+      statusLabel: t("Shared.SharedComponents.requestFailed"),
     };
   }
 
   return {
     statusToneVariant: "default",
-    statusLabel: "Ready",
+    statusLabel: t("Shared.SharedComponents.ready"),
   };
 }
 
@@ -307,7 +332,7 @@ function FieldLabel({ children, htmlFor }: { children: string; htmlFor: string }
   return (
     <label
       htmlFor={htmlFor}
-      className="text-[12px] leading-5 font-medium tracking-[0.02em] text-text-medium"
+      className="text-[12px] leading-5 font-medium tracking-[0.02em] text-secondary"
     >
       {children}
     </label>
@@ -316,8 +341,20 @@ function FieldLabel({ children, htmlFor }: { children: string; htmlFor: string }
 
 function EmptyState({ children }: { children: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border-light bg-white/50 px-4 py-5 text-sm text-text-low">
+    <div className="rounded-2xl border border-dashed border-border-default bg-surface-raised/50 px-4 py-5 text-sm text-tertiary">
       {children}
+    </div>
+  );
+}
+
+/** Shown in the Response panel before a request runs, instead of placeholder JSON. */
+function ResponseEmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <span className="flex size-11 items-center justify-center rounded-xl bg-fill-strong text-tertiary">
+        <Braces className="size-5" aria-hidden="true" />
+      </span>
+      <p className="max-w-xs text-sm text-tertiary">{message}</p>
     </div>
   );
 }
@@ -328,8 +365,8 @@ function MessageCard({ message }: { message: ApiPlaygroundMessage }) {
       className={cn(
         "rounded-xl border px-4 py-3 text-sm",
         message.tone === "critical"
-          ? "border-status-error-border bg-status-error-bg text-status-error-text"
-          : "border-border-light bg-white/60 text-text-medium"
+          ? "border-error-border bg-error-bg text-error"
+          : "border-border-default bg-surface-raised/60 text-secondary"
       )}
     >
       {message.text}
@@ -339,6 +376,24 @@ function MessageCard({ message }: { message: ApiPlaygroundMessage }) {
 
 type HighlightLanguage = "javascript" | "json";
 
+const MOBILE_SECTION_LABEL_KEYS = [
+  { value: "request", labelKey: "Shared.SharedComponents.request" },
+  { value: "output", labelKey: "Shared.SharedComponents.output" },
+] as const satisfies readonly { value: "request" | "output"; labelKey: MessageKey }[];
+
+const OUTPUT_PANEL_LABEL_KEYS = [
+  { value: "code", labelKey: "Shared.SharedComponents.code" },
+  { value: "response", labelKey: "Shared.SharedComponents.response" },
+  { value: "example", labelKey: "Shared.SharedComponents.example" },
+] as const satisfies readonly {
+  value: "code" | "response" | "example";
+  labelKey: MessageKey;
+}[];
+
+// @solana/design-system/styles (imported by globals.css) owns the complete
+// light/dark --code-block-* and --shiki-token-* palette. Keep this Shiki theme
+// variable-based so the highlighted markup follows the root .dark class
+// without re-highlighting or duplicating the package palette here.
 const cssVariablesTheme = {
   name: "css-variables",
   type: "light" as const,
@@ -429,30 +484,6 @@ const cssVariablesTheme = {
   ],
 };
 
-const codeBlockDefaultLightVars: CSSProperties = {
-  "--code-block-bg": "color-mix(in srgb, var(--gray-50) 60%, white)",
-  "--code-block-border": "color-mix(in srgb, var(--gray-1300) 8%, transparent)",
-  "--code-block-header-bg": "color-mix(in srgb, var(--gray-1400) 4%, transparent)",
-  "--code-block-header-text": "var(--text-medium)",
-  "--code-block-header-border": "var(--code-block-border)",
-  "--code-block-line-number": "var(--text-low)",
-  "--code-block-line-highlight": "color-mix(in srgb, var(--gray-1400) 5%, transparent)",
-  "--code-block-scrollbar-thumb": "var(--gray-200)",
-  "--shiki-foreground": "var(--gray-1400)",
-  "--shiki-background": "transparent",
-  "--shiki-token-keyword": "oklch(0.44 0.16 301)",
-  "--shiki-token-string": "oklch(0.44 0.12 160)",
-  "--shiki-token-comment": "oklch(0.55 0.015 280)",
-  "--shiki-token-function": "oklch(0.44 0.14 264)",
-  "--shiki-token-constant": "oklch(0.47 0.14 25)",
-  "--shiki-token-parameter": "oklch(0.47 0.1 55)",
-  "--shiki-token-punctuation": "oklch(0.56 0.01 280)",
-  "--shiki-token-type": "oklch(0.44 0.1 195)",
-  "--shiki-token-attribute": "oklch(0.44 0.1 145)",
-  "--shiki-token-escape": "oklch(0.47 0.12 40)",
-  "--shiki-token-variable-lang": "oklch(0.44 0.14 310)",
-} as CSSProperties;
-
 let shikiModulePromise: Promise<typeof import("shiki")> | null = null;
 
 function getShikiModule() {
@@ -528,12 +559,21 @@ export function ApiPlaygroundShell({
   productName,
   rightMessages = [],
 }: ApiPlaygroundShellProps) {
+  const t = useTranslations();
   const { replaceSearchParams, searchParams } = useDashboardUrlState();
   const initialEndpoint =
     endpoints.find((endpoint) => endpoint.id === defaultEndpointId) ?? endpoints[0];
   const initialEndpointId = initialEndpoint?.id ?? "";
+  // Deep links can preselect the active resource, e.g. ?tokenId=… from the asset
+  // management workspace, so the playground opens focused on that token. State
+  // stays shareable because it's the URL-driven endpoint + token.
+  const tokenIdParam = searchParams.get("tokenId");
+  const preselectedFieldValues = useMemo(
+    () => (tokenIdParam ? { tokenId: tokenIdParam } : undefined),
+    [tokenIdParam]
+  );
   const [fieldValues, setFieldValues] = useState<Record<string, string>>(() =>
-    initialEndpoint ? buildInitialFieldValues(initialEndpoint) : {}
+    initialEndpoint ? buildInitialFieldValues(initialEndpoint, preselectedFieldValues) : {}
   );
   const [mobileSection, setMobileSection] = useState<"request" | "output">("request");
   const [activePanel, setActivePanel] = useState<"code" | "response" | "example">("code");
@@ -585,12 +625,12 @@ export function ApiPlaygroundShell({
       return;
     }
 
-    setFieldValues(buildInitialFieldValues(endpoint));
+    setFieldValues(buildInitialFieldValues(endpoint, preselectedFieldValues));
     setMobileSection("request");
     setActivePanel("code");
     setExecutionResult(null);
     setExecuteError(null);
-  }, [activeEndpointId]);
+  }, [activeEndpointId, preselectedFieldValues]);
 
   const requestBody = useMemo(
     () => (activeEndpoint ? buildRequestBody(activeEndpoint.bodyFields, fieldValues) : null),
@@ -612,15 +652,15 @@ export function ApiPlaygroundShell({
     [activeEndpoint]
   );
   const responseBody = useMemo(
-    () => buildResponseBody(executionResult, executeError),
-    [executionResult, executeError]
+    () => buildResponseBody(executionResult, executeError, t),
+    [executionResult, executeError, t]
   );
   const aiInstructions = useMemo(
     () =>
       activeEndpoint
-        ? buildAiInstructions(activeEndpoint, fieldValues, requestBody, productName)
+        ? buildAiInstructions(activeEndpoint, fieldValues, requestBody, productName, t)
         : "",
-    [activeEndpoint, fieldValues, productName, requestBody]
+    [activeEndpoint, fieldValues, productName, requestBody, t]
   );
 
   if (!activeEndpoint) {
@@ -651,7 +691,7 @@ export function ApiPlaygroundShell({
   };
 
   const handleReset = () => {
-    setFieldValues(buildInitialFieldValues(activeEndpoint));
+    setFieldValues(buildInitialFieldValues(activeEndpoint, preselectedFieldValues));
     setMobileSection("request");
     setActivePanel("code");
     setExecutionResult(null);
@@ -664,7 +704,9 @@ export function ApiPlaygroundShell({
 
     const missingFields = getMissingRequiredFields(activeEndpoint, fieldValues);
     if (missingFields.length > 0) {
-      setExecuteError(`Complete required fields: ${missingFields.join(", ")}`);
+      setExecuteError(
+        t("Shared.SharedComponents.completeRequiredFields", { fields: missingFields.join(", ") })
+      );
       setActivePanel("response");
       return;
     }
@@ -673,9 +715,7 @@ export function ApiPlaygroundShell({
     const hasApiKey = Boolean(normalizedApiKey);
 
     if (hasApiKey && !isValidSdpApiKey(normalizedApiKey)) {
-      setExecuteError(
-        "Invalid API key format. Use a raw key value like sk_test_... or sk_live_... with a valid suffix."
-      );
+      setExecuteError(t("Shared.SharedComponents.invalidApiKeyFormat"));
       setActivePanel("response");
       return;
     }
@@ -706,7 +746,7 @@ export function ApiPlaygroundShell({
       };
 
       if (!proxyResponse.ok || envelope.status === undefined || envelope.statusText === undefined) {
-        setExecuteError(envelope.error ?? "Playground execution failed.");
+        setExecuteError(envelope.error ?? t("Shared.SharedComponents.playgroundExecutionFailed"));
         setActivePanel("response");
         return;
       }
@@ -722,7 +762,9 @@ export function ApiPlaygroundShell({
       setMobileSection("output");
       setActivePanel("response");
     } catch (error) {
-      setExecuteError(error instanceof Error ? error.message : "Request execution failed.");
+      setExecuteError(
+        error instanceof Error ? error.message : t("Shared.SharedComponents.requestExecutionFailed")
+      );
       setMobileSection("output");
       setActivePanel("response");
     } finally {
@@ -730,26 +772,26 @@ export function ApiPlaygroundShell({
     }
   };
 
-  const { statusToneVariant, statusLabel } = getExecutionStatus(executionResult, executeError);
+  const { statusToneVariant, statusLabel } = getExecutionStatus(executionResult, executeError, t);
 
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="pointer-events-none absolute top-0 bottom-0 left-1/2 hidden w-px -translate-x-1/2 bg-border-light lg:block" />
-      <div className="grid shrink-0 border-b border-border-light lg:grid-cols-2">
+      <div className="pointer-events-none absolute top-0 bottom-0 left-1/2 hidden w-px -translate-x-1/2 bg-fill-strong lg:block" />
+      <div className="grid shrink-0 border-b border-border-default lg:grid-cols-2">
         <div className="px-6 py-5">
           <div className="relative">
-            <div className="pointer-events-none flex h-11 w-full items-center rounded-xl border border-border-light bg-white px-3 shadow-none">
+            <div className="pointer-events-none flex h-11 w-full items-center rounded-xl border border-border-default bg-surface-raised px-3 shadow-none">
               <span className="flex min-w-0 items-center gap-3 pr-8">
                 <Badge variant={getMethodBadgeVariant(activeEndpoint.method)}>
                   {activeEndpoint.method}
                 </Badge>
-                <span className="truncate text-[15px] font-medium text-text-extra-high">
+                <span className="truncate text-[15px] font-medium text-primary">
                   {activeEndpoint.title}
                 </span>
               </span>
             </div>
             <select
-              aria-label="Select API endpoint"
+              aria-label={t("Shared.SharedComponents.selectApiEndpoint")}
               className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-xl opacity-0"
               value={activeEndpoint.id}
               onChange={(event) => updateEndpointInUrl(event.currentTarget.value)}
@@ -763,7 +805,7 @@ export function ApiPlaygroundShell({
             <svg
               aria-hidden="true"
               viewBox="0 0 16 16"
-              className="pointer-events-none absolute top-1/2 right-4 h-4 w-4 -translate-y-1/2 text-text-extra-low"
+              className="pointer-events-none absolute top-1/2 right-4 h-4 w-4 -translate-y-1/2 text-muted"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.75"
@@ -775,19 +817,14 @@ export function ApiPlaygroundShell({
           </div>
         </div>
 
-        <div className="border-t border-border-light px-6 py-5 lg:border-t-0">
+        <div className="border-t border-border-default px-6 py-5 lg:border-t-0">
           <div className="flex justify-stretch lg:justify-end">{apiKeySelector ?? null}</div>
         </div>
       </div>
 
-      <div className="border-b border-border-light px-6 py-4 lg:hidden">
-        <div className="grid grid-cols-2 gap-1 rounded-full bg-border-light p-1">
-          {(
-            [
-              ["request", "Request"],
-              ["output", "Output"],
-            ] as const
-          ).map(([value, label]) => (
+      <div className="border-b border-border-default px-6 py-4 lg:hidden">
+        <div className="grid grid-cols-2 gap-1 rounded-full bg-fill-strong p-1">
+          {MOBILE_SECTION_LABEL_KEYS.map(({ value, labelKey }) => (
             <button
               key={value}
               type="button"
@@ -795,17 +832,17 @@ export function ApiPlaygroundShell({
               className={cn(
                 "rounded-full px-4 py-2 text-sm font-medium transition-colors",
                 mobileSection === value
-                  ? "bg-white text-text-extra-high shadow-sm"
-                  : "text-text-low"
+                  ? "bg-surface-raised text-primary shadow-sm"
+                  : "text-tertiary"
               )}
             >
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col border-b border-border-light lg:grid lg:grid-cols-2">
+      <div className="flex min-h-0 flex-1 flex-col border-b border-border-default lg:grid lg:grid-cols-2">
         <div
           className={cn("min-h-0", mobileSection === "request" ? "flex-1" : "hidden", "lg:block")}
         >
@@ -823,18 +860,18 @@ export function ApiPlaygroundShell({
 
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto lg:pr-2">
               <section className="space-y-3">
-                <h2 className="text-[18px] leading-6 font-medium text-text-extra-high">
-                  Path Parameters
+                <h2 className="text-[18px] leading-6 font-medium text-primary">
+                  {t("Shared.SharedComponents.pathParameters")}
                 </h2>
                 {activeEndpoint.pathFields.length === 0 ? (
-                  <EmptyState>This endpoint does not require path parameters.</EmptyState>
+                  <EmptyState>{t("Shared.SharedComponents.noPathParameters")}</EmptyState>
                 ) : (
                   <div className="space-y-4">
                     {activeEndpoint.pathFields.map((field) => (
                       <div key={field.key} className="space-y-2">
                         <FieldLabel htmlFor={getFieldId(field.key)}>{field.label}</FieldLabel>
                         {field.description ? (
-                          <p className="text-[13px] leading-5 text-text-low">{field.description}</p>
+                          <p className="text-[13px] leading-5 text-tertiary">{field.description}</p>
                         ) : null}
                         {field.kind === "select" ? (
                           <select
@@ -843,9 +880,11 @@ export function ApiPlaygroundShell({
                             onChange={(event) =>
                               updateFieldValue(field.key, event.currentTarget.value)
                             }
-                            className="h-11 w-full rounded-[var(--sdp-field-radius)] border border-border-light bg-white px-4 text-sm text-text-extra-high outline-none transition-[box-shadow,border-color] focus:border-border-strong focus:ring-2 focus:ring-border-light"
+                            className="h-11 w-full rounded-[var(--sdp-field-radius)] border border-border-default bg-surface-raised px-4 text-sm text-primary outline-none transition-[box-shadow,border-color] focus:border-border-strong focus:ring-2 focus:ring-border-default"
                           >
-                            <option value="">{field.placeholder ?? "Select value"}</option>
+                            <option value="">
+                              {field.placeholder ?? t("Shared.SharedComponents.selectValue")}
+                            </option>
                             {(field.options ?? []).map((option) => (
                               <option key={option.value} value={option.value}>
                                 {option.label}
@@ -860,7 +899,7 @@ export function ApiPlaygroundShell({
                               updateFieldValue(field.key, event.currentTarget.value)
                             }
                             placeholder={field.placeholder}
-                            className="h-11 rounded-[var(--sdp-field-radius)] border-border-light bg-white px-4 shadow-none"
+                            className="h-11 rounded-[var(--sdp-field-radius)] border-border-default bg-surface-raised px-4 shadow-none"
                           />
                         )}
                       </div>
@@ -870,18 +909,18 @@ export function ApiPlaygroundShell({
               </section>
 
               <section className="space-y-3">
-                <h2 className="text-[18px] leading-6 font-medium text-text-extra-high">
-                  Request body
+                <h2 className="text-[18px] leading-6 font-medium text-primary">
+                  {t("Shared.SharedComponents.requestBody")}
                 </h2>
                 {activeEndpoint.bodyFields.length === 0 ? (
-                  <EmptyState>This endpoint does not require a JSON request body.</EmptyState>
+                  <EmptyState>{t("Shared.SharedComponents.noRequestBody")}</EmptyState>
                 ) : (
                   <div className="space-y-4">
                     {activeEndpoint.bodyFields.map((field) => (
                       <div key={field.key} className="space-y-2">
                         <FieldLabel htmlFor={getFieldId(field.key)}>{field.label}</FieldLabel>
                         {field.description ? (
-                          <p className="text-[13px] leading-5 text-text-low">{field.description}</p>
+                          <p className="text-[13px] leading-5 text-tertiary">{field.description}</p>
                         ) : null}
                         {field.kind === "select" ? (
                           <select
@@ -890,9 +929,11 @@ export function ApiPlaygroundShell({
                             onChange={(event) =>
                               updateFieldValue(field.key, event.currentTarget.value)
                             }
-                            className="h-11 w-full rounded-[var(--sdp-field-radius)] border border-border-light bg-white px-4 text-sm text-text-extra-high outline-none transition-[box-shadow,border-color] focus:border-border-strong focus:ring-2 focus:ring-border-light"
+                            className="h-11 w-full rounded-[var(--sdp-field-radius)] border border-border-default bg-surface-raised px-4 text-sm text-primary outline-none transition-[box-shadow,border-color] focus:border-border-strong focus:ring-2 focus:ring-border-default"
                           >
-                            <option value="">{field.placeholder ?? "Select value"}</option>
+                            <option value="">
+                              {field.placeholder ?? t("Shared.SharedComponents.selectValue")}
+                            </option>
                             {(field.options ?? []).map((option) => (
                               <option key={option.value} value={option.value}>
                                 {option.label}
@@ -907,7 +948,7 @@ export function ApiPlaygroundShell({
                               updateFieldValue(field.key, event.currentTarget.value)
                             }
                             placeholder={field.placeholder}
-                            className="h-11 rounded-[var(--sdp-field-radius)] border-border-light bg-white px-4 shadow-none"
+                            className="h-11 rounded-[var(--sdp-field-radius)] border-border-default bg-surface-raised px-4 shadow-none"
                           />
                         )}
                       </div>
@@ -921,7 +962,7 @@ export function ApiPlaygroundShell({
 
         <div
           className={cn(
-            "min-h-0 border-t border-border-light lg:border-t-0",
+            "min-h-0 border-t border-border-default lg:border-t-0",
             mobileSection === "output" ? "flex-1" : "hidden",
             "lg:flex lg:h-full lg:min-h-0 lg:flex-col"
           )}
@@ -938,9 +979,9 @@ export function ApiPlaygroundShell({
               </div>
             ) : null}
 
-            <div className="mb-4 shrink-0 rounded-full bg-border-light p-1">
+            <div className="mb-4 shrink-0 rounded-full bg-fill-strong p-1">
               <div className="grid grid-cols-3 gap-1">
-                {(["code", "response", "example"] as const).map((tab) => (
+                {OUTPUT_PANEL_LABEL_KEYS.map(({ value: tab, labelKey }) => (
                   <button
                     key={tab}
                     type="button"
@@ -948,11 +989,11 @@ export function ApiPlaygroundShell({
                     className={cn(
                       "rounded-full px-4 py-2 text-sm font-medium capitalize transition-colors",
                       activePanel === tab
-                        ? "bg-white text-text-extra-high shadow-sm"
-                        : "text-text-low"
+                        ? "bg-surface-raised text-primary shadow-sm"
+                        : "text-tertiary"
                     )}
                   >
-                    {tab}
+                    {t(labelKey)}
                   </button>
                 ))}
               </div>
@@ -961,14 +1002,19 @@ export function ApiPlaygroundShell({
             <div
               className="code-block-line-numbers group relative flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--button-radius-md)]"
               style={{
-                ...codeBlockDefaultLightVars,
                 border: "1px solid var(--code-block-border)",
                 background: "var(--code-block-bg)",
                 fontFamily: "var(--font-berkeley-mono), ui-monospace, monospace",
               }}
             >
               <div className="min-h-0 flex-1 overflow-hidden">
-                <CodeBlockContent content={panelContent} language={panelLanguage} />
+                {activePanel === "response" && !executionResult && !executeError ? (
+                  <ResponseEmptyState
+                    message={t("Shared.SharedComponents.runRequestToInspectOutput")}
+                  />
+                ) : (
+                  <CodeBlockContent content={panelContent} language={panelLanguage} />
+                )}
               </div>
               <div
                 className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3 text-sm"
@@ -978,7 +1024,9 @@ export function ApiPlaygroundShell({
                   boxShadow: "inset 0 1px 0 var(--code-block-header-border)",
                 }}
               >
-                <span className="leading-none text-text-low">Status:</span>
+                <span className="leading-none text-tertiary">
+                  {t("Shared.SharedComponents.status")}
+                </span>
                 <Badge
                   className="h-6 whitespace-nowrap px-2.5 leading-none"
                   variant={statusToneVariant}
@@ -988,7 +1036,11 @@ export function ApiPlaygroundShell({
                 {executionResult ? (
                   <Badge className="h-6 whitespace-nowrap px-2.5 leading-none [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1.5 [&>span]:leading-none">
                     <Clock3 className="inline-block size-3 shrink-0" aria-hidden="true" />
-                    <span className="tabular-nums">{executionResult.durationMs}ms</span>
+                    <span className="tabular-nums">
+                      {t("Shared.SharedComponents.durationMilliseconds", {
+                        duration: executionResult.durationMs,
+                      })}
+                    </span>
                   </Badge>
                 ) : null}
               </div>
@@ -1001,8 +1053,8 @@ export function ApiPlaygroundShell({
         <div className="px-6 py-5">
           <div className="flex flex-col gap-3">
             {requiresApiKey ? (
-              <p className="text-sm leading-6 text-[rgba(28,28,29,0.62)]">
-                Create an API key first to enable live playground requests.
+              <p className="text-sm leading-6 text-secondary">
+                {t("Shared.SharedComponents.apiKeyRequired")}
               </p>
             ) : null}
             <div className="flex flex-wrap items-center gap-3">
@@ -1010,7 +1062,7 @@ export function ApiPlaygroundShell({
                 type="button"
                 onClick={handleExecute}
                 disabled={isExecuting || requiresApiKey}
-                className="h-10 rounded-[var(--button-radius-lg)] bg-gray-1400 px-4 text-white hover:bg-black max-sm:flex-1 whitespace-nowrap"
+                className="h-10 rounded-[var(--button-radius-lg)] bg-primary px-4 text-on-primary hover:opacity-90 max-sm:flex-1 whitespace-nowrap"
                 iconLeft={
                   isExecuting ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -1019,38 +1071,42 @@ export function ApiPlaygroundShell({
                   )
                 }
               >
-                Run request
+                {t("Shared.SharedComponents.runRequest")}
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={handleReset}
-                className="h-10 rounded-[var(--button-radius-lg)] px-2 text-text-medium hover:bg-transparent hover:text-text-extra-high"
+                className="h-10 rounded-[var(--button-radius-lg)] px-2 text-secondary hover:bg-transparent hover:text-primary"
               >
-                Reset
+                {t("Shared.SharedComponents.reset")}
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-border-light px-6 py-5 lg:border-t-0">
+        <div className="flex flex-wrap items-center gap-3 border-t border-border-default px-6 py-5 lg:border-t-0">
           <Button
             type="button"
             variant="outline"
             onClick={() => copyText(codeSnippet, "code")}
-            className="h-10 rounded-[var(--button-radius-lg)] border-border-light bg-white px-4 max-sm:flex-1 whitespace-nowrap"
+            className="h-10 rounded-[var(--button-radius-lg)] border-border-default bg-surface-raised px-4 max-sm:flex-1 whitespace-nowrap"
             iconLeft={<Copy className="size-4" />}
           >
-            {copiedAction === "code" ? "Copied" : "Copy Code"}
+            {copiedAction === "code"
+              ? t("Shared.SharedComponents.copied")
+              : t("Shared.SharedComponents.copyCode")}
           </Button>
           <Button
             type="button"
             variant="outline"
             onClick={() => copyText(aiInstructions, "ai")}
-            className="h-10 rounded-[var(--button-radius-lg)] border-border-light bg-white px-4 max-sm:flex-1 whitespace-nowrap"
+            className="h-10 rounded-[var(--button-radius-lg)] border-border-default bg-surface-raised px-4 max-sm:flex-1 whitespace-nowrap"
             iconLeft={<Sparkles className="size-4" />}
           >
-            {copiedAction === "ai" ? "Copied" : "AI instructions"}
+            {copiedAction === "ai"
+              ? t("Shared.SharedComponents.copied")
+              : t("Shared.SharedComponents.aiInstructions")}
           </Button>
         </div>
       </div>
