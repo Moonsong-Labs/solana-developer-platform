@@ -4,7 +4,11 @@ import type {
   PrivateChannelDto,
   PrivateChannelUserDto,
 } from "@sdp/types";
-import { hasPermission, PRIVATE_CHANNEL_MEMBERSHIP_ROLES } from "@sdp/types";
+import {
+  hasPermission,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
+  PRIVATE_CHANNEL_STATUSES,
+} from "@sdp/types";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,10 +76,28 @@ export default async function PrivateChannelsMembersPage() {
     "projects:admin"
   );
   const manageableChannelIds = canManageWorkspace
-    ? channels.map((channel) => channel.id)
+    ? [
+        ...new Set([
+          ...channels.map((channel) => channel.id),
+          ...users.flatMap((user) => user.channels.map((channel) => channel.id)),
+        ]),
+      ]
     : (currentUser?.channels
-        .filter((channel) => channel.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN)
+        .filter(
+          (channel) =>
+            channel.status === PRIVATE_CHANNEL_STATUSES.ACTIVE &&
+            (channel.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER ||
+              channel.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN)
+        )
         .map((channel) => channel.id) ?? []);
+  const ownedChannelIds =
+    currentUser?.channels
+      .filter(
+        (channel) =>
+          channel.status === PRIVATE_CHANNEL_STATUSES.ACTIVE &&
+          channel.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+      )
+      .map((channel) => channel.id) ?? [];
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -94,6 +116,7 @@ export default async function PrivateChannelsMembersPage() {
             eligibleProjectMembers={projectMembers}
             canManageWorkspace={canManageWorkspace}
             manageableChannelIds={manageableChannelIds}
+            ownedChannelIds={ownedChannelIds}
             currentPrivateChannelUserId={currentUser?.id ?? null}
           />
         </CardContent>

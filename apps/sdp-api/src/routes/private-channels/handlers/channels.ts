@@ -8,6 +8,7 @@ import {
 import { getAuth } from "@/lib/auth";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { created, noContent, success } from "@/lib/response";
+import { hasProjectAdminAccess, requireChannelOwner } from "../authorization";
 import {
   type AppContext,
   getPrivateChannelRepository,
@@ -142,6 +143,9 @@ export async function deleteChannel(c: AppContext) {
   }
   if (channel.is_default) {
     throw conflict("The default channel cannot be deleted");
+  }
+  if (!hasProjectAdminAccess(c)) {
+    await requireChannelOwner(c, channelId);
   }
 
   await repo.archiveChannel({ channelId, instanceId: instance.id });

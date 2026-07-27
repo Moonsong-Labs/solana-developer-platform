@@ -154,7 +154,7 @@ describe("Private Channels routes", () => {
     expect(res.status).toBe(403);
   });
 
-  it("requires projects:admin for workspace mutations", async () => {
+  it("requires projects:admin for workspace-level mutations", async () => {
     const headers = await nonAdminAuthHeaders();
     const requests = [
       app.request(
@@ -169,7 +169,6 @@ describe("Private Channels routes", () => {
         { method: "POST", headers, body: JSON.stringify({ name: "Ops" }) },
         env
       ),
-      app.request("/v1/private-channels/channels/pch_test", { method: "DELETE", headers }, env),
       app.request(
         "/v1/private-channels/users",
         { method: "POST", headers, body: JSON.stringify({ userId: TEST_USER.id }) },
@@ -179,9 +178,7 @@ describe("Private Channels routes", () => {
     ];
 
     const responses = await Promise.all(requests);
-    expect(responses.map((response) => response.status)).toEqual([
-      403, 403, 403, 403, 403, 403, 403,
-    ]);
+    expect(responses.map((response) => response.status)).toEqual([403, 403, 403, 403, 403, 403]);
   });
 
   it("GET /instance returns { instance: null } when no row exists", async () => {

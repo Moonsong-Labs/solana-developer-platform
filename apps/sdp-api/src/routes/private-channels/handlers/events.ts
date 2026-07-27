@@ -3,7 +3,7 @@ import type { PrivateChannelEventRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { badRequest, forbidden, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
-import { isAdminTier, resolveChannelRole } from "../authorization";
+import { hasProjectAdminAccess, resolveChannelRole } from "../authorization";
 import type { AppContext } from "../context";
 import {
   getPrivateChannelEventRepository,
@@ -124,7 +124,7 @@ export async function listProjectEvents(c: AppContext) {
   const projectId = requireProjectId(c);
   // undefined means the full admin feed; [] deliberately means no visible channels.
   let channelIds: string[] | undefined;
-  if (!isAdminTier(c)) {
+  if (!hasProjectAdminAccess(c)) {
     channelIds = [];
     if (auth.userId) {
       const userRepo = getPrivateChannelUserRepository(c);

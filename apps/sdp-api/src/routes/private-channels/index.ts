@@ -138,11 +138,7 @@ privateChannels.post(
 );
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
 privateChannels.get("/channels/:id/events", requirePermissions("payments:read"), listChannelEvents);
-privateChannels.delete(
-  "/channels/:id",
-  requirePermissions("payments:write", "projects:admin"),
-  deleteChannel
-);
+privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
 
 // --- /wallets -------------------------------------------------------------
 // Wallet verification: the gate for money-movement. Verifying signs an SPC auth

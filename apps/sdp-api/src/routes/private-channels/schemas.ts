@@ -1,5 +1,6 @@
 import { privateChannelInstanceInputSchema } from "@sdp/private-channels";
 import {
+  PRIVATE_CHANNEL_ASSIGNABLE_ROLE_VALUES,
   PRIVATE_CHANNEL_EVENT_FAMILY_VALUES,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
@@ -96,7 +97,7 @@ export const inviteMemberBodySchema = z.object({
 export const addMembershipBodySchema = z.object({
   privateChannelUserId: z.string().min(1),
   role: z
-    .enum(PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES)
+    .enum(PRIVATE_CHANNEL_ASSIGNABLE_ROLE_VALUES)
     .default(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER),
 });
 

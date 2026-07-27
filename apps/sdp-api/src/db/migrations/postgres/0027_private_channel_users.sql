@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS private_channel_memberships (
     FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE CASCADE,
     FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL,
 
-    CHECK (role IN ('admin', 'member')),
+    CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
     UNIQUE (channel_id, private_channel_user_id)
 );
 
@@ -73,3 +73,8 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_memberships_channel
     ON private_channel_memberships(channel_id);
 CREATE INDEX IF NOT EXISTS idx_private_channel_memberships_user
     ON private_channel_memberships(private_channel_user_id);
+-- Active ownership is represented by membership role; archived channels may
+-- become ownerless after their memberships are removed.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_private_channel_memberships_one_owner
+    ON private_channel_memberships(channel_id)
+    WHERE role = 'owner';

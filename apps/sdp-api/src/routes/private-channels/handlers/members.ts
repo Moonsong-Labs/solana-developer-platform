@@ -1,20 +1,24 @@
 import {
   PRIVATE_CHANNEL_EVENT_TYPES,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
+  PRIVATE_CHANNEL_STATUSES,
   type PrivateChannelMembershipChannelDto,
   type PrivateChannelMembershipDto,
+  type PrivateChannelStatusDto,
   type PrivateChannelUserDto,
 } from "@sdp/types";
 import type {
   PrivateChannelMembershipRow,
   PrivateChannelMembershipWithChannelRow,
+  PrivateChannelUserRepository,
   PrivateChannelUserWithIdentityRow,
 } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
-import { AppError, badRequest, notFound } from "@/lib/errors";
+import { AppError, badRequest, conflict, forbidden, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { sendInviteEmail } from "@/lib/spc-invite-email";
 import { inviteMember, mapPrivateChannelError } from "@/services/private-channels";
-import { requireChannelManage } from "../authorization";
+import { requireChannelManage, requireChannelOwner } from "../authorization";
 import type { AppContext } from "../context";
 import {
   getPrivateChannelInstanceRepository,
@@ -37,6 +41,7 @@ function toDto(
     id: m.channel_id,
     name: m.channel_name,
     isDefault: m.channel_is_default,
+    status: m.channel_status,
     role: m.role,
   }));
   return {
@@ -59,6 +64,27 @@ function toMembershipDto(row: PrivateChannelMembershipRow): PrivateChannelMember
     addedBy: row.added_by,
     addedAt: row.added_at,
   };
+}
+
+async function assertMembershipCanBeRemoved(
+  repo: PrivateChannelUserRepository,
+  membership: PrivateChannelMembershipRow,
+  channelStatus: PrivateChannelStatusDto
+): Promise<void> {
+  if (channelStatus === PRIVATE_CHANNEL_STATUSES.ARCHIVED) {
+    return;
+  }
+
+  if (membership.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) {
+    throw conflict("Transfer channel ownership before removing the owner");
+  }
+
+  if (
+    membership.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN &&
+    (await repo.countChannelManagers(membership.channel_id)) <= 1
+  ) {
+    throw conflict("The last channel manager cannot be removed or demoted");
+  }
 }
 
 export const listPrivateChannelUsers = async (c: AppContext) => {
@@ -178,10 +204,25 @@ export const deletePrivateChannelUser = async (c: AppContext) => {
   if (!user) throw notFound("Private channel user");
 
   const memberships = await repo.listMembershipsForUser(user.id);
+  const channelRepo = getPrivateChannelRepository(c);
+  for (const membership of memberships) {
+    const channel = await channelRepo.findInProject({
+      ...scope,
+      channelId: membership.channel_id,
+    });
+    if (channel) {
+      await assertMembershipCanBeRemoved(repo, membership, channel.status);
+    }
+  }
   const instance = await getPrivateChannelInstanceRepository(c).getActiveByProject(scope);
 
   const deleted = await repo.deleteById(scope, id);
-  if (!deleted) throw notFound("Private channel user");
+  if (!deleted) {
+    if (await repo.getById(scope, id)) {
+      throw conflict("Transfer ownership or assign another manager before deleting this user");
+    }
+    throw notFound("Private channel user");
+  }
 
   // Emit per-channel revokes using memberships captured before delete.
   // Best-effort when no active instance remains (we can't attribute an instance).
@@ -237,9 +278,19 @@ export const addChannelMembership = async (c: AppContext) => {
   if (!channel) throw notFound("Channel");
   await requireChannelManage(c, channelId);
 
-  const alreadyMember = (await repo.listMembershipsForUser(user.id)).some(
+  const existing = (await repo.listMembershipsForUser(user.id)).find(
     (m) => m.channel_id === channelId
   );
+  // Adding is idempotent, but it must not double as a role change: that path carries
+  // stricter authorization (owner transfer, last-manager guard) and its own event.
+  // An auto-promoted first owner is exempt so identical retries stay idempotent.
+  if (
+    existing &&
+    existing.role !== parsed.data.role &&
+    existing.role !== PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+  ) {
+    throw conflict("User is already in this channel; change their role instead");
+  }
 
   const membership = await repo.addMembership({
     channelId,
@@ -249,7 +300,7 @@ export const addChannelMembership = async (c: AppContext) => {
   });
 
   // Only emit on a genuine add (membership insert is idempotent).
-  if (!alreadyMember) {
+  if (!existing) {
     await emitMember(
       c,
       {
@@ -300,7 +351,17 @@ export const removeChannelMembership = async (c: AppContext) => {
     await requireChannelManage(c, channelId);
   }
 
-  const removed = await repo.removeMembership(channelId, userId);
+  const membership = (await repo.listMembershipsForUser(user.id)).find(
+    (item) => item.channel_id === channelId
+  );
+  if (!membership) throw notFound("Membership");
+  await assertMembershipCanBeRemoved(repo, membership, channel.status);
+
+  const removed = await repo.removeMembership(
+    channelId,
+    userId,
+    channel.status === PRIVATE_CHANNEL_STATUSES.ARCHIVED
+  );
   if (!removed) throw notFound("Membership");
 
   await emitMember(
@@ -351,25 +412,104 @@ export const updateChannelMembershipRole = async (c: AppContext) => {
   if (!channel) {
     throw notFound("Channel");
   }
-  await requireChannelManage(c, channelId);
-
   const current = (await repo.listMembershipsForUser(user.id)).find(
     (membership) => membership.channel_id === channelId
   );
   if (!current) {
     throw notFound("Membership");
   }
+
+  let currentOwnerId: string | null = null;
+  if (parsed.data.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) {
+    await requireChannelOwner(c, channelId);
+    const currentOwner = auth.userId ? await repo.findByProjectAndUser(scope, auth.userId) : null;
+    if (!currentOwner) {
+      throw forbidden("Channel owner access is required");
+    }
+    currentOwnerId = currentOwner.id;
+  } else {
+    await requireChannelManage(c, channelId);
+  }
+
   // Keep role updates idempotent and avoid duplicate MEMBER_ROLE_CHANGED events.
   if (current.role === parsed.data.role) {
     return success(c, { membership: toMembershipDto(current) });
   }
 
-  const membership = await repo.updateMembershipRole(
+  if (current.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) {
+    throw forbidden("Transfer ownership instead of changing the owner's role");
+  }
+
+  if (parsed.data.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) {
+    if (!currentOwnerId) {
+      throw forbidden("Channel owner access is required");
+    }
+    const transferred = await repo.transferChannelOwnership(
+      channelId,
+      privateChannelUserId,
+      currentOwnerId
+    );
+    if (!transferred) {
+      throw conflict("Channel ownership could not be transferred");
+    }
+    const previousOwner = await repo.getById(
+      scope,
+      transferred.previousOwner.private_channel_user_id
+    );
+    if (previousOwner) {
+      await emitMember(
+        c,
+        {
+          organizationId: channel.organization_id,
+          projectId: channel.project_id,
+          instanceId: channel.instance_id,
+        },
+        PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ROLE_CHANGED,
+        {
+          channelId,
+          payload: {
+            privateChannelUserId: previousOwner.id,
+            targetUserId: previousOwner.user_id,
+            oldRole: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+            newRole: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+          },
+        }
+      );
+    }
+    await emitMember(
+      c,
+      {
+        organizationId: channel.organization_id,
+        projectId: channel.project_id,
+        instanceId: channel.instance_id,
+      },
+      PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_ROLE_CHANGED,
+      {
+        channelId,
+        payload: {
+          privateChannelUserId: user.id,
+          targetUserId: user.user_id,
+          oldRole: transferred.ownerPreviousRole,
+          newRole: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+        },
+      }
+    );
+    return success(c, { membership: toMembershipDto(transferred.owner) });
+  }
+
+  if (
+    parsed.data.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER ||
+    parsed.data.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER
+  ) {
+    await assertMembershipCanBeRemoved(repo, current, channel.status);
+  }
+
+  const updated = await repo.updateMembershipRole(
     channelId,
     privateChannelUserId,
     parsed.data.role
   );
-  if (!membership) {
+  if (!updated) {
     throw notFound("Membership");
   }
 
@@ -386,11 +526,11 @@ export const updateChannelMembershipRole = async (c: AppContext) => {
       payload: {
         privateChannelUserId: user.id,
         targetUserId: user.user_id,
-        oldRole: current.role,
-        newRole: membership.role,
+        oldRole: updated.previousRole,
+        newRole: updated.membership.role,
       },
     }
   );
 
-  return success(c, { membership: toMembershipDto(membership) });
+  return success(c, { membership: toMembershipDto(updated.membership) });
 };

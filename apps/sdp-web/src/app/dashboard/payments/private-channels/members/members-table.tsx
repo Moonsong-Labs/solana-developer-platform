@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  type ListProjectMembersResponse,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
-  ListProjectMembersResponse,
-  PrivateChannelDto,
+  PRIVATE_CHANNEL_STATUSES,
+  type PrivateChannelAssignableRole,
+  type PrivateChannelDto,
   type PrivateChannelMembershipRole,
-  PrivateChannelUserDto,
+  type PrivateChannelUserDto,
 } from "@sdp/types";
 import { Loader2Icon, PlusIcon, XIcon } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
@@ -43,6 +45,7 @@ interface Props {
   eligibleProjectMembers: ProjectMember[];
   canManageWorkspace: boolean;
   manageableChannelIds: string[];
+  ownedChannelIds: string[];
   currentPrivateChannelUserId: string | null;
 }
 
@@ -52,6 +55,7 @@ export function MembersTable({
   eligibleProjectMembers,
   canManageWorkspace,
   manageableChannelIds,
+  ownedChannelIds,
   currentPrivateChannelUserId,
 }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -98,6 +102,7 @@ export function MembersTable({
                 member={m}
                 allChannels={channels}
                 manageableChannelIds={manageableChannelIds}
+                ownedChannelIds={ownedChannelIds}
                 canSelfLeave={m.id === currentPrivateChannelUserId}
                 onDelete={canManageWorkspace ? () => setDeleteTarget(m) : undefined}
               />
@@ -124,20 +129,23 @@ function MemberRow({
   member,
   allChannels,
   manageableChannelIds,
+  ownedChannelIds,
   canSelfLeave,
   onDelete,
 }: {
   member: PrivateChannelUserDto;
   allChannels: PrivateChannelDto[];
   manageableChannelIds: string[];
+  ownedChannelIds: string[];
   canSelfLeave: boolean;
   onDelete?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
-  const [addRole, setAddRole] = useState<PrivateChannelMembershipRole>(
+  const [addRole, setAddRole] = useState<PrivateChannelAssignableRole>(
     PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER
   );
   const manageable = new Set(manageableChannelIds);
+  const owned = new Set(ownedChannelIds);
   const inChannelIds = new Set(member.channels.map((c) => c.id));
   const notInChannels = allChannels.filter((c) => !inChannelIds.has(c.id) && manageable.has(c.id));
 
@@ -176,13 +184,24 @@ function MemberRow({
           {member.channels.map((c) => (
             <ChannelChip
               key={c.id}
-              label={c.name + (c.isDefault ? " (default)" : "")}
+              label={`${c.name}${c.isDefault ? " (default)" : ""}${
+                c.status === PRIVATE_CHANNEL_STATUSES.ARCHIVED ? " (archived)" : ""
+              }`}
               role={c.role}
+              canAssignOwner={owned.has(c.id)}
               onRoleChange={
-                pending || !manageable.has(c.id) ? undefined : (role) => updateRole(c.id, role)
+                pending ||
+                c.status === PRIVATE_CHANNEL_STATUSES.ARCHIVED ||
+                !manageable.has(c.id) ||
+                c.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+                  ? undefined
+                  : (role) => updateRole(c.id, role)
               }
               onRemove={
-                pending || (!manageable.has(c.id) && !canSelfLeave)
+                pending ||
+                (c.status === PRIVATE_CHANNEL_STATUSES.ACTIVE &&
+                  c.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) ||
+                (!manageable.has(c.id) && !canSelfLeave)
                   ? undefined
                   : () => removeFromChannel(c.id)
               }
@@ -190,7 +209,11 @@ function MemberRow({
           ))}
           {notInChannels.length > 0 ? (
             <>
-              <RoleSelect value={addRole} onChange={setAddRole} disabled={pending} />
+              <RoleSelect
+                value={addRole}
+                onChange={(role) => setAddRole(role as PrivateChannelAssignableRole)}
+                disabled={pending}
+              />
               <AddToChannelMenu channels={notInChannels} disabled={pending} onPick={addToChannel} />
             </>
           ) : null}
@@ -231,11 +254,13 @@ function WalletCountBadge({ count }: { count: number }) {
 function ChannelChip({
   label,
   role,
+  canAssignOwner,
   onRoleChange,
   onRemove,
 }: {
   label: string;
   role: PrivateChannelMembershipRole;
+  canAssignOwner: boolean;
   onRoleChange?: (role: PrivateChannelMembershipRole) => void;
   onRemove?: () => void;
 }) {
@@ -243,7 +268,7 @@ function ChannelChip({
     <span className="inline-flex items-center gap-1 rounded-full bg-border-extra-light px-2 py-0.5 text-xs text-text-extra-high">
       {label}
       {onRoleChange ? (
-        <RoleSelect value={role} onChange={onRoleChange} />
+        <RoleSelect value={role} onChange={onRoleChange} includeOwner={canAssignOwner} />
       ) : (
         <span className="text-text-medium">{role}</span>
       )}
@@ -264,10 +289,12 @@ function ChannelChip({
 function RoleSelect({
   value,
   onChange,
+  includeOwner = false,
   disabled = false,
 }: {
   value: PrivateChannelMembershipRole;
   onChange: (role: PrivateChannelMembershipRole) => void;
+  includeOwner?: boolean;
   disabled?: boolean;
 }) {
   return (
@@ -278,8 +305,10 @@ function RoleSelect({
       onChange={(event) => onChange(event.target.value as PrivateChannelMembershipRole)}
       className="rounded border border-border-light bg-white px-1 py-0.5 text-xs"
     >
+      <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER}>viewer</option>
       <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER}>member</option>
       <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN}>admin</option>
+      {includeOwner ? <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER}>owner</option> : null}
     </select>
   );
 }

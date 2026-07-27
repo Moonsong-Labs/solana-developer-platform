@@ -3,22 +3,16 @@ import { getAuth, requireProjectId } from "@/lib/auth";
 import { forbidden } from "@/lib/errors";
 import { type AppContext, getPrivateChannelUserRepository } from "./context";
 
-export function isAdminTier(c: AppContext): boolean {
+export function hasProjectAdminAccess(c: AppContext): boolean {
   const { permissions } = getAuth(c);
   return permissions.includes("projects:admin") || permissions.includes("*");
 }
 
-export async function resolveChannelRole(
+async function resolveMembershipRole(
   c: AppContext,
   channelId: string
 ): Promise<PrivateChannelMembershipRole | null> {
-  // Project admins are the fallback manager even when a channel has no admin membership.
-  if (isAdminTier(c)) {
-    return PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN;
-  }
-
   const auth = getAuth(c);
-  // API keys have no SDP user identity, so only admin-tier keys can resolve a role.
   if (!auth.userId) {
     return null;
   }
@@ -37,8 +31,30 @@ export async function resolveChannelRole(
   return membership?.role ?? null;
 }
 
+export async function resolveChannelRole(
+  c: AppContext,
+  channelId: string
+): Promise<PrivateChannelMembershipRole | null> {
+  // Project admins are fallback managers, while owner-only actions use the
+  // caller's explicit channel membership below.
+  if (hasProjectAdminAccess(c)) {
+    return PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN;
+  }
+  return resolveMembershipRole(c, channelId);
+}
+
 export async function requireChannelManage(c: AppContext, channelId: string): Promise<void> {
-  if ((await resolveChannelRole(c, channelId)) !== PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN) {
+  const role = await resolveChannelRole(c, channelId);
+  if (
+    role !== PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER &&
+    role !== PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN
+  ) {
     throw forbidden("Channel admin access is required");
+  }
+}
+
+export async function requireChannelOwner(c: AppContext, channelId: string): Promise<void> {
+  if ((await resolveMembershipRole(c, channelId)) !== PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) {
+    throw forbidden("Channel owner access is required");
   }
 }

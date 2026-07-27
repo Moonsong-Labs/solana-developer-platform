@@ -429,13 +429,14 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     method: "delete",
     path: "/v1/private-channels/channels/{id}",
     tags: [TAG],
-    summary: "Delete a channel",
+    summary: "Archive a channel",
     operationId: "deletePrivateChannel",
-    description: "Deletes a channel. The auto-provisioned default channel cannot be deleted.",
+    description:
+      "Archives a channel. Requires project-admin or channel-owner access. The auto-provisioned default channel cannot be archived.",
     security: [{ apiKeyAuth: [] }],
     request: { headers: projectScopeHeaders, params: privateChannelIdParamSchema },
     responses: {
-      204: { description: "Deleted" },
+      204: { description: "Archived" },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 409, 500, 503]),
     },
   });
@@ -447,7 +448,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     summary: "Update a channel membership role",
     operationId: "updatePrivateChannelMembershipRole",
     description:
-      "Changes an existing channel membership between admin and member. Requires project-admin or channel-admin access.",
+      "Changes an existing membership between owner, admin, member, and viewer. Owner assignment atomically transfers ownership and is restricted to the current owner; other role changes require project-admin, channel-owner, or channel-admin access. Viewer currently behaves like member — it does not yet restrict deposits or withdrawals.",
     security: [{ apiKeyAuth: [] }],
     request: {
       headers: projectScopeHeaders,
@@ -461,7 +462,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
           successResponseSchema(z.object({ membership: privateChannelMembershipSchema }))
         ),
       },
-      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 409, 500, 503]),
     },
   });
 

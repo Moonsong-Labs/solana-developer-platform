@@ -8,6 +8,7 @@ import {
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
   type PrivateChannelDto,
   type PrivateChannelEventListEnvelope,
+  type PrivateChannelMembershipRole,
 } from "@sdp/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
@@ -131,42 +132,65 @@ async function nonAdminAuthHeaders() {
   return { Authorization: `Bearer ${raw}`, "Content-Type": "application/json" };
 }
 
-async function memberSession(channelId: string, role: "admin" | "member" = "member") {
-  const sessionId = "ses_pce_member";
-  const privateChannelUserId = "pcu_pce_member";
+async function channelMemberSession({
+  channelId,
+  role,
+  suffix,
+  userId,
+  email,
+  organizationRole = "member",
+  projectRole = "developer",
+}: {
+  channelId: string;
+  role: PrivateChannelMembershipRole;
+  suffix: string;
+  userId: string;
+  email: string;
+  organizationRole?: "admin" | "member";
+  projectRole?: "admin" | "developer";
+}) {
+  const sessionId = `ses_pce_${suffix}`;
+  const privateChannelUserId = `pcu_pce_${suffix}`;
   const db = getDb(env);
   await db.batch([
     db
       .prepare(
-        `INSERT INTO organization_members (id, organization_id, user_id, role, status)
-         VALUES ('om_pce_member', ?, ?, 'member', 'active')`
+        `INSERT INTO users (id, email, email_verified, status)
+         VALUES (?, ?, 1, 'active')
+         ON CONFLICT (id) DO NOTHING`
       )
-      .bind(TEST_ORG.id, TEST_USER.id),
+      .bind(userId, email),
+    db
+      .prepare(
+        `INSERT INTO organization_members (id, organization_id, user_id, role, status)
+         VALUES (?, ?, ?, ?, 'active')`
+      )
+      .bind(`om_pce_${suffix}`, TEST_ORG.id, userId, organizationRole),
     db
       .prepare(
         `INSERT INTO project_members (id, project_id, user_id, role)
-         VALUES ('pm_pce_member', ?, ?, 'developer')`
+         VALUES (?, ?, ?, ?)`
       )
-      .bind(TEST_PROJECT.id, TEST_USER.id),
+      .bind(`pm_pce_${suffix}`, TEST_PROJECT.id, userId, projectRole),
     db
       .prepare(
         `INSERT INTO sessions (id, user_id, organization_id, auth_method, expires_at)
          VALUES (?, ?, ?, 'magic_link', ?)`
       )
-      .bind(sessionId, TEST_USER.id, TEST_ORG.id, "2099-01-01T00:00:00.000Z"),
+      .bind(sessionId, userId, TEST_ORG.id, "2099-01-01T00:00:00.000Z"),
     db
       .prepare(
         `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
          VALUES (?, ?, ?, ?)`
       )
-      .bind(privateChannelUserId, TEST_ORG.id, TEST_PROJECT.id, TEST_USER.id),
+      .bind(privateChannelUserId, TEST_ORG.id, TEST_PROJECT.id, userId),
     db
       .prepare(
         `INSERT INTO private_channel_memberships
            (id, channel_id, private_channel_user_id, role)
-         VALUES ('pcm_pce_member', ?, ?, ?)`
+         VALUES (?, ?, ?, ?)`
       )
-      .bind(channelId, privateChannelUserId, role),
+      .bind(`pcm_pce_${suffix}`, channelId, privateChannelUserId, role),
   ]);
   return {
     privateChannelUserId,
@@ -176,6 +200,34 @@ async function memberSession(channelId: string, role: "admin" | "member" = "memb
       "Content-Type": "application/json",
     },
   };
+}
+
+async function memberSession(
+  channelId: string,
+  role: PrivateChannelMembershipRole = PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER
+) {
+  return channelMemberSession({
+    channelId,
+    role,
+    suffix: "member",
+    userId: TEST_USER.id,
+    email: TEST_USER.email,
+  });
+}
+
+async function insertPrivateChannelUser(id: string, userId: string, email: string): Promise<void> {
+  const db = getDb(env);
+  await db.batch([
+    db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind(userId, email),
+    db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(id, TEST_ORG.id, TEST_PROJECT.id, userId),
+  ]);
 }
 
 async function connectInstance(): Promise<void> {
@@ -429,6 +481,7 @@ describe("Private Channels — event routes", () => {
   it("assigns and updates a channel membership role with an activity event", async () => {
     await connectInstance();
     const channelId = await defaultChannelId();
+    await memberSession(channelId, PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER);
     const db = getDb(env);
     const targetUserId = "usr_role_target";
     const privateChannelUserId = "pcu_role_target";
@@ -492,6 +545,77 @@ describe("Private Channels — event routes", () => {
     });
   });
 
+  it("keeps re-adding a member idempotent when the requested role is unchanged", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    await insertPrivateChannelUser("pcu_readd", "usr_readd", "readd@example.com");
+    const body = JSON.stringify({
+      privateChannelUserId: "pcu_readd",
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+    });
+
+    const first = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships`,
+      { method: "POST", headers: authHeaders(), body },
+      env
+    );
+    expect(first.status).toBe(200);
+
+    // The first member is promoted to owner, so an identical retry must not conflict.
+    const retry = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships`,
+      { method: "POST", headers: authHeaders(), body },
+      env
+    );
+    expect(retry.status).toBe(200);
+  });
+
+  it("rejects re-adding an existing member with a different role", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    await insertPrivateChannelUser("pcu_owner_seed", "usr_owner_seed", "owner-seed@example.com");
+    await insertPrivateChannelUser("pcu_readd", "usr_readd", "readd@example.com");
+    // Seed an owner first so the target keeps the role it was added with.
+    for (const privateChannelUserId of ["pcu_owner_seed", "pcu_readd"]) {
+      const added = await app.request(
+        `/v1/private-channels/channels/${channelId}/memberships`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            privateChannelUserId,
+            role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+          }),
+        },
+        env
+      );
+      expect(added.status).toBe(200);
+    }
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          privateChannelUserId: "pcu_readd",
+          role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+        }),
+      },
+      env
+    );
+
+    expect(response.status).toBe(409);
+    const membership = await getDb(env)
+      .prepare(
+        `SELECT role FROM private_channel_memberships
+         WHERE channel_id = ? AND private_channel_user_id = 'pcu_readd'`
+      )
+      .bind(channelId)
+      .first<{ role: string }>();
+    expect(membership?.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER);
+  });
+
   it("hides project and channel events from a non-admin API key", async () => {
     await connectInstance();
     const channelId = await defaultChannelId();
@@ -546,7 +670,7 @@ describe("Private Channels — event routes", () => {
     expect(otherFeed.status).toBe(403);
   });
 
-  it("lets a channel admin change another member's role", async () => {
+  it("lets a channel admin change another admin to viewer", async () => {
     await connectInstance();
     const channelId = await defaultChannelId();
     const { headers } = await memberSession(channelId, "admin");
@@ -566,7 +690,7 @@ describe("Private Channels — event routes", () => {
       .prepare(
         `INSERT INTO private_channel_memberships
            (id, channel_id, private_channel_user_id, role)
-         VALUES ('pcm_admin_target', ?, 'pcu_admin_target', 'member')`
+         VALUES ('pcm_admin_target', ?, 'pcu_admin_target', 'admin')`
       )
       .bind(channelId)
       .run();
@@ -576,17 +700,20 @@ describe("Private Channels — event routes", () => {
       {
         method: "PATCH",
         headers,
-        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN }),
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER }),
       },
       env
     );
     expect(response.status).toBe(200);
   });
 
-  it("blocks a member from changing roles but allows self-leave", async () => {
+  it("treats a viewer like a member for management and self-leave", async () => {
     await connectInstance();
     const channelId = await defaultChannelId();
-    const { headers, privateChannelUserId } = await memberSession(channelId);
+    const { headers, privateChannelUserId } = await memberSession(
+      channelId,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER
+    );
 
     const update = await app.request(
       `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
@@ -605,5 +732,296 @@ describe("Private Channels — event routes", () => {
       env
     );
     expect(leave.status).toBe(200);
+  });
+
+  it("prevents the sole channel admin from leaving", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers, privateChannelUserId } = await memberSession(channelId, "admin");
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      { method: "DELETE", headers },
+      env
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  it("prevents demoting the sole channel admin", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers, privateChannelUserId } = await memberSession(channelId, "admin");
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER }),
+      },
+      env
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  it("prevents a project admin from removing the sole channel admin", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { privateChannelUserId } = await memberSession(channelId, "admin");
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      { method: "DELETE", headers: authHeaders() },
+      env
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  it("allows an admin to leave when another channel admin remains", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers, privateChannelUserId } = await memberSession(channelId, "admin");
+    const db = getDb(env);
+    await db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind("usr_second_admin", "second-admin@example.com")
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind("pcu_second_admin", TEST_ORG.id, TEST_PROJECT.id, "usr_second_admin")
+      .run();
+    const add = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          privateChannelUserId: "pcu_second_admin",
+          role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+        }),
+      },
+      env
+    );
+    expect(add.status).toBe(200);
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      { method: "DELETE", headers },
+      env
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("lets the owner transfer ownership and become an admin", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers, privateChannelUserId: previousOwnerId } = await channelMemberSession({
+      channelId,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+      suffix: "owner",
+      userId: "usr_pce_owner",
+      email: "owner@example.com",
+      organizationRole: "admin",
+      projectRole: "admin",
+    });
+    await insertPrivateChannelUser("pcu_new_owner", "usr_new_owner", "new-owner@example.com");
+    await getDb(env)
+      .prepare(
+        `INSERT INTO private_channel_memberships
+           (id, channel_id, private_channel_user_id, role)
+         VALUES ('pcm_new_owner', ?, 'pcu_new_owner', 'member')`
+      )
+      .bind(channelId)
+      .run();
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/pcu_new_owner`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER }),
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    const memberships = await getDb(env)
+      .prepare(
+        `SELECT private_channel_user_id, role
+           FROM private_channel_memberships
+          WHERE channel_id = ?`
+      )
+      .bind(channelId)
+      .all<{ private_channel_user_id: string; role: string }>();
+    expect(memberships.results).toEqual(
+      expect.arrayContaining([
+        {
+          private_channel_user_id: previousOwnerId,
+          role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+        },
+        {
+          private_channel_user_id: "pcu_new_owner",
+          role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+        },
+      ])
+    );
+  });
+
+  it("prevents an admin from changing the owner", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { privateChannelUserId: ownerId } = await channelMemberSession({
+      channelId,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+      suffix: "owner",
+      userId: "usr_pce_owner",
+      email: "owner@example.com",
+    });
+    const { headers } = await channelMemberSession({
+      channelId,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+      suffix: "admin",
+      userId: "usr_pce_admin",
+      email: "admin@example.com",
+    });
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${ownerId}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER }),
+      },
+      env
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("allows the last admin to demote themselves while an owner remains", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    await channelMemberSession({
+      channelId,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+      suffix: "owner",
+      userId: "usr_pce_owner",
+      email: "owner@example.com",
+    });
+    const { headers, privateChannelUserId } = await channelMemberSession({
+      channelId,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+      suffix: "admin",
+      userId: "usr_pce_admin",
+      email: "admin@example.com",
+    });
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER }),
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("prevents removing an owner from an active channel", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { headers, privateChannelUserId } = await memberSession(
+      channelId,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+    );
+
+    const response = await app.request(
+      `/v1/private-channels/channels/${channelId}/memberships/${privateChannelUserId}`,
+      { method: "DELETE", headers },
+      env
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  it("prevents deleting a workspace user who owns an active channel", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const { privateChannelUserId } = await memberSession(
+      channelId,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+    );
+
+    const response = await app.request(
+      `/v1/private-channels/users/${privateChannelUserId}`,
+      { method: "DELETE", headers: authHeaders() },
+      env
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  it("lets an owner archive a channel and then leave it", async () => {
+    await connectInstance();
+    const create = await app.request(
+      "/v1/private-channels/channels",
+      { method: "POST", headers: authHeaders(), body: JSON.stringify({ name: "Owner archive" }) },
+      env
+    );
+    const created = (await create.json()) as { data: PrivateChannelDto };
+    const { headers, privateChannelUserId } = await memberSession(
+      created.data.id,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+    );
+
+    const archived = await app.request(
+      `/v1/private-channels/channels/${created.data.id}`,
+      { method: "DELETE", headers },
+      env
+    );
+    expect(archived.status).toBe(204);
+
+    const removed = await app.request(
+      `/v1/private-channels/channels/${created.data.id}/memberships/${privateChannelUserId}`,
+      { method: "DELETE", headers },
+      env
+    );
+    expect(removed.status).toBe(200);
+  });
+
+  it("allows deleting an owner after their channel is archived", async () => {
+    await connectInstance();
+    const create = await app.request(
+      "/v1/private-channels/channels",
+      { method: "POST", headers: authHeaders(), body: JSON.stringify({ name: "Archived owner" }) },
+      env
+    );
+    const created = (await create.json()) as { data: PrivateChannelDto };
+    const { privateChannelUserId } = await memberSession(
+      created.data.id,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+    );
+    const archived = await app.request(
+      `/v1/private-channels/channels/${created.data.id}`,
+      { method: "DELETE", headers: authHeaders() },
+      env
+    );
+    expect(archived.status).toBe(204);
+
+    const deleted = await app.request(
+      `/v1/private-channels/users/${privateChannelUserId}`,
+      { method: "DELETE", headers: authHeaders() },
+      env
+    );
+    expect(deleted.status).toBe(200);
   });
 });

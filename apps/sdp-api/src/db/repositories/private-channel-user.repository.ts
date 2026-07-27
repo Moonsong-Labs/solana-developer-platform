@@ -3,7 +3,11 @@
 //   - `private_channel_memberships`  (channel × user junction)
 // Rows FK to `users(id)`; SDP-native user identity stays in the `users` table.
 
-import type { PrivateChannelMembershipRole } from "@sdp/types";
+import type {
+  PrivateChannelAssignableRole,
+  PrivateChannelMembershipRole,
+  PrivateChannelStatusDto,
+} from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelUserId(): string {
@@ -51,6 +55,7 @@ export interface PrivateChannelMembershipRow {
 export interface PrivateChannelMembershipWithChannelRow extends PrivateChannelMembershipRow {
   channel_name: string;
   channel_is_default: boolean;
+  channel_status: PrivateChannelStatusDto;
 }
 
 export interface ProjectScope {
@@ -71,7 +76,19 @@ export interface AddMembershipInput {
   channelId: string;
   privateChannelUserId: string;
   addedBy: string | null;
-  role: PrivateChannelMembershipRole;
+  /** Owner is never assignable here — the first member is promoted automatically. */
+  role: PrivateChannelAssignableRole;
+}
+
+export interface TransferChannelOwnershipResult {
+  previousOwner: PrivateChannelMembershipRow;
+  owner: PrivateChannelMembershipRow;
+  ownerPreviousRole: PrivateChannelMembershipRole;
+}
+
+export interface UpdateMembershipRoleResult {
+  membership: PrivateChannelMembershipRow;
+  previousRole: PrivateChannelMembershipRole;
 }
 
 export interface PrivateChannelUserRepositoryContext {
@@ -110,16 +127,40 @@ export interface PrivateChannelUserRepository {
     privateChannelUserId: string
   ): Promise<PrivateChannelMembershipWithChannelRow[]>;
 
-  /** Insert-if-not-exists. Returns the row (existing or newly created). */
+  /**
+   * Insert-if-not-exists. Returns the row (existing or newly created); an existing
+   * row keeps its role — role changes go through updateMembershipRole or
+   * transferChannelOwnership so their guards and events always run.
+   */
   addMembership(input: AddMembershipInput): Promise<PrivateChannelMembershipRow>;
 
-  /** Change an existing channel membership's role. */
+  /**
+   * Change an existing channel membership's role. Returns null when the membership
+   * is missing, is the owner, or is the channel's last manager being demoted.
+   */
   updateMembershipRole(
     channelId: string,
     privateChannelUserId: string,
     role: PrivateChannelMembershipRole
-  ): Promise<PrivateChannelMembershipRow | null>;
+  ): Promise<UpdateMembershipRoleResult | null>;
 
-  /** Remove a user from a channel. Returns true if a row was deleted. */
-  removeMembership(channelId: string, privateChannelUserId: string): Promise<boolean>;
+  /** Atomically transfer ownership and demote the previous owner to admin. */
+  transferChannelOwnership(
+    channelId: string,
+    privateChannelUserId: string,
+    currentOwnerId: string
+  ): Promise<TransferChannelOwnershipResult | null>;
+
+  /** Count owner/admin memberships assigned to a channel. */
+  countChannelManagers(channelId: string): Promise<number>;
+
+  /**
+   * Remove a user from a channel. On an active channel the owner is never removed
+   * and the last manager is kept; archiving lifts both.
+   */
+  removeMembership(
+    channelId: string,
+    privateChannelUserId: string,
+    channelArchived?: boolean
+  ): Promise<boolean>;
 }

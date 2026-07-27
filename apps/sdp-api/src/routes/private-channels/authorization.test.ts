@@ -1,6 +1,6 @@
 import type { Permission } from "@sdp/types";
 import { describe, expect, it } from "vitest";
-import { isAdminTier } from "./authorization";
+import { hasProjectAdminAccess } from "./authorization";
 import type { AppContext } from "./context";
 
 function contextWithPermissions(permissions: Permission[]): AppContext {
@@ -22,9 +22,9 @@ function contextWithPermissions(permissions: Permission[]): AppContext {
 }
 
 describe("Private Channels authorization", () => {
-  it("treats projects:admin and wildcard permissions as admin tier", () => {
-    expect(isAdminTier(contextWithPermissions(["projects:admin"]))).toBe(true);
-    expect(isAdminTier(contextWithPermissions(["*"]))).toBe(true);
-    expect(isAdminTier(contextWithPermissions(["payments:write"]))).toBe(false);
+  it("recognizes projects:admin and wildcard as project-admin access", () => {
+    expect(hasProjectAdminAccess(contextWithPermissions(["projects:admin"]))).toBe(true);
+    expect(hasProjectAdminAccess(contextWithPermissions(["*"]))).toBe(true);
+    expect(hasProjectAdminAccess(contextWithPermissions(["payments:write"]))).toBe(false);
   });
 });

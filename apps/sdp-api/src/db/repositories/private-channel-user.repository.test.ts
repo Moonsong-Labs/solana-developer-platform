@@ -1,4 +1,5 @@
 import { SANDBOX_DEFAULTS } from "@sdp/private-channels";
+import { PRIVATE_CHANNEL_MEMBERSHIP_ROLES } from "@sdp/types";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
 import { TEST_ORG, TEST_USER } from "@/test/fixtures/organizations";
@@ -146,7 +147,7 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
     expect(listed.verified_wallet_count).toBe(0);
   });
 
-  it("stores and returns an admin role on a channel membership", async () => {
+  it("makes the first channel member owner and preserves later membership roles", async () => {
     const db = getDb(env);
     const instanceId = await connectInstance();
     const channelId = "pch_role_test";
@@ -163,14 +164,138 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
       channelId,
       privateChannelUserId: PCU_ID,
       addedBy: TEST_USER.id,
-      role: "admin",
-    } as Parameters<PrivateChannelUserRepository["addMembership"]>[0]);
-    expect((created as { role?: string }).role).toBe("admin");
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+    });
+    expect(created.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER);
 
     const [listed] = await repo.listMembershipsForUser(PCU_ID);
-    expect((listed as { role?: string }).role).toBe("admin");
+    expect(listed.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER);
+    expect(
+      await repo.updateMembershipRole(channelId, PCU_ID, PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER)
+    ).toBeNull();
+    expect(await repo.removeMembership(channelId, PCU_ID)).toBe(false);
 
-    const updated = await repo.updateMembershipRole(channelId, PCU_ID, "member");
-    expect(updated?.role).toBe("member");
+    await db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind("usr_role_viewer", "role-viewer@example.com")
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind("pcu_role_viewer", TEST_ORG.id, TEST_PROJECT_ID, "usr_role_viewer")
+      .run();
+
+    const viewer = await repo.addMembership({
+      channelId,
+      privateChannelUserId: "pcu_role_viewer",
+      addedBy: TEST_USER.id,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER,
+    });
+    expect(viewer.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER);
+    const promoted = await repo.updateMembershipRole(
+      channelId,
+      "pcu_role_viewer",
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN
+    );
+    expect(promoted?.previousRole).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER);
+    expect(promoted?.membership.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN);
+    expect(await repo.countChannelManagers(channelId)).toBe(2);
+    expect(await repo.deleteById(scope, PCU_ID)).toBe(false);
+  });
+
+  it("transfers ownership and demotes the previous owner to admin", async () => {
+    const db = getDb(env);
+    const instanceId = await connectInstance();
+    const channelId = "pch_owner_transfer";
+    await db
+      .prepare(
+        `INSERT INTO private_channels
+           (id, organization_id, project_id, instance_id, name, is_default)
+         VALUES (?, ?, ?, ?, 'Owner transfer', FALSE)`
+      )
+      .bind(channelId, TEST_ORG.id, TEST_PROJECT_ID, instanceId)
+      .run();
+    await db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind("usr_new_owner", "new-owner@example.com")
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind("pcu_new_owner", TEST_ORG.id, TEST_PROJECT_ID, "usr_new_owner")
+      .run();
+    await repo.addMembership({
+      channelId,
+      privateChannelUserId: PCU_ID,
+      addedBy: TEST_USER.id,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+    });
+    await repo.addMembership({
+      channelId,
+      privateChannelUserId: "pcu_new_owner",
+      addedBy: TEST_USER.id,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+    });
+
+    expect(
+      await repo.transferChannelOwnership(channelId, "pcu_new_owner", "pcu_stale_owner")
+    ).toBeNull();
+    const transferred = await repo.transferChannelOwnership(channelId, "pcu_new_owner", PCU_ID);
+
+    expect(transferred?.previousOwner.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN);
+    expect(transferred?.owner.role).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER);
+    expect(transferred?.ownerPreviousRole).toBe(PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER);
+  });
+
+  // The handler pre-checks this too, but only the repository holds the channel
+  // lock, so it has to stand on its own when two managers step down at once.
+  it("keeps the last manager of an active channel", async () => {
+    const db = getDb(env);
+    const instanceId = await connectInstance();
+    const channelId = "pch_last_manager";
+    await db
+      .prepare(
+        `INSERT INTO private_channels
+           (id, organization_id, project_id, instance_id, name, is_default)
+         VALUES (?, ?, ?, ?, 'Last manager', FALSE)`
+      )
+      .bind(channelId, TEST_ORG.id, TEST_PROJECT_ID, instanceId)
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_memberships (id, channel_id, private_channel_user_id, role)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind("pcm_sole_admin", channelId, PCU_ID, PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN)
+      .run();
+
+    expect(
+      await repo.updateMembershipRole(channelId, PCU_ID, PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER)
+    ).toBeNull();
+    expect(await repo.removeMembership(channelId, PCU_ID)).toBe(false);
+
+    await db
+      .prepare("INSERT INTO users (id, email, email_verified, status) VALUES (?, ?, 1, 'active')")
+      .bind("usr_second_admin", "second-admin@example.com")
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO private_channel_users (id, organization_id, project_id, user_id)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind("pcu_second_admin", TEST_ORG.id, TEST_PROJECT_ID, "usr_second_admin")
+      .run();
+    await repo.addMembership({
+      channelId,
+      privateChannelUserId: "pcu_second_admin",
+      addedBy: TEST_USER.id,
+      role: PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+    });
+
+    expect(await repo.removeMembership(channelId, PCU_ID)).toBe(true);
   });
 });

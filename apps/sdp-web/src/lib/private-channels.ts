@@ -2,6 +2,7 @@ import type {
   CreatePrivateChannelRequest,
   CustodyWalletSummary,
   InvitePrivateChannelUserRequest,
+  PrivateChannelAssignableRole,
   PrivateChannelDeposit,
   PrivateChannelDto,
   PrivateChannelEventListEnvelope,
@@ -220,7 +221,7 @@ export function addChannelMembership(
   client: SdpApiClient,
   channelId: string,
   privateChannelUserId: string,
-  role: PrivateChannelMembershipRole
+  role: PrivateChannelAssignableRole
 ): Promise<{ membership: PrivateChannelMembershipDto }> {
   return client.fetch(
     `/v1/private-channels/channels/${encodeURIComponent(channelId)}/memberships`,
@@ -228,7 +229,7 @@ export function addChannelMembership(
   );
 }
 
-/** Change a channel membership between admin and member. */
+/** Change a channel membership role, including atomic ownership transfer. */
 export function updateChannelMembershipRole(
   client: SdpApiClient,
   channelId: string,

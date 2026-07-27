@@ -76,7 +76,13 @@ export interface PrivateChannelInstanceOverview {
 }
 
 /** Soft-delete lifecycle for a channel. */
-export type PrivateChannelStatusDto = "active" | "archived";
+export const PRIVATE_CHANNEL_STATUSES = {
+  ACTIVE: "active",
+  ARCHIVED: "archived",
+} as const;
+
+export type PrivateChannelStatusDto =
+  (typeof PRIVATE_CHANNEL_STATUSES)[keyof typeof PRIVATE_CHANNEL_STATUSES];
 
 /** A logical channel. Exactly one channel per instance is the default (`isDefault`). */
 export interface PrivateChannelDto {
@@ -219,17 +225,32 @@ export interface PrivateChannelVerifiedWalletDto {
 }
 
 export const PRIVATE_CHANNEL_MEMBERSHIP_ROLES = {
+  OWNER: "owner",
   ADMIN: "admin",
   MEMBER: "member",
+  VIEWER: "viewer",
 } as const;
 
 export type PrivateChannelMembershipRole =
   (typeof PRIVATE_CHANNEL_MEMBERSHIP_ROLES)[keyof typeof PRIVATE_CHANNEL_MEMBERSHIP_ROLES];
 
 export const PRIVATE_CHANNEL_MEMBERSHIP_ROLE_VALUES = [
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER,
 ] as const satisfies readonly PrivateChannelMembershipRole[];
+
+export type PrivateChannelAssignableRole = Exclude<
+  PrivateChannelMembershipRole,
+  typeof PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER
+>;
+
+export const PRIVATE_CHANNEL_ASSIGNABLE_ROLE_VALUES = [
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER,
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER,
+] as const satisfies readonly PrivateChannelAssignableRole[];
 
 /** An SDP user invited to the SPC workspace, joined with `users` for display. */
 export interface PrivateChannelUserDto {
@@ -248,6 +269,7 @@ export interface PrivateChannelMembershipChannelDto {
   id: string;
   name: string;
   isDefault: boolean;
+  status: PrivateChannelStatusDto;
   role: PrivateChannelMembershipRole;
 }
 
@@ -268,7 +290,7 @@ export interface InvitePrivateChannelUserRequest {
 /** Request body for adding a user to a channel. */
 export interface AddPrivateChannelMembershipRequest {
   privateChannelUserId: string;
-  role?: PrivateChannelMembershipRole;
+  role?: PrivateChannelAssignableRole;
 }
 
 // --- Private Channel Events ---------------------------------------------

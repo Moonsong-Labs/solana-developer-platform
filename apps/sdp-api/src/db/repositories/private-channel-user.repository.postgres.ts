@@ -1,5 +1,9 @@
-import type { PrivateChannelMembershipRole } from "@sdp/types";
-import type { AppDb } from "@/db";
+import {
+  PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
+  type PrivateChannelMembershipRole,
+  type PrivateChannelStatusDto,
+} from "@sdp/types";
+import type { AppDb, DatabaseExecutor } from "@/db";
 import {
   type AddMembershipInput,
   type CreatePrivateChannelUserInput,
@@ -51,6 +55,41 @@ function mapMembershipWithChannelRow(
     added_at: row.added_at as string,
     channel_name: row.channel_name as string,
     channel_is_default: Boolean(row.channel_is_default),
+    channel_status: row.channel_status as PrivateChannelStatusDto,
+  };
+}
+
+/** Callers must already hold the channel lock for this answer to stay true. */
+async function hasOtherManager(
+  tx: DatabaseExecutor,
+  channelId: string,
+  privateChannelUserId: string
+): Promise<boolean> {
+  const row = await tx.queryOne<{ id: string }>(
+    `SELECT id
+       FROM private_channel_memberships
+      WHERE channel_id = ?
+        AND private_channel_user_id <> ?
+        AND role IN (?, ?)
+      LIMIT 1`,
+    [
+      channelId,
+      privateChannelUserId,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+      PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+    ]
+  );
+  return row !== null;
+}
+
+function mapMembershipRow(row: Record<string, unknown>): PrivateChannelMembershipRow {
+  return {
+    id: row.id as string,
+    channel_id: row.channel_id as string,
+    private_channel_user_id: row.private_channel_user_id as string,
+    role: row.role as PrivateChannelMembershipRole,
+    added_by: (row.added_by ?? null) as string | null,
+    added_at: row.added_at as string,
   };
 }
 
@@ -169,17 +208,57 @@ export function createPostgresPrivateChannelUserRepository(
     },
 
     async deleteById(scope, id) {
-      const row = await db
-        .prepare(
-          `DELETE FROM private_channel_users
-            WHERE id = ?
-              AND organization_id = ?
-              AND project_id = ?
-          RETURNING id`
-        )
-        .bind(id, scope.organizationId, scope.projectId)
-        .first<{ id: string }>();
-      return row !== null;
+      return db.transaction(async (tx) => {
+        // Serialize against membership changes and ownership transfers in every
+        // active channel this workspace user belongs to.
+        await tx.queryMany(
+          `SELECT c.id
+             FROM private_channel_memberships m
+             INNER JOIN private_channels c ON c.id = m.channel_id
+            WHERE m.private_channel_user_id = ?
+              AND c.status = 'active'
+            ORDER BY c.id
+            FOR UPDATE OF c`,
+          [id]
+        );
+        const row = await tx.queryOne<{ id: string }>(
+          `DELETE FROM private_channel_users pcu
+            WHERE pcu.id = ?
+              AND pcu.organization_id = ?
+              AND pcu.project_id = ?
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM private_channel_memberships m
+                  INNER JOIN private_channels c ON c.id = m.channel_id
+                 WHERE m.private_channel_user_id = pcu.id
+                   AND c.status = 'active'
+                   AND (
+                     m.role = ?
+                     OR (
+                       m.role = ?
+                       AND NOT EXISTS (
+                         SELECT 1
+                           FROM private_channel_memberships manager
+                          WHERE manager.channel_id = m.channel_id
+                            AND manager.private_channel_user_id <> pcu.id
+                            AND manager.role IN (?, ?)
+                       )
+                     )
+                   )
+              )
+          RETURNING pcu.id`,
+          [
+            id,
+            scope.organizationId,
+            scope.projectId,
+            PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+            PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+            PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+            PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN,
+          ]
+        );
+        return row !== null;
+      });
     },
 
     async listMembershipsByProject(scope) {
@@ -187,7 +266,8 @@ export function createPostgresPrivateChannelUserRepository(
         .prepare(
           `SELECT m.*,
                   c.name       AS channel_name,
-                  c.is_default AS channel_is_default
+                  c.is_default AS channel_is_default,
+                  c.status     AS channel_status
              FROM private_channel_memberships m
              INNER JOIN private_channels c        ON c.id = m.channel_id
              INNER JOIN private_channel_users pcu ON pcu.id = m.private_channel_user_id
@@ -211,7 +291,8 @@ export function createPostgresPrivateChannelUserRepository(
         .prepare(
           `SELECT m.*,
                   c.name       AS channel_name,
-                  c.is_default AS channel_is_default
+                  c.is_default AS channel_is_default,
+                  c.status     AS channel_status
              FROM private_channel_memberships m
              INNER JOIN private_channels c ON c.id = m.channel_id
             WHERE m.private_channel_user_id = ?`
@@ -222,72 +303,198 @@ export function createPostgresPrivateChannelUserRepository(
     },
 
     async addMembership(input: AddMembershipInput): Promise<PrivateChannelMembershipRow> {
-      // Idempotent: ON CONFLICT DO UPDATE (no-op) so we always return a row.
-      // `RETURNING` on both insert + no-op update gives us the winning row's id
-      // even when the row already existed.
-      const row = await db
-        .prepare(
-          `INSERT INTO private_channel_memberships (
-               id, channel_id, private_channel_user_id, role, added_by
-             ) VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT (channel_id, private_channel_user_id) DO UPDATE
-             SET added_at = private_channel_memberships.added_at
-          RETURNING *`
-        )
-        .bind(
-          generatePrivateChannelMembershipId(),
+      return db.transaction(async (tx) => {
+        // Serializing on the channel makes concurrent first-member additions
+        // choose exactly one owner instead of racing the partial unique index.
+        await tx.queryOne("SELECT id FROM private_channels WHERE id = ? FOR UPDATE", [
           input.channelId,
-          input.privateChannelUserId,
-          input.role,
-          input.addedBy
-        )
-        .first<Record<string, unknown>>();
-      if (!row) throw new Error("private_channel_memberships insert returned no row");
-      return {
-        id: row.id as string,
-        channel_id: row.channel_id as string,
-        private_channel_user_id: row.private_channel_user_id as string,
-        role: row.role as PrivateChannelMembershipRole,
-        added_by: (row.added_by ?? null) as string | null,
-        added_at: row.added_at as string,
-      };
+        ]);
+        const row = await tx
+          .prepare(
+            `INSERT INTO private_channel_memberships (
+                 id, channel_id, private_channel_user_id, role, added_by
+               ) VALUES (
+                 ?, ?, ?,
+                 CASE
+                   WHEN EXISTS (
+                     SELECT 1
+                       FROM private_channel_memberships
+                      WHERE channel_id = ?
+                        AND role = ?
+                   )
+                   THEN ?
+                   ELSE ?
+                 END,
+                 ?
+               )
+            -- No-op update so an existing membership can be RETURNED. Assigning
+            -- excluded.role here would silently demote an owner and skip the
+            -- last-manager guard and role-change event.
+            ON CONFLICT (channel_id, private_channel_user_id) DO UPDATE
+               SET added_at = private_channel_memberships.added_at
+            RETURNING *`
+          )
+          .bind(
+            generatePrivateChannelMembershipId(),
+            input.channelId,
+            input.privateChannelUserId,
+            input.channelId,
+            PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+            input.role,
+            PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+            input.addedBy
+          )
+          .first<Record<string, unknown>>();
+        if (!row) throw new Error("private_channel_memberships insert returned no row");
+        return mapMembershipRow(row);
+      });
     },
 
     async updateMembershipRole(channelId, privateChannelUserId, role) {
-      const row = await db
-        .prepare(
+      return db.transaction(async (tx) => {
+        await tx.queryOne("SELECT id FROM private_channels WHERE id = ? FOR UPDATE", [channelId]);
+        const current = await tx.queryOne<{ role: PrivateChannelMembershipRole }>(
+          `SELECT role
+             FROM private_channel_memberships
+            WHERE channel_id = ?
+              AND private_channel_user_id = ?
+              AND role <> ?`,
+          [channelId, privateChannelUserId, PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER]
+        );
+        if (!current) return null;
+
+        // Re-check under the channel lock: the caller's pre-flight count can go
+        // stale when two managers step down at the same time.
+        const demotesLastManager =
+          current.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN &&
+          role !== PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN;
+        if (demotesLastManager && !(await hasOtherManager(tx, channelId, privateChannelUserId))) {
+          return null;
+        }
+
+        const row = await tx.queryOne<Record<string, unknown>>(
           `UPDATE private_channel_memberships
               SET role = ?
             WHERE channel_id = ?
               AND private_channel_user_id = ?
-          RETURNING *`
-        )
-        .bind(role, channelId, privateChannelUserId)
-        .first<Record<string, unknown>>();
-      if (!row) {
-        return null;
-      }
-      return {
-        id: row.id as string,
-        channel_id: row.channel_id as string,
-        private_channel_user_id: row.private_channel_user_id as string,
-        role: row.role as PrivateChannelMembershipRole,
-        added_by: (row.added_by ?? null) as string | null,
-        added_at: row.added_at as string,
-      };
+          RETURNING *`,
+          [role, channelId, privateChannelUserId]
+        );
+        return row
+          ? {
+              membership: mapMembershipRow(row),
+              previousRole: current.role,
+            }
+          : null;
+      });
     },
 
-    async removeMembership(channelId, privateChannelUserId) {
+    async transferChannelOwnership(channelId, privateChannelUserId, currentOwnerId) {
+      return db.transaction(async (tx) => {
+        const channel = await tx.queryOne<{ id: string }>(
+          "SELECT id FROM private_channels WHERE id = ? FOR UPDATE",
+          [channelId]
+        );
+        if (!channel) return null;
+
+        const previousOwner = await tx.queryOne<Record<string, unknown>>(
+          `SELECT *
+             FROM private_channel_memberships
+            WHERE channel_id = ?
+              AND role = ?`,
+          [channelId, PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER]
+        );
+        const target = await tx.queryOne<Record<string, unknown>>(
+          `SELECT *
+             FROM private_channel_memberships
+            WHERE channel_id = ?
+              AND private_channel_user_id = ?`,
+          [channelId, privateChannelUserId]
+        );
+        if (
+          !previousOwner ||
+          !target ||
+          previousOwner.private_channel_user_id !== currentOwnerId ||
+          previousOwner.id === target.id
+        ) {
+          return null;
+        }
+
+        const demoted = await tx.queryOne<Record<string, unknown>>(
+          `UPDATE private_channel_memberships
+              SET role = ?
+            WHERE id = ?
+          RETURNING *`,
+          [PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN, previousOwner.id]
+        );
+        const owner = await tx.queryOne<Record<string, unknown>>(
+          `UPDATE private_channel_memberships
+              SET role = ?
+            WHERE id = ?
+          RETURNING *`,
+          [PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER, target.id]
+        );
+        if (!demoted || !owner) {
+          throw new Error("Ownership transfer did not update both memberships");
+        }
+        return {
+          previousOwner: mapMembershipRow(demoted),
+          owner: mapMembershipRow(owner),
+          ownerPreviousRole: target.role as PrivateChannelMembershipRole,
+        };
+      });
+    },
+
+    async countChannelManagers(channelId) {
       const row = await db
         .prepare(
+          `SELECT COUNT(*) AS count
+             FROM private_channel_memberships
+            WHERE channel_id = ?
+              AND role IN (?, ?)`
+        )
+        .bind(
+          channelId,
+          PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER,
+          PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN
+        )
+        .first<{ count: number | string }>();
+      return Number(row?.count ?? 0);
+    },
+
+    async removeMembership(channelId, privateChannelUserId, channelArchived = false) {
+      return db.transaction(async (tx) => {
+        await tx.queryOne("SELECT id FROM private_channels WHERE id = ? FOR UPDATE", [channelId]);
+        const membership = await tx.queryOne<{ role: PrivateChannelMembershipRole }>(
+          `SELECT role
+             FROM private_channel_memberships
+            WHERE channel_id = ?
+              AND private_channel_user_id = ?`,
+          [channelId, privateChannelUserId]
+        );
+        if (!membership) return false;
+
+        // Archiving releases both guards. On an active channel the owner stays and
+        // one manager stays, re-checked here in case two step down at once.
+        if (!channelArchived) {
+          if (membership.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.OWNER) return false;
+          if (
+            membership.role === PRIVATE_CHANNEL_MEMBERSHIP_ROLES.ADMIN &&
+            !(await hasOtherManager(tx, channelId, privateChannelUserId))
+          ) {
+            return false;
+          }
+        }
+
+        const row = await tx.queryOne<{ id: string }>(
           `DELETE FROM private_channel_memberships
             WHERE channel_id = ?
               AND private_channel_user_id = ?
-          RETURNING id`
-        )
-        .bind(channelId, privateChannelUserId)
-        .first<{ id: string }>();
-      return row !== null;
+          RETURNING id`,
+          [channelId, privateChannelUserId]
+        );
+        return row !== null;
+      });
     },
   };
 }

@@ -1,6 +1,10 @@
 "use server";
 
-import type { PrivateChannelMembershipRole, PrivateChannelUserDto } from "@sdp/types";
+import type {
+  PrivateChannelAssignableRole,
+  PrivateChannelMembershipRole,
+  PrivateChannelUserDto,
+} from "@sdp/types";
 import { revalidatePath } from "next/cache";
 import {
   addChannelMembership as addChannelMembershipCall,
@@ -42,7 +46,7 @@ export async function deleteMemberAction(id: string): Promise<ActionResult> {
 export async function addToChannelAction(
   channelId: string,
   privateChannelUserId: string,
-  role: PrivateChannelMembershipRole
+  role: PrivateChannelAssignableRole
 ): Promise<ActionResult> {
   try {
     const client = await createSdpApiClient();

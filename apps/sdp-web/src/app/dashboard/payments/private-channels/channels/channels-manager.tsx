@@ -12,7 +12,8 @@ import { createChannelAction, deleteChannelAction } from "./actions";
 
 interface Props {
   initialChannels: PrivateChannelDto[];
-  canManage: boolean;
+  canCreate: boolean;
+  archivableChannelIds: string[];
 }
 
 function formatDate(iso: string): string {
@@ -20,7 +21,7 @@ function formatDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 
-export function ChannelsManager({ initialChannels, canManage }: Props) {
+export function ChannelsManager({ initialChannels, canCreate, archivableChannelIds }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isCreating, startCreate] = useTransition();
@@ -51,7 +52,7 @@ export function ChannelsManager({ initialChannels, canManage }: Props) {
     startCreate(async () => {
       const result = await deleteChannelAction(channel.id);
       if (result.ok) {
-        toast.success(`Channel “${channel.name}” deleted.`);
+        toast.success(`Channel “${channel.name}” archived.`);
       } else {
         toast.error(result.message);
       }
@@ -61,7 +62,7 @@ export function ChannelsManager({ initialChannels, canManage }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {canManage ? (
+      {canCreate ? (
         <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="channel-name">New channel</Label>
@@ -113,14 +114,14 @@ export function ChannelsManager({ initialChannels, canManage }: Props) {
                   Created {formatDate(channel.createdAt)}
                 </span>
               </div>
-              {canManage ? (
+              {archivableChannelIds.includes(channel.id) ? (
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Delete ${channel.name}`}
+                  aria-label={`Archive ${channel.name}`}
                   disabled={channel.isDefault || isCreating}
                   title={
-                    channel.isDefault ? "The default channel cannot be deleted" : "Delete channel"
+                    channel.isDefault ? "The default channel cannot be archived" : "Archive channel"
                   }
                   onClick={() => handleDelete(channel)}
                 >
