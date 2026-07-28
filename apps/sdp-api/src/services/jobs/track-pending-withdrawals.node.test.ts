@@ -325,7 +325,6 @@ describe("trackPendingWithdrawals", () => {
     // Racing poller won the claim.
     observationRepo.claimSettlement.mockResolvedValueOnce(null);
     observationRepo.findByIntent.mockResolvedValueOnce({
-      source: "chain",
       signature: "otherSig",
       instruction_index: 0,
       intent_kind: "withdrawal",
@@ -347,5 +346,64 @@ describe("trackPendingWithdrawals", () => {
         expectedStatus: "confirmed",
       })
     );
+  });
+
+  it("walks past a signature-side PK conflict to the next matching release", async () => {
+    // Simulates a same-content sibling settled in a previous tick: the first
+    // release in the scan window is already claimed by a different intent, so
+    // this tick's withdrawal must fall through to the second matching sig.
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w2", status: "confirmed" }),
+    ]);
+    getSignaturesForAddress.mockResolvedValueOnce([
+      { signature: "sigTaken", err: null, blockTime: null },
+      { signature: "sigFree", err: null, blockTime: null },
+    ]);
+    getTransaction
+      .mockResolvedValueOnce({
+        slot: 1n,
+        err: null,
+        instructions: [
+          {
+            programId: "tok",
+            parsedType: "transfer",
+            info: { destination: `ata:${DESTINATION}`, amount: "10000000" },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        slot: 2n,
+        err: null,
+        instructions: [
+          {
+            programId: "tok",
+            parsedType: "transfer",
+            info: { destination: `ata:${DESTINATION}`, amount: "10000000" },
+          },
+        ],
+      });
+    // First claim (sigTaken) fails PK; findByIntent returns null → signature-
+    // side conflict. Second claim (sigFree) succeeds.
+    observationRepo.claimSettlement
+      .mockResolvedValueOnce(null)
+      .mockImplementationOnce(async (input: Record<string, unknown>) => ({
+        ...input,
+        observed_at: NOW_ISO,
+      }));
+    observationRepo.findByIntent.mockResolvedValueOnce(null);
+
+    await trackPendingWithdrawals({} as Env);
+
+    expect(observationRepo.claimSettlement).toHaveBeenCalledTimes(2);
+    expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "w2",
+        status: "settled",
+        settlementRef: "sigFree",
+        expectedStatus: "confirmed",
+      })
+    );
+    // Not stuck — sibling walk found a fresh sig.
+    expect(withdrawalRepo.patchContext).not.toHaveBeenCalled();
   });
 });
