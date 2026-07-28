@@ -16,10 +16,17 @@ export default async function PrivateChannelsLayout({ children }: { children: Re
   const client = await createSdpApiClient();
   const instance = await loadInstance(client);
 
+  // The shell locks the viewport for every /dashboard/payments route
+  // (`shouldUseWorkspaceViewport` in dashboard-shell.tsx) and renders children
+  // inside `overflow-hidden`, so each route owns its own scrolling — same shape
+  // the sibling payments workspaces use. Scrolling lives here rather than in the
+  // seven leaf pages, and the tabs stay pinned above the scroll area.
   return (
-    <>
-      <PrivateChannelsHeaderTabs isConnected={instance.data?.isActive === true} />
-      {children}
-    </>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0">
+        <PrivateChannelsHeaderTabs isConnected={instance.data?.isActive === true} />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+    </div>
   );
 }
