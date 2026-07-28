@@ -9,6 +9,8 @@ import type {
   PrivateChannelInstance,
   PrivateChannelInstanceEnvelope,
   PrivateChannelInstanceOverview,
+  PrivateChannelTransfer,
+  PrivateChannelTransferRecipientDto,
   PrivateChannelUserDto,
   PrivateChannelVerifiedWalletDto,
   PrivateChannelWithdrawal,
@@ -153,6 +155,56 @@ export function createPrivateChannelWithdrawal(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** The authenticated user's Private Channels member record and eligible memberships. */
+export async function fetchAuthenticatedPrivateChannelUser(
+  client: SdpApiClient
+): Promise<PrivateChannelUserDto | null> {
+  const { user } = await client.fetch<{ user: PrivateChannelUserDto | null }>(
+    "/v1/private-channels/users/me"
+  );
+  return user;
+}
+
+/** List grouped verified member wallets eligible to receive in one logical channel. */
+export async function fetchPrivateChannelTransferRecipients(
+  client: SdpApiClient,
+  channelId: string
+): Promise<PrivateChannelTransferRecipientDto[]> {
+  const { recipients } = await client.fetch<{
+    recipients: PrivateChannelTransferRecipientDto[];
+  }>(`/v1/private-channels/channels/${encodeURIComponent(channelId)}/transfer-recipients`);
+  return recipients;
+}
+
+/** Create a custody-signed verified-wallet transfer in one logical channel. */
+export function createPrivateChannelTransfer(
+  client: SdpApiClient,
+  channelId: string,
+  body: {
+    walletId: string;
+    recipientVerifiedWalletId: string;
+    amount: string;
+  }
+): Promise<PrivateChannelTransfer> {
+  return client.fetch<PrivateChannelTransfer>(
+    `/v1/private-channels/channels/${encodeURIComponent(channelId)}/transfers`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+/** Read one retained verified-wallet transfer within the project scope. */
+export function fetchPrivateChannelTransfer(
+  client: SdpApiClient,
+  id: string
+): Promise<PrivateChannelTransfer> {
+  return client.fetch<PrivateChannelTransfer>(
+    `/v1/private-channels/transfers/${encodeURIComponent(id)}`
+  );
 }
 
 /** Project-scoped activity feed (survives instance deletion). */

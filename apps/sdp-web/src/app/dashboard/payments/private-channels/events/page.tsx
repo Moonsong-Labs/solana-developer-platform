@@ -34,8 +34,8 @@ export default async function PrivateChannelsEventsPage() {
         <CardHeader>
           <CardTitle>Events</CardTitle>
           <CardDescription>
-            Project activity for Private Channels (lifecycle, errors, and future member/transfer
-            events). History is kept even after an instance is disconnected or deleted.
+            Project activity for Private Channels, including lifecycle, member, transfer, and error
+            events. History is kept even after an instance is disconnected or deleted.
           </CardDescription>
         </CardHeader>
         <CardContent>

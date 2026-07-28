@@ -182,6 +182,49 @@ export interface PrivateChannelWithdrawal {
   updatedAt: string;
 }
 
+/** Terminal result returned by SPC for a channel member transfer. */
+export type PrivateChannelTransferStatus = "confirmed" | "failed";
+
+/**
+ * A custody-signed token transfer between two verified private-channel member
+ * addresses. `amount` is a decimal string (never numeric/float).
+ */
+export interface PrivateChannelTransfer {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  instanceId: string;
+  channelId: string;
+  /** SDP custody wallet used to sign the transfer. */
+  walletId: string;
+  sender: string;
+  recipient: string;
+  mint: string;
+  amount: string;
+  status: PrivateChannelTransferStatus;
+  /** SPC transaction signature; null when preparation failed before signing. */
+  signature: string | null;
+  /** Set when `status === "failed"`. */
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Opaque verified-wallet option shown beneath one eligible recipient member. */
+export interface PrivateChannelTransferRecipientWalletDto {
+  id: string;
+  pubkey: string;
+}
+
+/** Eligible transfer recipient with all verified wallets for the active instance. */
+export interface PrivateChannelTransferRecipientDto {
+  privateChannelUserId: string;
+  userId: string;
+  email: string;
+  name: string | null;
+  wallets: PrivateChannelTransferRecipientWalletDto[];
+}
+
 /**
  * An owner's token balance on the channel, read through the gateway. Amounts are
  * strings to stay JSON- and precision-safe: `amount` is base units, `uiAmount` is

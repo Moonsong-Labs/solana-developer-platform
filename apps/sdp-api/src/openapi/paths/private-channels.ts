@@ -3,6 +3,7 @@ import type { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import {
   createPrivateChannelBodySchema,
   createPrivateChannelDepositBodySchema,
+  createPrivateChannelTransferBodySchema,
   createPrivateChannelWithdrawalBodySchema,
   errorResponseSchema,
   privateChannelBalanceQuerySchema,
@@ -23,6 +24,12 @@ import {
   privateChannelProbeBodySchema,
   privateChannelProbeResultSchema,
   privateChannelSchema,
+  privateChannelTransferChannelIdParamSchema,
+  privateChannelTransferIdParamSchema,
+  privateChannelTransferListQuerySchema,
+  privateChannelTransferListSchema,
+  privateChannelTransferRecipientListSchema,
+  privateChannelTransferSchema,
   privateChannelVerifiedWalletListSchema,
   privateChannelVerifiedWalletSchema,
   privateChannelVerifyWalletParamSchema,
@@ -32,7 +39,12 @@ import {
   successResponseSchema,
   z,
 } from "../schemas";
-import { errorResponses, jsonContent, projectScopeHeaders } from "./helpers";
+import {
+  errorResponses,
+  jsonContent,
+  projectScopeHeaders,
+  sessionProjectScopeHeaders,
+} from "./helpers";
 
 const TAG = "Private Channels";
 
@@ -316,6 +328,94 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
         content: jsonContent(successResponseSchema(privateChannelWithdrawalSchema)),
       },
       ...errorResponses(errorResponseSchema, [401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/channels/{channelId}/transfer-recipients",
+    tags: [TAG],
+    summary: "List eligible verified-wallet transfer recipients",
+    operationId: "listPrivateChannelTransferRecipients",
+    description:
+      "Requires a user identity and explicit membership in the active channel. Returns only verified wallets of other members in that channel.",
+    security: [{ sessionCookie: [] }],
+    request: {
+      headers: sessionProjectScopeHeaders,
+      params: privateChannelTransferChannelIdParamSchema,
+    },
+    responses: {
+      200: {
+        description: "Eligible recipients grouped by member.",
+        content: jsonContent(successResponseSchema(privateChannelTransferRecipientListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/v1/private-channels/channels/{channelId}/transfers",
+    tags: [TAG],
+    summary: "Create a verified member-to-member channel transfer",
+    operationId: "createPrivateChannelTransfer",
+    description:
+      "Server-signs with the acting member's verified SDP custody wallet and sends only to an opaque verified-wallet recipient returned by the channel recipient endpoint. Stores the terminal SPC response as confirmed or failed; failed requests may be retried by the user.",
+    security: [{ sessionCookie: [] }],
+    request: {
+      headers: sessionProjectScopeHeaders,
+      params: privateChannelTransferChannelIdParamSchema,
+      body: { content: jsonContent(createPrivateChannelTransferBodySchema) },
+    },
+    responses: {
+      200: {
+        description: "The stored confirmed or failed transfer result.",
+        content: jsonContent(successResponseSchema(privateChannelTransferSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/transfers",
+    tags: [TAG],
+    summary: "List private-channel transfers for the project",
+    operationId: "listPrivateChannelTransfers",
+    description:
+      "Lists retained project transfer history, newest first, optionally filtered by channel id.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      query: privateChannelTransferListQuerySchema,
+    },
+    responses: {
+      200: {
+        description: "Transfers",
+        content: jsonContent(successResponseSchema(privateChannelTransferListSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 500, 503]),
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/v1/private-channels/transfers/{id}",
+    tags: [TAG],
+    summary: "Get a private-channel transfer",
+    operationId: "getPrivateChannelTransfer",
+    description: "Reads one retained transfer within the request's project scope.",
+    security: [{ apiKeyAuth: [] }],
+    request: {
+      headers: projectScopeHeaders,
+      params: privateChannelTransferIdParamSchema,
+    },
+    responses: {
+      200: {
+        description: "The transfer.",
+        content: jsonContent(successResponseSchema(privateChannelTransferSchema)),
+      },
+      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
     },
   });
 

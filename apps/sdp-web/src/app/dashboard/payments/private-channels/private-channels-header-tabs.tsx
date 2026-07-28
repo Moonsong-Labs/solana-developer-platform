@@ -28,6 +28,12 @@ const TABS = [
     requiresActive: true,
   },
   {
+    id: "transfer",
+    label: "Transfer",
+    href: "/dashboard/payments/private-channels/transfer",
+    requiresActive: true,
+  },
+  {
     id: "withdraw",
     label: "Withdraw",
     href: "/dashboard/payments/private-channels/withdraw",

@@ -217,6 +217,20 @@ export {
 } from "./private-channel-instance.repository";
 export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 export type {
+  CreatePrivateChannelTransferInput,
+  ListEligiblePrivateChannelTransferRecipientsInput,
+  ListPrivateChannelTransfersInput,
+  PrivateChannelTransferProjectScope,
+  PrivateChannelTransferRepository,
+  PrivateChannelTransferRepositoryContext,
+  PrivateChannelTransferRow,
+} from "./private-channel-transfer.repository";
+export {
+  generatePrivateChannelTransferId,
+  mapPrivateChannelTransferRow,
+} from "./private-channel-transfer.repository";
+export { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
+export type {
   AddMembershipInput,
   CreatePrivateChannelUserInput,
   PrivateChannelMembershipRow,
@@ -275,6 +289,7 @@ export {
   createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelTransferRepository,
   createPrivateChannelUserRepository,
   createPrivateChannelVerifiedWalletRepository,
   createPrivateChannelWithdrawalRepository,
