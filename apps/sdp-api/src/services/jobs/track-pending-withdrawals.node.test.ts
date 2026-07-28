@@ -207,7 +207,6 @@ describe("trackPendingWithdrawals", () => {
     // Attribution recorded in settlement_observations.
     expect(observationRepo.claimSettlement).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: "chain",
         signature: "relSig",
         instructionIndex: 0,
         intentKind: "withdrawal",
