@@ -316,6 +316,8 @@ async function reconcileReleaseGroup(
     sigInfos.filter((s) => !s.err).map((s) => ({ signature: s.signature, blockTime: s.blockTime }))
   );
 
+  // Releases already claimed this tick, or found to be claimed by a prior tick
+  // via PK conflict. Skip them on subsequent lookups.
   const claimedSignatures = new Set<string>();
   // Oldest first so concurrent same-content withdrawals settle FIFO.
   const ordered = [...withdrawals].sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -327,42 +329,50 @@ async function reconcileReleaseGroup(
     });
     const wantBaseUnits = parseDecimalAmount(withdrawal.amount, decimals);
 
-    const match = releases.find(
-      (r) =>
-        !claimedSignatures.has(`${r.signature}|${r.instructionIndex}`) &&
-        r.destination === destinationAta &&
-        r.baseUnits === wantBaseUnits
+    // All content-matching releases; walk them so a PK conflict on the first
+    // pick doesn't orphan a same-content sibling withdrawal.
+    const candidates = releases.filter(
+      (r) => r.destination === destinationAta && r.baseUnits === wantBaseUnits
     );
 
-    if (!match) {
-      await maybeEmitStuckWarning(env, repo, withdrawal, now);
-      continue;
-    }
+    let settled = false;
+    for (const match of candidates) {
+      const key = `${match.signature}|${match.instructionIndex}`;
+      if (claimedSignatures.has(key)) continue;
 
-    const claim = await observationRepo.claimSettlement({
-      signature: match.signature,
-      instructionIndex: match.instructionIndex,
-      intentKind: "withdrawal",
-      intentId: withdrawal.id,
-      destination: withdrawal.destination,
-      mint: withdrawal.mint,
-      amount: withdrawal.amount,
-      blockTime: match.blockTime,
-    });
+      const claim = await observationRepo.claimSettlement({
+        signature: match.signature,
+        instructionIndex: match.instructionIndex,
+        intentKind: "withdrawal",
+        intentId: withdrawal.id,
+        destination: withdrawal.destination,
+        mint: withdrawal.mint,
+        amount: withdrawal.amount,
+        blockTime: match.blockTime,
+      });
 
-    if (!claim) {
-      // Another poller already claimed this signature or already settled this
-      // intent. Read the winner and advance from it; the CAS on updateWithdrawal
-      // guards against double-emit.
+      if (claim) {
+        claimedSignatures.add(key);
+        await advanceToSettled(env, repo, withdrawal, match.signature);
+        settled = true;
+        break;
+      }
+
+      // Claim failed. If findByIntent returns a row, this intent was already
+      // settled elsewhere — advance from that signature. Otherwise the release
+      // belongs to a different intent; mark it and try the next candidate.
       const winner = await observationRepo.findByIntent("withdrawal", withdrawal.id);
       if (winner) {
         await advanceToSettled(env, repo, withdrawal, winner.signature);
+        settled = true;
+        break;
       }
-      continue;
+      claimedSignatures.add(key);
     }
 
-    claimedSignatures.add(`${match.signature}|${match.instructionIndex}`);
-    await advanceToSettled(env, repo, withdrawal, match.signature);
+    if (!settled) {
+      await maybeEmitStuckWarning(env, repo, withdrawal, now);
+    }
   }
 }
 
