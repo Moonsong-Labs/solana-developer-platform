@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS private_channel_memberships (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL,
     private_channel_user_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
 
     added_by TEXT,
     added_at TEXT NOT NULL DEFAULT sdp_iso_now(),
@@ -165,6 +166,8 @@ CREATE TABLE IF NOT EXISTS private_channel_memberships (
     FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE CASCADE,
     FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL,
 
+    CONSTRAINT private_channel_memberships_role_check
+        CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
     UNIQUE (channel_id, private_channel_user_id)
 );
 
@@ -172,6 +175,9 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_memberships_channel
     ON private_channel_memberships(channel_id);
 CREATE INDEX IF NOT EXISTS idx_private_channel_memberships_user
     ON private_channel_memberships(private_channel_user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_private_channel_memberships_one_owner
+    ON private_channel_memberships(channel_id)
+    WHERE role = 'owner';
 
 
 -- ==========================================================================
