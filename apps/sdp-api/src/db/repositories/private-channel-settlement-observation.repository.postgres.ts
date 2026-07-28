@@ -1,9 +1,9 @@
 import type { AppDb } from "@/db";
-import {
-  type ClaimSettlementInput,
-  type PrivateChannelSettlementIntentKind,
-  type PrivateChannelSettlementObservationRepository,
-  type PrivateChannelSettlementObservationRow,
+import type {
+  ClaimSettlementInput,
+  PrivateChannelSettlementIntentKind,
+  PrivateChannelSettlementObservationRepository,
+  PrivateChannelSettlementObservationRow,
 } from "./private-channel-settlement-observation.repository";
 
 function mapRow(row: Record<string, unknown>): PrivateChannelSettlementObservationRow {

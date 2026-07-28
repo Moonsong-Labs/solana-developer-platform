@@ -237,7 +237,8 @@ export const privateChannelDepositSchema = z
     }),
     failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
     context: z.record(z.string(), z.unknown()).openapi({
-      description: "Audit snapshot of the SPC instance parameters at intent time. Secrets redacted.",
+      description:
+        "Audit snapshot of the SPC instance parameters at intent time. Secrets redacted.",
     }),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -341,7 +342,8 @@ export const privateChannelWithdrawalSchema = z
     }),
     failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
     context: z.record(z.string(), z.unknown()).openapi({
-      description: "Audit snapshot of the SPC instance parameters at intent time. Secrets redacted.",
+      description:
+        "Audit snapshot of the SPC instance parameters at intent time. Secrets redacted.",
     }),
     createdAt: z.string(),
     updatedAt: z.string(),

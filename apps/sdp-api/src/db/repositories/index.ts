@@ -215,6 +215,14 @@ export {
 } from "./private-channel-instance.repository";
 export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 export type {
+  ClaimSettlementInput,
+  PrivateChannelSettlementIntentKind,
+  PrivateChannelSettlementObservationRepository,
+  PrivateChannelSettlementObservationRepositoryContext,
+  PrivateChannelSettlementObservationRow,
+} from "./private-channel-settlement-observation.repository";
+export { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
+export type {
   AddMembershipInput,
   CreatePrivateChannelUserInput,
   PrivateChannelMembershipRow,
@@ -229,14 +237,6 @@ export {
   generatePrivateChannelUserId,
 } from "./private-channel-user.repository";
 export { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
-export type {
-  ClaimSettlementInput,
-  PrivateChannelSettlementIntentKind,
-  PrivateChannelSettlementObservationRepository,
-  PrivateChannelSettlementObservationRepositoryContext,
-  PrivateChannelSettlementObservationRow,
-} from "./private-channel-settlement-observation.repository";
-export { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
 export type {
   PrivateChannelVerifiedWalletRepository,
   PrivateChannelVerifiedWalletRow,

@@ -1,4 +1,5 @@
 import type { PrivateChannelInstance, PrivateChannelInstanceOverview } from "@sdp/types";
+import { getTranslations } from "@/i18n/server";
 import { cn } from "@/lib/utils";
 
 type Tone = "ok" | "warn" | "bad";
@@ -22,28 +23,49 @@ function Row({
   label,
   primary,
   detail,
+  mono = false,
 }: {
   label: string;
   primary: React.ReactNode;
   detail?: React.ReactNode;
+  /** Opt in for on-chain identifiers only — not status text or version numbers. */
+  mono?: boolean;
 }) {
   return (
     <div className="grid grid-cols-[max-content_1fr] items-baseline gap-x-4 py-3">
-      <dt className="text-sm text-text-medium">{label}</dt>
+      <dt className="text-sm text-secondary">{label}</dt>
       <dd className="min-w-0 space-y-1 text-right">
-        <div className="break-all font-mono text-sm text-text-extra-high">{primary}</div>
-        {detail ? <div className="text-xs text-text-medium">{detail}</div> : null}
+        <div
+          className={cn(
+            "break-all text-sm text-primary",
+            mono && "font-mono text-secondary text-xs"
+          )}
+        >
+          {primary}
+        </div>
+        {detail ? <div className="text-secondary text-xs">{detail}</div> : null}
       </dd>
     </div>
   );
 }
 
-function gatewayStatus(health: PrivateChannelInstanceOverview["gateway"]["health"]) {
-  if (health.status === "ready") return { tone: "ok" as const, label: "ready" };
-  if (health.status === "degraded") {
-    return { tone: "warn" as const, label: `degraded — ${health.reason}` };
+function gatewayStatus(
+  t: Awaited<ReturnType<typeof getTranslations>>,
+  health: PrivateChannelInstanceOverview["gateway"]["health"]
+) {
+  if (health.status === "ready") {
+    return { tone: "ok" as const, label: t("DashboardPrivateChannels.overview.ready") };
   }
-  return { tone: "bad" as const, label: `unreachable — ${health.error}` };
+  if (health.status === "degraded") {
+    return {
+      tone: "warn" as const,
+      label: t("DashboardPrivateChannels.overview.degraded", { reason: health.reason }),
+    };
+  }
+  return {
+    tone: "bad" as const,
+    label: t("DashboardPrivateChannels.overview.unreachable", { error: health.error }),
+  };
 }
 
 function formatSol(lamports: number): string {
@@ -55,17 +77,21 @@ interface Props {
   overview: PrivateChannelInstanceOverview;
 }
 
-export function InstanceOverviewCard({ instance, overview }: Props) {
+export async function InstanceOverviewCard({ instance, overview }: Props) {
+  const t = await getTranslations();
   const { gateway, chainRpc, escrowInstance, escrowProgram, auth } = overview;
-  const gw = gatewayStatus(gateway.health);
+  const gw = gatewayStatus(t, gateway.health);
 
   return (
     <div className="space-y-6">
-      <dl className="divide-y divide-border-extra-light">
-        <Row label="Gateway" primary={<StatusInline tone={gw.tone} label={gw.label} />} />
+      <dl className="divide-y divide-border-subtle">
+        <Row
+          label={t("DashboardPrivateChannels.overview.gateway")}
+          primary={<StatusInline tone={gw.tone} label={gw.label} />}
+        />
 
         <Row
-          label="Solana version"
+          label={t("DashboardPrivateChannels.overview.solanaVersion")}
           primary={
             chainRpc.ok ? (
               chainRpc.solanaVersion ? (
@@ -80,20 +106,27 @@ export function InstanceOverviewCard({ instance, overview }: Props) {
         />
 
         <Row
-          label="Slot"
+          label={t("DashboardPrivateChannels.overview.slot")}
           primary={gateway.channelSlot !== null ? gateway.channelSlot.toLocaleString() : "—"}
         />
 
-        <Row label="Latest blockhash" primary={gateway.latestBlockhash ?? "—"} />
+        <Row
+          label={t("DashboardPrivateChannels.overview.latestBlockhash")}
+          primary={gateway.latestBlockhash ?? "—"}
+          mono
+        />
 
         <Row
-          label="Escrow instance"
+          label={t("DashboardPrivateChannels.overview.escrowInstance")}
           primary={instance.escrowInstanceAddr}
+          mono
           detail={
             escrowInstance.present ? (
               <span>
                 {formatSol(escrowInstance.lamports)}
-                {escrowInstance.ownerMatchesProgram ? null : " · owner mismatch"}
+                {escrowInstance.ownerMatchesProgram
+                  ? null
+                  : ` · ${t("DashboardPrivateChannels.overview.ownerMismatch")}`}
               </span>
             ) : (
               <StatusInline tone="bad" label={escrowInstance.error} />
@@ -102,13 +135,18 @@ export function InstanceOverviewCard({ instance, overview }: Props) {
         />
 
         <Row
-          label="Escrow program"
+          label={t("DashboardPrivateChannels.overview.escrowProgram")}
           primary={instance.escrowProgramId}
+          mono
           detail={
             escrowProgram.present ? (
               <StatusInline
                 tone={escrowProgram.executable ? "ok" : "warn"}
-                label={escrowProgram.executable ? "on-chain" : "not executable"}
+                label={
+                  escrowProgram.executable
+                    ? t("DashboardPrivateChannels.overview.onChain")
+                    : t("DashboardPrivateChannels.overview.notExecutable")
+                }
               />
             ) : (
               <StatusInline tone="bad" label={escrowProgram.error} />
@@ -118,11 +156,15 @@ export function InstanceOverviewCard({ instance, overview }: Props) {
 
         {auth ? (
           <Row
-            label="Auth service"
+            label={t("DashboardPrivateChannels.overview.authService")}
             primary={
               <StatusInline
                 tone={auth.reachable ? "ok" : "bad"}
-                label={auth.reachable ? "reachable" : (auth.error ?? "unreachable")}
+                label={
+                  auth.reachable
+                    ? t("DashboardPrivateChannels.overview.reachable")
+                    : (auth.error ?? t("DashboardPrivateChannels.overview.notReachable"))
+                }
               />
             }
           />

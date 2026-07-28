@@ -50,9 +50,7 @@ describe("PrivateChannelSettlementObservationRepository (postgres)", () => {
   it("claimSettlement returns null on a duplicate (source, signature, instructionIndex)", async () => {
     await repo.claimSettlement(makeInput());
     // Second poller tries to claim the same on-chain observation for a different intent.
-    const dup = await repo.claimSettlement(
-      makeInput({ intentId: "wd_2" })
-    );
+    const dup = await repo.claimSettlement(makeInput({ intentId: "wd_2" }));
     expect(dup).toBeNull();
   });
 

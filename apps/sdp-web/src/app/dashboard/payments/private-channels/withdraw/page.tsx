@@ -1,49 +1,41 @@
-import { auth } from "@clerk/nextjs/server";
-import type { CustodyWalletSummary } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchPrivateChannelInstance, fetchVerifiedSignableWallets } from "@/lib/private-channels";
+import { getTranslations } from "@/i18n/server";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  requirePrivateChannelsAccess,
+} from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadInstance, loadSignableWallets } from "../private-channels-page.data";
 import { WithdrawForm } from "./withdraw-form";
 
-async function loadWallets(): Promise<CustodyWalletSummary[]> {
-  const client = await createSdpApiClient();
-  const { instance } = await fetchPrivateChannelInstance(client);
-  if (!instance?.isActive) {
-    redirect("/dashboard/payments/private-channels/instance");
-  }
-  return fetchVerifiedSignableWallets(client);
-}
-
 export default async function PrivateChannelsWithdrawPage() {
-  if (!(await privateChannels())) {
-    notFound();
+  await requirePrivateChannelsAccess();
+
+  const t = await getTranslations();
+
+  const client = await createSdpApiClient();
+  const instance = await loadInstance(client);
+  if (instance.ok && !instance.data?.isActive) {
+    redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
 
-  const { userId, orgId } = await auth();
-  if (!userId) {
-    redirect(await getAuthEntryPath());
-  }
-  if (!orgId) {
-    redirect("/dashboard");
-  }
-
-  const wallets = await loadWallets();
+  const wallets = await loadSignableWallets(client);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
       <Card>
         <CardHeader>
-          <CardTitle>Withdraw</CardTitle>
-          <CardDescription>
-            Burn a custody wallet's channel balance and have the operator release the matching USDC
-            on devnet. Watch it progress from the burn to the devnet release.
-          </CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.withdraw.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.withdraw.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <WithdrawForm wallets={wallets} />
+          {wallets.ok ? (
+            <WithdrawForm wallets={wallets.data} />
+          ) : (
+            <PrivateChannelsLoadError message={wallets.error} />
+          )}
         </CardContent>
       </Card>
     </div>

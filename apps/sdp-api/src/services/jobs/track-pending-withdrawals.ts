@@ -139,7 +139,10 @@ interface ReleaseGroup {
   withdrawals: PrivateChannelWithdrawalRow[];
 }
 
-function releaseGroupKey(instance: PrivateChannelInstanceRow, withdrawal: PrivateChannelWithdrawalRow): string {
+function releaseGroupKey(
+  instance: PrivateChannelInstanceRow,
+  withdrawal: PrivateChannelWithdrawalRow
+): string {
   return `${instance.id}|${withdrawal.mint}`;
 }
 
