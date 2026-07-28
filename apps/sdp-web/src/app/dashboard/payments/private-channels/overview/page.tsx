@@ -11,12 +11,13 @@ import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
 import {
   fetchCustodyWallets,
+  fetchPrivateChannelBalance,
   fetchPrivateChannelOverview,
   fetchVerifiedWallets,
 } from "@/lib/private-channels";
-import { createSdpApiClient } from "@/lib/sdp-api";
+import { createSdpApiClient, type SdpApiClient } from "@/lib/sdp-api";
 import { InstanceOverviewCard } from "./instance-overview-card";
-import { VerifiedWalletsSection } from "./verified-wallets-section";
+import { VerifiedWalletsSection, type WalletChannelBalance } from "./verified-wallets-section";
 
 async function loadOverview(): Promise<{
   instance: PrivateChannelInstance;
@@ -50,6 +51,27 @@ async function loadWallets(): Promise<{
   }
 }
 
+/**
+ * Fetch each verified wallet's channel balance in parallel. Individual failures
+ * are swallowed — a bad gateway read shouldn't gray out the whole card.
+ */
+async function loadChannelBalances(
+  client: SdpApiClient,
+  verified: PrivateChannelVerifiedWalletDto[]
+): Promise<Record<string, WalletChannelBalance>> {
+  const entries = await Promise.all(
+    verified.map(async (w): Promise<[string, WalletChannelBalance] | null> => {
+      try {
+        const balance = await fetchPrivateChannelBalance(client, w.pubkey);
+        return [w.pubkey, { uiAmount: balance.uiAmount, mint: balance.mint }];
+      } catch {
+        return null;
+      }
+    })
+  );
+  return Object.fromEntries(entries.filter((e): e is [string, WalletChannelBalance] => e !== null));
+}
+
 export default async function PrivateChannelsOverviewPage() {
   if (!(await privateChannels())) {
     notFound();
@@ -63,6 +85,11 @@ export default async function PrivateChannelsOverviewPage() {
   if (!data) {
     redirect("/dashboard/payments/private-channels/instance");
   }
+
+  // Channel balances only exist for verified wallets — unverified reads would 403.
+  const channelBalances = wallets.loadError
+    ? {}
+    : await loadChannelBalances(await createSdpApiClient(), wallets.verified);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -88,6 +115,7 @@ export default async function PrivateChannelsOverviewPage() {
           <VerifiedWalletsSection
             verifiedWallets={wallets.verified}
             custodyWallets={wallets.custody}
+            channelBalances={channelBalances}
             loadError={wallets.loadError}
           />
         </CardContent>

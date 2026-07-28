@@ -1,4 +1,8 @@
-import type { PrivateChannelDeposit, PrivateChannelDepositStatus } from "@sdp/types";
+import type {
+  PrivateChannelDeposit,
+  PrivateChannelTransferContext,
+  PrivateChannelTransferStatus,
+} from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelDepositId(): string {
@@ -15,22 +19,12 @@ export interface PrivateChannelDepositRow {
   recipient: string;
   mint: string;
   amount: string;
-  /**
-   * Member who created the intent, captured while the request was authenticated.
-   * The reconciler authenticates its gateway reads as this member. Null only for a
-   * row whose member was later revoked (FK is ON DELETE SET NULL).
-   */
-  private_channel_user_id: string | null;
-  /** Recipient channel balance (base units) captured at intent time; internal. */
-  baseline_credited: string;
-  /** Instance config snapshotted at intent time — the reconciler's fixed context. */
-  gateway_url: string;
-  chain_rpc_url: string;
-  escrow_program_id: string;
-  escrow_instance_addr: string;
-  status: PrivateChannelDepositStatus;
+  status: PrivateChannelTransferStatus;
   signature: string | null;
+  settlement_ref: string | null;
   failure_reason: string | null;
+  /** Read-only audit snapshot; the oracle never reads it. */
+  context: PrivateChannelTransferContext;
   created_at: string;
   updated_at: string;
 }
@@ -47,39 +41,24 @@ export interface CreateDepositInput extends DepositProjectScope {
   recipient: string;
   mint: string;
   amount: string;
-  /** Member creating the intent; taken from the request's SPC auth context. */
-  privateChannelUserId: string;
-  baselineCredited: string;
-  /** Instance config snapshot (immutable reconciliation context). */
-  gatewayUrl: string;
-  chainRpcUrl: string;
-  escrowProgramId: string;
-  escrowInstanceAddr: string;
+  /** Audit snapshot at intent time; oracle never reads it. */
+  context: PrivateChannelTransferContext;
 }
 
 export interface UpdateDepositInput {
   id: string;
-  status: PrivateChannelDepositStatus;
-  /** Set on submit; ignored (kept) when omitted on later transitions. */
+  status: PrivateChannelTransferStatus;
+  /** Set on submit; kept when omitted. */
   signature?: string | null;
-  /** Set on failure; ignored (kept) when omitted. */
+  /** Set when advancing to settled. */
+  settlementRef?: string | null;
+  /** Set on failure; kept when omitted. */
   failureReason?: string | null;
   /**
-   * Compare-and-swap guard: when set, the update only applies if the row is still
-   * in this status. Prevents concurrent workers from regressing/overwriting state.
+   * Compare-and-swap guard: when set, the update only applies if the row is
+   * still in this status. Prevents concurrent pollers from regressing state.
    */
-  expectedStatus?: PrivateChannelDepositStatus;
-}
-
-export interface ListDepositsByStatusInput {
-  statuses: PrivateChannelDepositStatus[];
-  limit: number;
-}
-
-export interface DepositRecipientScope {
-  instanceId: string;
-  recipient: string;
-  mint: string;
+  expectedStatus?: PrivateChannelTransferStatus;
 }
 
 export interface PrivateChannelDepositRepositoryContext {
@@ -93,17 +72,20 @@ export interface PrivateChannelDepositRepository {
     scope: DepositProjectScope & { id: string }
   ): Promise<PrivateChannelDepositRow | null>;
   listDepositsByProject(scope: DepositProjectScope): Promise<PrivateChannelDepositRow[]>;
-  /** Reconciler scan across projects — non-terminal deposits only. */
-  listDepositsByStatus(input: ListDepositsByStatusInput): Promise<PrivateChannelDepositRow[]>;
+  /** Opportunistic sweep of non-terminal deposits for a project. */
+  listNonTerminalByProject(scope: DepositProjectScope): Promise<PrivateChannelDepositRow[]>;
   /**
-   * All deposits for one (instance, recipient, mint), any status, oldest first.
-   * The reconciler needs the full group — including already-credited deposits — to
-   * attribute a single channel-balance increase to exactly one deposit.
+   * Global sweep of non-terminal deposits, oldest-updated first. Used by the
+   * cron reconciler; `limit` caps the per-tick work.
    */
-  listDepositsForRecipient(scope: DepositRecipientScope): Promise<PrivateChannelDepositRow[]>;
-  /** Count non-terminal (prepared/submitted/confirmed) deposits for an instance —
-   * the delete guard: an instance can't be deleted while deposits are in flight. */
+  listNonTerminal(limit: number): Promise<PrivateChannelDepositRow[]>;
+  /** Delete guard: an instance can't be deleted while deposits are in flight. */
   countNonTerminalByInstance(instanceId: string): Promise<number>;
+  /**
+   * Merge `patch` into `context` JSONB atomically. Used by the oracle to record
+   * debounce markers (e.g. lastStuckWarningAt) without racing the poll update.
+   */
+  patchContext(id: string, patch: PrivateChannelTransferContext): Promise<void>;
 }
 
 export function mapPrivateChannelDepositRow(row: PrivateChannelDepositRow): PrivateChannelDeposit {
@@ -119,7 +101,9 @@ export function mapPrivateChannelDepositRow(row: PrivateChannelDepositRow): Priv
     amount: row.amount,
     status: row.status,
     signature: row.signature ?? null,
+    settlementRef: row.settlement_ref ?? null,
     failureReason: row.failure_reason ?? null,
+    context: row.context ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -225,13 +225,20 @@ export const privateChannelDepositSchema = z
     mint: solanaAddressSchema,
     amount: z.string().openapi({ description: "Decimal amount.", example: "1.5" }),
     status: z
-      .enum(["prepared", "submitted", "confirmed", "credited", "failed"])
-      .openapi({ description: "Deposit lifecycle status.", example: "confirmed" }),
+      .enum(["pending", "submitted", "confirmed", "settled", "failed"])
+      .openapi({ description: "Transfer lifecycle status.", example: "confirmed" }),
     signature: z
       .string()
       .nullable()
       .openapi({ description: "Devnet escrow tx signature (null until submitted)." }),
+    settlementRef: z.string().nullable().openapi({
+      description:
+        "Settlement correlation, populated when status is settled. Chain oracle cannot reach this for deposits; set by the future SPC event source.",
+    }),
     failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
+    context: z.record(z.string(), z.unknown()).openapi({
+      description: "Audit snapshot of the SPC instance parameters at intent time. Secrets redacted.",
+    }),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -323,24 +330,19 @@ export const privateChannelWithdrawalSchema = z
     mint: solanaAddressSchema,
     amount: z.string().openapi({ description: "Decimal amount.", example: "1.5" }),
     status: z
-      .enum([
-        "pending",
-        "submitted",
-        "burn_confirmed",
-        "release_pending",
-        "released",
-        "failed",
-        "manual_review",
-      ])
-      .openapi({ description: "Withdrawal lifecycle status.", example: "burn_confirmed" }),
-    burnSignature: z
+      .enum(["pending", "submitted", "confirmed", "settled", "failed"])
+      .openapi({ description: "Transfer lifecycle status.", example: "confirmed" }),
+    signature: z
       .string()
       .nullable()
       .openapi({ description: "Channel-chain burn signature (null until submitted)." }),
-    releaseSignature: z.string().nullable().openapi({
-      description: "Devnet release signature = settlement correlation (null until released).",
+    settlementRef: z.string().nullable().openapi({
+      description: "Devnet release signature — settlement correlation (null until settled).",
     }),
     failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
+    context: z.record(z.string(), z.unknown()).openapi({
+      description: "Audit snapshot of the SPC instance parameters at intent time. Secrets redacted.",
+    }),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
