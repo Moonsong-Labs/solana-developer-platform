@@ -3,25 +3,39 @@ import type { Env } from "@/types/env";
 
 // --- Mocks (hoisted so the vi.mock factories can reference them) --------------
 
-const { withdrawalRepo, createWithdrawalRepo } = vi.hoisted(() => {
+const { withdrawalRepo, instanceRepo, observationRepo, mocks } = vi.hoisted(() => {
   const withdrawalRepo = {
-    listWithdrawalsByStatus: vi.fn(),
+    listNonTerminal: vi.fn(),
     updateWithdrawal: vi.fn(async (input: Record<string, unknown>) => ({ ...input })),
+    patchContext: vi.fn(async () => undefined),
   };
-  return { withdrawalRepo, createWithdrawalRepo: vi.fn(() => withdrawalRepo) };
+  const instanceRepo = {
+    getById: vi.fn(),
+  };
+  const observationRepo = {
+    claimSettlement: vi.fn(),
+    findByIntent: vi.fn(),
+  };
+  return {
+    withdrawalRepo,
+    instanceRepo,
+    observationRepo,
+    mocks: {
+      createWithdrawalRepo: vi.fn(() => withdrawalRepo),
+      createInstanceRepo: vi.fn(() => instanceRepo),
+      createObservationRepo: vi.fn(() => observationRepo),
+    },
+  };
 });
 vi.mock("@/db/repositories", () => ({
-  createPrivateChannelWithdrawalRepository: createWithdrawalRepo,
+  createPrivateChannelWithdrawalRepository: mocks.createWithdrawalRepo,
+  createPrivateChannelInstanceRepository: mocks.createInstanceRepo,
+  createPrivateChannelSettlementObservationRepository: mocks.createObservationRepo,
 }));
-
-const { createChannelGatewayRpc } = vi.hoisted(() => ({
-  createChannelGatewayRpc: vi.fn(() => ({ __gateway: true })),
-}));
-vi.mock("@sdp/private-channels", () => ({ createChannelGatewayRpc }));
 
 const { createRpc, getSignatureStatuses, getSignaturesForAddress, getTransaction } = vi.hoisted(
   () => ({
-    createRpc: vi.fn(() => ({ __devnet: true })),
+    createRpc: vi.fn(() => ({ __rpc: true })),
     getSignatureStatuses: vi.fn(),
     getSignaturesForAddress: vi.fn(async (): Promise<unknown[]> => []),
     getTransaction: vi.fn(async (): Promise<unknown> => null),
@@ -46,30 +60,6 @@ vi.mock("@solana-program/token", () => ({
 const { emitWithdrawalEvent } = vi.hoisted(() => ({ emitWithdrawalEvent: vi.fn() }));
 vi.mock("@/services/private-channels/withdraw-events", () => ({ emitWithdrawalEvent }));
 
-// Gateway auth for the cron: resolved from the member persisted on the withdrawal.
-// Auth is always required, so the default mock returns a valid token; individual
-// tests override to assert unavailable/error paths.
-const { resolveMemberGatewayAuth, withGatewayRpc } = vi.hoisted(() => ({
-  resolveMemberGatewayAuth: vi.fn(
-    async () =>
-      ({ kind: "token", context: { current: "jwt-default", refresh: vi.fn() } }) as {
-        kind: string;
-        context?: unknown;
-        reason?: string;
-      }
-  ),
-  // Stand in for the real wrapper: run the gateway op with a dummy rpc so
-  // getSignatureStatuses still executes; tests assert the (url, handle) it received.
-  withGatewayRpc: vi.fn(
-    async (_env: unknown, _url: string, _context: unknown, run: (rpc: unknown) => unknown) =>
-      run({ __gateway: true })
-  ),
-}));
-vi.mock("@/services/private-channels/auth/gateway-auth", () => ({
-  resolveMemberGatewayAuth,
-  withGatewayRpc,
-}));
-
 import { trackPendingWithdrawals } from "./track-pending-withdrawals";
 
 // Valid base58 addresses (the reconciler runs `address()` on these fixtures).
@@ -77,7 +67,8 @@ const MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const ESCROW_INSTANCE = "7C1Pu8mbHaDDTFnGH8YTqemNDofqXP3XEotzSo6TbwHz";
 const DESTINATION = "J231K9UEpS4y4KAPwGc4gsMNCjKFRMYcQBcjVW7vBhVi";
 const NOW_ISO = "2026-07-17T00:00:00.000Z";
-const STALE_ISO = "2026-07-16T00:00:00.000Z"; // > 30 min before NOW
+const RELEASE_STALE_ISO = "2026-07-16T20:00:00.000Z"; // > 30 min before NOW
+const STALE_ISO = "2026-07-16T23:00:00.000Z"; // > 5 min before NOW
 
 function withdrawalRow(overrides: Record<string, unknown>) {
   return {
@@ -90,15 +81,30 @@ function withdrawalRow(overrides: Record<string, unknown>) {
     destination: DESTINATION,
     mint: MINT,
     amount: "10",
-    private_channel_user_id: "pcu-actor",
-    gateway_url: "gw-X",
+    status: "confirmed",
+    signature: "burnsig",
+    settlement_ref: null,
+    failure_reason: null,
+    context: {},
+    created_at: NOW_ISO,
+    updated_at: NOW_ISO,
+    ...overrides,
+  };
+}
+
+function instanceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "inst-X",
+    organization_id: "org",
+    project_id: "proj",
+    gateway_url: "http://gw",
     chain_rpc_url: "https://api.devnet.solana.com",
     escrow_program_id: "esc",
+    withdraw_program_id: "wdp",
     escrow_instance_addr: ESCROW_INSTANCE,
-    status: "release_pending",
-    burn_signature: "burnsig",
-    release_signature: null,
-    failure_reason: null,
+    auth_url: "http://auth",
+    is_active: true,
+    created_by: null,
     created_at: NOW_ISO,
     updated_at: NOW_ISO,
     ...overrides,
@@ -107,41 +113,46 @@ function withdrawalRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resolveMemberGatewayAuth.mockResolvedValue({
-    kind: "token",
-    context: { current: "jwt-default", refresh: vi.fn() },
-  });
   vi.useFakeTimers();
   vi.setSystemTime(new Date(NOW_ISO));
   withdrawalRepo.updateWithdrawal.mockImplementation(async (input: Record<string, unknown>) => ({
+    ...withdrawalRow({}),
     ...input,
   }));
+  instanceRepo.getById.mockResolvedValue(instanceRow());
   getSignaturesForAddress.mockResolvedValue([]);
   getTransaction.mockResolvedValue(null);
+  // Default: claim succeeds and returns a stub observation.
+  observationRepo.claimSettlement.mockImplementation(async (input: Record<string, unknown>) => ({
+    ...input,
+    observed_at: NOW_ISO,
+  }));
 });
 
 describe("trackPendingWithdrawals", () => {
-  it("confirms a submitted burn against its SNAPSHOT gateway (not devnet)", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "submitted", gateway_url: "gw-SNAP" }),
+  it("does nothing when there are no non-terminal withdrawals", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([]);
+    await trackPendingWithdrawals({} as Env);
+    expect(withdrawalRepo.updateWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it("confirms a submitted burn against the CURRENT instance gateway", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "submitted" }),
     ]);
+    instanceRepo.getById.mockResolvedValueOnce(instanceRow({ gateway_url: "http://gw-live" }));
     getSignatureStatuses.mockResolvedValueOnce([{ confirmationStatus: "confirmed" }]);
 
     await trackPendingWithdrawals({} as Env);
 
-    expect(withGatewayRpc).toHaveBeenCalledWith(
-      expect.anything(),
-      "gw-SNAP",
-      expect.objectContaining({ current: "jwt-default" }),
-      expect.any(Function)
-    );
+    expect(createRpc).toHaveBeenCalledWith(expect.anything(), { rpcUrl: "http://gw-live" });
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "w1", status: "burn_confirmed", expectedStatus: "submitted" })
+      expect.objectContaining({ id: "w1", status: "confirmed", expectedStatus: "submitted" })
     );
   });
 
   it("fails a submitted burn that errored on-chain (pre-confirmation failure allowed)", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
       withdrawalRow({ id: "w1", status: "submitted" }),
     ]);
     getSignatureStatuses.mockResolvedValueOnce([{ err: { InstructionError: [0, "Custom"] } }]);
@@ -153,66 +164,25 @@ describe("trackPendingWithdrawals", () => {
     );
   });
 
-  it("sends the owner's SPC token when the instance is auth-enabled", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "submitted", gateway_url: "gw-SNAP" }),
-    ]);
-    resolveMemberGatewayAuth.mockResolvedValue({
-      kind: "token",
-      context: { current: "jwt-xyz", refresh: vi.fn() },
-    });
-    getSignatureStatuses.mockResolvedValueOnce([{ confirmationStatus: "confirmed" }]);
-
-    await trackPendingWithdrawals({} as Env);
-
-    expect(withGatewayRpc).toHaveBeenCalledWith(
-      expect.anything(),
-      "gw-SNAP",
-      expect.objectContaining({ current: "jwt-xyz" }),
-      expect.any(Function)
-    );
-    expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "w1", status: "burn_confirmed" })
-    );
-  });
-
-  it("leaves a submitted burn UNTOUCHED when no SPC identity can be derived", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "submitted" }),
-    ]);
-    resolveMemberGatewayAuth.mockResolvedValue({
-      kind: "unavailable",
-      reason: "no verified wallet",
-    });
-
-    await expect(trackPendingWithdrawals({} as Env)).resolves.toBeUndefined();
-
-    // Never touched the gateway, and crucially NOT failed — it stays `submitted`.
-    expect(getSignatureStatuses).not.toHaveBeenCalled();
-    expect(withdrawalRepo.updateWithdrawal).not.toHaveBeenCalled();
-  });
-
-  it("moves burn_confirmed → release_pending (bookkeeping)", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "burn_confirmed" }),
+  it("fails a signature-less pending withdrawal past the stale window", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "pending", signature: null, updated_at: STALE_ISO }),
     ]);
 
     await trackPendingWithdrawals({} as Env);
 
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "w1",
-        status: "release_pending",
-        expectedStatus: "burn_confirmed",
-      })
+      expect.objectContaining({ id: "w1", status: "failed", expectedStatus: "pending" })
     );
   });
 
-  it("releases a withdrawal when a matching devnet transfer is found on the instance ATA", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "release_pending" }),
+  it("settles a confirmed withdrawal when a matching devnet transfer is found on the instance ATA", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "confirmed" }),
     ]);
-    getSignaturesForAddress.mockResolvedValueOnce([{ signature: "relSig", err: null }]);
+    getSignaturesForAddress.mockResolvedValueOnce([
+      { signature: "relSig", err: null, blockTime: 1_700_000_000n },
+    ]);
     getTransaction.mockResolvedValueOnce({
       slot: 1n,
       err: null,
@@ -228,28 +198,46 @@ describe("trackPendingWithdrawals", () => {
 
     await trackPendingWithdrawals({} as Env);
 
-    // Scanned the instance escrow ATA on devnet.
+    // Scanned the CURRENT instance's escrow ATA on devnet.
     expect(getSignaturesForAddress).toHaveBeenCalledWith(
       expect.anything(),
       `ata:${ESCROW_INSTANCE}`,
       expect.objectContaining({ limit: 100 })
     );
+    // Attribution recorded in settlement_observations.
+    expect(observationRepo.claimSettlement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signature: "relSig",
+        instructionIndex: 0,
+        intentKind: "withdrawal",
+        intentId: "w1",
+      })
+    );
+    // Intent CAS-advanced to settled.
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "w1",
-        status: "released",
-        releaseSignature: "relSig",
-        expectedStatus: "release_pending",
+        status: "settled",
+        settlementRef: "relSig",
+        expectedStatus: "confirmed",
       })
     );
-    expect(emitWithdrawalEvent).toHaveBeenCalledTimes(1);
+    expect(emitWithdrawalEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(Object),
+      "transfer.withdrawal.settled",
+      "confirmed",
+      expect.any(Object)
+    );
   });
 
-  it("does NOT release when the transfer amount does not match", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "release_pending" }),
+  it("does not settle when the transfer amount doesn't match", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "confirmed" }),
     ]);
-    getSignaturesForAddress.mockResolvedValueOnce([{ signature: "relSig", err: null }]);
+    getSignaturesForAddress.mockResolvedValueOnce([
+      { signature: "relSig", err: null, blockTime: null },
+    ]);
     getTransaction.mockResolvedValueOnce({
       slot: 1n,
       err: null,
@@ -264,31 +252,158 @@ describe("trackPendingWithdrawals", () => {
 
     await trackPendingWithdrawals({} as Env);
 
-    const released = withdrawalRepo.updateWithdrawal.mock.calls.some(
-      ([c]) => (c as { status?: string }).status === "released"
+    const settled = withdrawalRepo.updateWithdrawal.mock.calls.some(
+      ([c]) => (c as { status?: string }).status === "settled"
     );
-    expect(released).toBe(false);
+    expect(settled).toBe(false);
+    expect(observationRepo.claimSettlement).not.toHaveBeenCalled();
+  });
+
+  it("emits a stuck-warning (not a failure) when a confirmed withdrawal has been unmatched past the threshold", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "confirmed", updated_at: RELEASE_STALE_ISO }),
+    ]);
+    // No matching release found.
+
+    await trackPendingWithdrawals({} as Env);
+
+    // Never failed after confirmed.
+    const failed = withdrawalRepo.updateWithdrawal.mock.calls.some(
+      ([c]) => (c as { status?: string }).status === "failed"
+    );
+    expect(failed).toBe(false);
+
+    // Stuck-warning debounce marker written.
+    expect(withdrawalRepo.patchContext).toHaveBeenCalledWith(
+      "w1",
+      expect.objectContaining({ lastStuckWarningAt: expect.any(String) })
+    );
+    expect(emitWithdrawalEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(Object),
+      "transfer.stuck_warning",
+      "stale",
+      expect.any(Object)
+    );
+  });
+
+  it("does not re-emit the stuck-warning within the debounce interval", async () => {
+    const recentWarn = new Date(Date.parse(NOW_ISO) - 5 * 60 * 1000).toISOString();
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({
+        id: "w1",
+        status: "confirmed",
+        updated_at: RELEASE_STALE_ISO,
+        context: { lastStuckWarningAt: recentWarn },
+      }),
+    ]);
+
+    await trackPendingWithdrawals({} as Env);
+
+    expect(withdrawalRepo.patchContext).not.toHaveBeenCalled();
     expect(emitWithdrawalEvent).not.toHaveBeenCalled();
   });
 
-  it("flags a stale release_pending for manual_review (never auto-failed after burn)", async () => {
-    withdrawalRepo.listWithdrawalsByStatus.mockResolvedValueOnce([
-      withdrawalRow({ id: "w1", status: "release_pending", updated_at: STALE_ISO }),
+  it("gracefully handles a claim conflict — reads the winning observation and still advances the intent", async () => {
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w1", status: "confirmed" }),
     ]);
-    // No matching release found (empty devnet scan).
+    getSignaturesForAddress.mockResolvedValueOnce([
+      { signature: "relSig", err: null, blockTime: null },
+    ]);
+    getTransaction.mockResolvedValueOnce({
+      slot: 1n,
+      err: null,
+      instructions: [
+        {
+          programId: "tok",
+          parsedType: "transfer",
+          info: { destination: `ata:${DESTINATION}`, amount: "10000000" },
+        },
+      ],
+    });
+    // Racing poller won the claim.
+    observationRepo.claimSettlement.mockResolvedValueOnce(null);
+    observationRepo.findByIntent.mockResolvedValueOnce({
+      signature: "otherSig",
+      instruction_index: 0,
+      intent_kind: "withdrawal",
+      intent_id: "w1",
+      destination: `ata:${DESTINATION}`,
+      mint: MINT,
+      amount: "10",
+      block_time: null,
+      observed_at: NOW_ISO,
+    });
 
     await trackPendingWithdrawals({} as Env);
 
     expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "w1",
-        status: "manual_review",
-        expectedStatus: "release_pending",
+        status: "settled",
+        settlementRef: "otherSig",
+        expectedStatus: "confirmed",
       })
     );
-    const failed = withdrawalRepo.updateWithdrawal.mock.calls.some(
-      ([c]) => (c as { status?: string }).status === "failed"
+  });
+
+  it("walks past a signature-side PK conflict to the next matching release", async () => {
+    // Simulates a same-content sibling settled in a previous tick: the first
+    // release in the scan window is already claimed by a different intent, so
+    // this tick's withdrawal must fall through to the second matching sig.
+    withdrawalRepo.listNonTerminal.mockResolvedValueOnce([
+      withdrawalRow({ id: "w2", status: "confirmed" }),
+    ]);
+    getSignaturesForAddress.mockResolvedValueOnce([
+      { signature: "sigTaken", err: null, blockTime: null },
+      { signature: "sigFree", err: null, blockTime: null },
+    ]);
+    getTransaction
+      .mockResolvedValueOnce({
+        slot: 1n,
+        err: null,
+        instructions: [
+          {
+            programId: "tok",
+            parsedType: "transfer",
+            info: { destination: `ata:${DESTINATION}`, amount: "10000000" },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        slot: 2n,
+        err: null,
+        instructions: [
+          {
+            programId: "tok",
+            parsedType: "transfer",
+            info: { destination: `ata:${DESTINATION}`, amount: "10000000" },
+          },
+        ],
+      });
+    // First claim (sigTaken) fails PK; findByIntent returns null → signature-
+    // side conflict. Second claim (sigFree) succeeds.
+    observationRepo.claimSettlement
+      .mockResolvedValueOnce(null)
+      .mockImplementationOnce(async (input: Record<string, unknown>) => ({
+        ...input,
+        observed_at: NOW_ISO,
+      }));
+    observationRepo.findByIntent.mockResolvedValueOnce(null);
+
+    await trackPendingWithdrawals({} as Env);
+
+    expect(observationRepo.claimSettlement).toHaveBeenCalledTimes(2);
+    expect(withdrawalRepo.updateWithdrawal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "w2",
+        status: "settled",
+        settlementRef: "sigFree",
+        expectedStatus: "confirmed",
+      })
     );
-    expect(failed).toBe(false);
+    // Not stuck — sibling walk found a fresh sig.
+    expect(withdrawalRepo.patchContext).not.toHaveBeenCalled();
   });
 });

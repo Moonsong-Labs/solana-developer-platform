@@ -2,13 +2,17 @@
 
 import type { CustodyWalletSummary, PrivateChannelWithdrawal } from "@sdp/types";
 import { Loader2Icon } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
-import { createWithdrawalAction } from "./actions";
+import {
+  createWithdrawalAction,
+  fetchWalletBalancesAction,
+  type WalletBalanceView,
+} from "./actions";
 import { WithdrawProgress } from "./withdraw-progress";
 
 function walletLabel(wallet: CustodyWalletSummary): string {
@@ -23,6 +27,23 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   const [error, setError] = useState<string | null>(null);
   const [withdrawal, setWithdrawal] = useState<PrivateChannelWithdrawal | null>(null);
   const [isSubmitting, startTransition] = useTransition();
+  const [balances, setBalances] = useState<WalletBalanceView>({ channel: null, onChain: null });
+  const [refetchKey, setRefetchKey] = useState(0);
+
+  useEffect(() => {
+    if (!walletId) {
+      setBalances({ channel: null, onChain: null });
+      return;
+    }
+    let active = true;
+    setBalances({ channel: null, onChain: null });
+    fetchWalletBalancesAction(walletId).then((result) => {
+      if (active) setBalances(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [walletId, refetchKey]);
 
   if (withdrawal) {
     return (
@@ -33,6 +54,7 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
           setAmount("");
           setDestination("");
           setError(null);
+          setRefetchKey((n) => n + 1);
         }}
       />
     );
@@ -41,8 +63,14 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   if (wallets.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        You have no custody wallets yet. Create one under Wallets, deposit into the channel, then
-        come back to withdraw.
+        No verified wallets yet. Verify a custody wallet on the{" "}
+        <a
+          className="text-primary underline underline-offset-2 hover:no-underline"
+          href="/dashboard/payments/private-channels/overview"
+        >
+          Private Channels overview
+        </a>{" "}
+        and deposit into the channel, then come back to withdraw.
       </p>
     );
   }
@@ -98,6 +126,21 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
           placeholder="1.5"
           value={amount}
         />
+        {(balances.channel !== null || balances.onChain !== null) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {balances.channel !== null && (
+              <span className="text-primary">
+                Channel Balance:{" "}
+                <span className="font-mono font-medium">{balances.channel} USDC</span>
+              </span>
+            )}
+            {balances.onChain !== null && (
+              <span className="text-primary">
+                On-chain: <span className="font-mono font-medium">{balances.onChain} USDC</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -116,8 +159,11 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
 
       {error && <p className="text-destructive text-sm">{error}</p>}
 
-      <Button disabled={isSubmitting || !walletId || !amount.trim()} type="submit">
-        {isSubmitting && <Loader2Icon className="mr-2 size-4 animate-spin" />}
+      <Button
+        disabled={isSubmitting || !walletId || !amount.trim()}
+        iconLeft={isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : undefined}
+        type="submit"
+      >
         Withdraw
       </Button>
     </form>

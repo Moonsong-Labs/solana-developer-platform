@@ -3,37 +3,29 @@ import type { Env } from "@/types/env";
 
 // --- Mocks (hoisted so the vi.mock factories can reference them) --------------
 
-const { depositRepo, createDepositRepo } = vi.hoisted(() => {
+const { depositRepo, instanceRepo, createDepositRepo, createInstanceRepo } = vi.hoisted(() => {
   const depositRepo = {
-    listDepositsByStatus: vi.fn(),
-    listDepositsForRecipient: vi.fn(),
+    listNonTerminal: vi.fn(),
     updateDeposit: vi.fn(async (input: Record<string, unknown>) => ({ ...input })),
   };
-  return { depositRepo, createDepositRepo: vi.fn(() => depositRepo) };
+  const instanceRepo = {
+    getById: vi.fn(),
+  };
+  return {
+    depositRepo,
+    instanceRepo,
+    createDepositRepo: vi.fn(() => depositRepo),
+    createInstanceRepo: vi.fn(() => instanceRepo),
+  };
 });
-vi.mock("@/db/repositories", () => ({ createPrivateChannelDepositRepository: createDepositRepo }));
+vi.mock("@/db/repositories", () => ({
+  createPrivateChannelDepositRepository: createDepositRepo,
+  createPrivateChannelInstanceRepository: createInstanceRepo,
+}));
 
-const { getChannelBalance } = vi.hoisted(() => ({ getChannelBalance: vi.fn() }));
-vi.mock("@/services/private-channels", () => ({ getChannelBalance }));
-
-// The reconciler emits credited events via the runtime event service; mock it out.
+// Runtime event service; we assert emitDepositEvent is called with the right type.
 const { emitDepositEvent } = vi.hoisted(() => ({ emitDepositEvent: vi.fn() }));
 vi.mock("@/services/private-channels/deposit-events", () => ({ emitDepositEvent }));
-
-// Gateway auth for the cron: resolved from the member persisted on the deposit.
-// Auth is always required, so the default mock returns a valid token; individual
-// tests override to assert unavailable/error paths.
-const { resolveMemberGatewayAuth } = vi.hoisted(() => ({
-  resolveMemberGatewayAuth: vi.fn(
-    async () =>
-      ({ kind: "token", context: { current: "jwt-default", refresh: vi.fn() } }) as {
-        kind: string;
-        context?: unknown;
-        reason?: string;
-      }
-  ),
-}));
-vi.mock("@/services/private-channels/auth/gateway-auth", () => ({ resolveMemberGatewayAuth }));
 
 const { createRpc, getSignatureStatuses } = vi.hoisted(() => ({
   createRpc: vi.fn(() => ({})),
@@ -44,6 +36,7 @@ vi.mock("@sdp/rpc/solana", () => ({ createRpc, getSignatureStatuses }));
 import { trackPendingDeposits } from "./track-pending-deposits";
 
 const NOW_ISO = "2026-07-17T00:00:00.000Z";
+const STALE_ISO = "2026-07-16T23:00:00.000Z"; // > 5 min in the past
 
 function depositRow(overrides: Record<string, unknown>) {
   return {
@@ -51,19 +44,35 @@ function depositRow(overrides: Record<string, unknown>) {
     organization_id: "org",
     project_id: "proj",
     instance_id: "inst-X",
+    wallet_id: "w-1",
+    depositor: "depositor-1",
     recipient: "recipient-1",
     mint: "mint-1",
     amount: "10",
-    private_channel_user_id: "pcu-actor",
-    baseline_credited: "0",
-    // snapshot config
-    gateway_url: "gw-X",
-    chain_rpc_url: "rpc-X",
-    escrow_program_id: "esc",
-    escrow_instance_addr: "inst-addr",
-    status: "confirmed",
+    status: "submitted",
     signature: "sig",
+    settlement_ref: null,
     failure_reason: null,
+    context: {},
+    created_at: NOW_ISO,
+    updated_at: NOW_ISO,
+    ...overrides,
+  };
+}
+
+function instanceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "inst-X",
+    organization_id: "org",
+    project_id: "proj",
+    gateway_url: "http://gw",
+    chain_rpc_url: "https://api.devnet.solana.com",
+    escrow_program_id: "esc",
+    withdraw_program_id: "wdp",
+    escrow_instance_addr: "instAddr",
+    auth_url: "http://auth",
+    is_active: true,
+    created_by: null,
     created_at: NOW_ISO,
     updated_at: NOW_ISO,
     ...overrides,
@@ -72,118 +81,127 @@ function depositRow(overrides: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resolveMemberGatewayAuth.mockResolvedValue({
-    kind: "token",
-    context: { current: "jwt-default", refresh: vi.fn() },
-  });
-  depositRepo.listDepositsForRecipient.mockResolvedValue([]);
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(NOW_ISO));
   depositRepo.updateDeposit.mockImplementation(async (input: Record<string, unknown>) => ({
+    ...depositRow({}),
     ...input,
   }));
+  instanceRepo.getById.mockResolvedValue(instanceRow());
 });
 
 describe("trackPendingDeposits", () => {
-  it("reconciles a submitted deposit against its SNAPSHOT chain RPC (not the current instance)", async () => {
-    depositRepo.listDepositsByStatus.mockResolvedValueOnce([
-      depositRow({ id: "d1", status: "submitted", signature: "sig1", chain_rpc_url: "rpc-SNAP" }),
+  it("does nothing when there are no non-terminal deposits", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([]);
+    await trackPendingDeposits({} as Env);
+    expect(depositRepo.updateDeposit).not.toHaveBeenCalled();
+    expect(createRpc).not.toHaveBeenCalled();
+  });
+
+  it("advances submitted → confirmed via the CURRENT instance's chain RPC", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d1", status: "submitted", signature: "sig1" }),
     ]);
+    // Instance may have been reconfigured; the reconciler reads the live row.
+    instanceRepo.getById.mockResolvedValueOnce(
+      instanceRow({ chain_rpc_url: "https://api.devnet.solana.com/new" })
+    );
     getSignatureStatuses.mockResolvedValueOnce([{ confirmationStatus: "confirmed" }]);
 
     await trackPendingDeposits({} as Env);
 
-    // Queried against the deposit's snapshotted chain RPC, not a re-loaded instance.
-    expect(createRpc).toHaveBeenCalledWith(expect.anything(), { rpcUrl: "rpc-SNAP" });
-    // CAS transition submitted -> confirmed.
+    expect(createRpc).toHaveBeenCalledWith(expect.anything(), {
+      rpcUrl: "https://api.devnet.solana.com/new",
+    });
     expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "d1", status: "confirmed", expectedStatus: "submitted" })
     );
-  });
-
-  it("credits only one of two concurrent confirmed deposits off a single balance increase", async () => {
-    const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
-    const b = depositRow({ id: "b", status: "confirmed", amount: "10" });
-    depositRepo.listDepositsByStatus.mockResolvedValueOnce([a, b]);
-    depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a, b]);
-    // Balance rose by only one deposit's worth.
-    getChannelBalance.mockResolvedValueOnce({ amount: "10", decimals: 0 });
-
-    await trackPendingDeposits({} as Env);
-
-    // Balance read through the group's snapshot gateway.
-    expect(getChannelBalance).toHaveBeenCalledWith(
+    expect(emitDepositEvent).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ instance: { gatewayUrl: "gw-X", chainRpcUrl: "rpc-X" } })
+      expect.objectContaining({ id: "d1" }),
+      "transfer.deposit.confirmed",
+      "confirmed",
+      expect.any(Object)
     );
-    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "a", status: "credited", expectedStatus: "confirmed" })
-    );
-    const creditedB = depositRepo.updateDeposit.mock.calls.some(
-      ([c]) => (c as { id: string; status: string }).id === "b" && c.status === "credited"
-    );
-    expect(creditedB).toBe(false);
-    expect(depositRepo.updateDeposit).toHaveBeenCalledTimes(1);
-    expect(emitDepositEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("credits both concurrent deposits once the balance covers their sum", async () => {
-    const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
-    const b = depositRow({ id: "b", status: "confirmed", amount: "10" });
-    depositRepo.listDepositsByStatus.mockResolvedValueOnce([a, b]);
-    depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a, b]);
-    getChannelBalance.mockResolvedValueOnce({ amount: "20", decimals: 0 });
+  it("fails a submitted deposit whose signature returns an on-chain error", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d2", status: "submitted", signature: "sig2" }),
+    ]);
+    getSignatureStatuses.mockResolvedValueOnce([{ err: { InstructionError: [0, "Custom"] } }]);
 
     await trackPendingDeposits({} as Env);
 
     expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "a", status: "credited" })
+      expect.objectContaining({ id: "d2", status: "failed", expectedStatus: "submitted" })
     );
-    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "b", status: "credited" })
+    expect(emitDepositEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(Object),
+      "transfer.deposit.failed",
+      "failed",
+      expect.any(Object)
     );
-    expect(emitDepositEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("passes the recipient's SPC token to the gateway read", async () => {
-    const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
-    depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
-    depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
-    resolveMemberGatewayAuth.mockResolvedValue({
-      kind: "token",
-      context: { current: "jwt-abc", refresh: vi.fn() },
-    });
-    getChannelBalance.mockResolvedValueOnce({ amount: "10", decimals: 0 });
+  it("does not fail a submitted deposit whose signature is briefly missing on-chain", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d3", status: "submitted", signature: "sig3", updated_at: NOW_ISO }),
+    ]);
+    getSignatureStatuses.mockResolvedValueOnce([undefined]);
 
     await trackPendingDeposits({} as Env);
 
-    // The identity comes from the member persisted on the deposit — the actor who
-    // created the intent — not from a reverse lookup on the recipient pubkey.
-    expect(resolveMemberGatewayAuth).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ privateChannelUserId: "pcu-actor", instanceId: "inst-X" })
-    );
-    expect(getChannelBalance).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ auth: expect.objectContaining({ current: "jwt-abc" }) })
-    );
-    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "a", status: "credited" })
-    );
-  });
-
-  it("skips the group (no crediting, no throw) when no SPC identity can be derived", async () => {
-    const a = depositRow({ id: "a", status: "confirmed", amount: "10" });
-    depositRepo.listDepositsByStatus.mockResolvedValueOnce([a]);
-    depositRepo.listDepositsForRecipient.mockResolvedValueOnce([a]);
-    resolveMemberGatewayAuth.mockResolvedValue({
-      kind: "unavailable",
-      reason: "no verified wallet",
-    });
-
-    await expect(trackPendingDeposits({} as Env)).resolves.toBeUndefined();
-
-    // Never read the gateway, never credited — the deposit stays `confirmed`.
-    expect(getChannelBalance).not.toHaveBeenCalled();
     expect(depositRepo.updateDeposit).not.toHaveBeenCalled();
-    expect(emitDepositEvent).not.toHaveBeenCalled();
+  });
+
+  it("fails a submitted deposit whose signature has stayed missing past the stale window", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d4", status: "submitted", signature: "sig4", updated_at: STALE_ISO }),
+    ]);
+    getSignatureStatuses.mockResolvedValueOnce([undefined]);
+
+    await trackPendingDeposits({} as Env);
+
+    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "d4", status: "failed", expectedStatus: "submitted" })
+    );
+  });
+
+  it("fails a pending deposit that never got broadcast past the stale window", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d5", status: "pending", signature: null, updated_at: STALE_ISO }),
+    ]);
+
+    await trackPendingDeposits({} as Env);
+
+    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "d5", status: "failed", expectedStatus: "pending" })
+    );
+  });
+
+  it("leaves confirmed deposits alone — settled is unreachable under the chain oracle", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d6", status: "confirmed", signature: "sig6" }),
+    ]);
+
+    await trackPendingDeposits({} as Env);
+
+    expect(depositRepo.updateDeposit).not.toHaveBeenCalled();
+    expect(createRpc).not.toHaveBeenCalled();
+  });
+
+  it("stalls a submitted deposit whose instance was deleted, then fails it past the stale window", async () => {
+    depositRepo.listNonTerminal.mockResolvedValueOnce([
+      depositRow({ id: "d7", status: "submitted", signature: "sig7", updated_at: STALE_ISO }),
+    ]);
+    instanceRepo.getById.mockResolvedValueOnce(null);
+
+    await trackPendingDeposits({} as Env);
+
+    expect(depositRepo.updateDeposit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "d7", status: "failed", expectedStatus: "submitted" })
+    );
   });
 });

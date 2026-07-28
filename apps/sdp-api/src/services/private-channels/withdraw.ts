@@ -17,9 +17,11 @@
  * handler and passed in as `gatewayAuth` (a self-refreshing handle, shared across
  * broadcast + confirm).
  *
- * Lifecycle here: pending (persist) → submitted (broadcast) → burn_confirmed
- * (confirmed on the gateway). `release_pending` → `released` is detected
- * asynchronously by the reconciler via the devnet release on the instance ATA.
+ * Lifecycle here: pending (persist) → submitted (broadcast) → confirmed (burn
+ * confirmed on the gateway). `settled` is reached asynchronously by the oracle
+ * once the operator's devnet release is observed on the instance escrow ATA.
+ * After `confirmed` the balance is authoritatively burned, so an unobservable
+ * release is a settlement issue → operator alert, never auto-`failed`.
  */
 
 import * as solanaRpc from "@sdp/rpc/solana";
@@ -50,6 +52,7 @@ import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
 import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
+import { describeTxError } from "./tx-error";
 import { confirmAndPersistWithdrawal } from "./withdraw-confirm";
 import { emitWithdrawalEvent } from "./withdraw-events";
 
@@ -63,6 +66,8 @@ export interface CreateChannelWithdrawalInput {
   instance: WithdrawalInstance;
   organizationId: string;
   projectId: string;
+  /** SDP user creating the intent; recorded on the audit context. */
+  userId: string;
   /** Custody wallet the burn is signed from (the burn `user` / balance owner). */
   wallet: CustodyWallet;
   /** UI decimal amount (e.g. "1.5"). */
@@ -163,14 +168,14 @@ export async function createChannelWithdrawal(
     destination,
     mint,
     amount: input.amount,
-    // Record the acting member now, while we still know it. The reconciler needs an
-    // SPC identity for its gateway reads and cannot re-derive this one later.
-    privateChannelUserId: input.gatewayAuth.pcUserId,
-    // Snapshot the reconciliation context so a later reconnect can't move it.
-    gatewayUrl: instance.gatewayUrl,
-    chainRpcUrl: instance.chainRpcUrl,
-    escrowProgramId: instance.escrowProgramId,
-    escrowInstanceAddr: instance.escrowInstanceAddr,
+    // Audit-only snapshot; the oracle always reads the current instance row.
+    context: {
+      gatewayUrl: instance.gatewayUrl,
+      chainRpcUrl: instance.chainRpcUrl,
+      escrowProgramId: instance.escrowProgramId,
+      escrowInstanceAddr: instance.escrowInstanceAddr,
+      actingUserId: input.userId,
+    },
   });
   if (!created) {
     throw new AppError("INTERNAL_ERROR", "Failed to persist the withdrawal intent.");
@@ -180,7 +185,9 @@ export async function createChannelWithdrawal(
 
   // Broadcast the burn. A failure here means the burn never reached the chain (no
   // signature) — a legitimate terminal `failed` (no balance moved). This is the
-  // ONLY path to `failed`: once the burn confirms, the reconciler uses manual_review.
+  // ONLY path to `failed`: once the burn confirms, the balance is authoritatively
+  // gone and the oracle escalates unobservable releases via the stuck-warning
+  // event instead of auto-failing.
   let signature: Signature;
   try {
     signature = await broadcastWithdrawal(env, {
@@ -194,13 +201,26 @@ export async function createChannelWithdrawal(
       gatewayAuth: input.gatewayAuth,
     });
   } catch (error) {
-    const failureReason = error instanceof Error ? error.message : "Withdrawal submission failed.";
+    const failureReason = describeTxError(error, "Withdrawal submission failed.");
+    console.error("createChannelWithdrawal: broadcast failed", {
+      withdrawalId: created.id,
+      error,
+    });
     const failed = await repo.updateWithdrawal({
       id: created.id,
       status: "failed",
       failureReason,
       expectedStatus: "pending",
     });
+    if (failed) {
+      await emitWithdrawalEvent(
+        env,
+        failed,
+        PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_FAILED,
+        "failed",
+        { failureReason }
+      );
+    }
     return mapPrivateChannelWithdrawalRow(failed ?? created);
   }
 
@@ -208,7 +228,7 @@ export async function createChannelWithdrawal(
     (await repo.updateWithdrawal({
       id: created.id,
       status: "submitted",
-      burnSignature: signature,
+      signature,
       expectedStatus: "pending",
     })) ?? latest;
 
@@ -232,6 +252,23 @@ export async function createChannelWithdrawal(
   });
   if (settled) {
     latest = settled;
+    if (latest.status === "confirmed") {
+      await emitWithdrawalEvent(
+        env,
+        latest,
+        PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_CONFIRMED,
+        "confirmed",
+        { signature }
+      );
+    } else if (latest.status === "failed") {
+      await emitWithdrawalEvent(
+        env,
+        latest,
+        PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_FAILED,
+        "failed",
+        { failureReason: latest.failure_reason }
+      );
+    }
   }
 
   return mapPrivateChannelWithdrawalRow(latest);

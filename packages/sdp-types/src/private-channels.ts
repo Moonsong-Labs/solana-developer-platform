@@ -96,16 +96,40 @@ export interface CreatePrivateChannelRequest {
 }
 
 /**
- * Deposit lifecycle: `prepared` (intent + tx built) → `submitted` (broadcast to
- * devnet) → `confirmed` (on-chain) → `credited` (reflected in the channel balance
- * via the gateway). `failed` is terminal.
+ * Transfer intent lifecycle, shared across deposits and withdrawals:
+ *   pending    intent persisted, not yet broadcast
+ *   submitted  on-chain broadcast succeeded, signature captured
+ *   confirmed  tx confirmed on-chain (deposit: devnet; withdrawal: channel chain
+ *              burn)
+ *   settled    operator half done (withdrawal: release detected on devnet;
+ *              deposit: reachable once SPC exposes events, unreachable under
+ *              the current chain-heuristic oracle)
+ *   failed     pre-broadcast or on-chain terminal failure. Never entered after
+ *              `confirmed` for withdrawals — the balance is already gone.
  */
-export type PrivateChannelDepositStatus =
-  | "prepared"
+export type PrivateChannelTransferStatus =
+  | "pending"
   | "submitted"
   | "confirmed"
-  | "credited"
+  | "settled"
   | "failed";
+
+/**
+ * Read-only audit snapshot of the SPC instance parameters at intent time.
+ * Never consulted by the oracle — reconciliation reads the current instance row.
+ * Secrets are redacted at render time.
+ */
+export interface PrivateChannelTransferContext {
+  gatewayUrl?: string;
+  chainRpcUrl?: string;
+  escrowProgramId?: string;
+  escrowInstanceAddr?: string;
+  /** SDP user that created the intent. */
+  actingUserId?: string;
+  /** Oracle-internal debounce marker for the stuck-warning event. */
+  lastStuckWarningAt?: string;
+  [key: string]: unknown;
+}
 
 /**
  * A deposit intent: moves `amount` of `mint` from the `depositor` custody wallet
@@ -125,33 +149,21 @@ export interface PrivateChannelDeposit {
   recipient: string;
   mint: string;
   amount: string;
-  status: PrivateChannelDepositStatus;
+  status: PrivateChannelTransferStatus;
   /** Devnet escrow transaction signature (null until submitted). */
   signature: string | null;
+  /**
+   * Settlement correlation. Populated when `status === "settled"`. Chain
+   * oracle cannot reach this for deposits; set by the future SPC event source.
+   */
+  settlementRef: string | null;
   /** Set when `status === "failed"`. */
   failureReason: string | null;
+  /** Audit snapshot; may have secrets redacted per caller permissions. */
+  context: PrivateChannelTransferContext;
   createdAt: string;
   updatedAt: string;
 }
-
-/**
- * Withdrawal lifecycle: `pending` (intent persisted) → `submitted` (burn relayed
- * to the gateway) → `burn_confirmed` (burn confirmed on the channel chain; the
- * balance is authoritatively gone) → `release_pending` (awaiting the operator's
- * devnet USDC release) → `released` (release detected on devnet). `failed` is
- * terminal and reachable ONLY from a pre-burn failure (gateway rejected the tx /
- * burn failed on chain). `manual_review` is terminal-ish: anything uncertain
- * AFTER `burn_confirmed` (release not observed within the timeout, ambiguous
- * match) — never auto-`failed`, since the user's balance is already burned.
- */
-export type PrivateChannelWithdrawalStatus =
-  | "pending"
-  | "submitted"
-  | "burn_confirmed"
-  | "release_pending"
-  | "released"
-  | "failed"
-  | "manual_review";
 
 /**
  * A withdrawal intent: burns `amount` of `mint` from the `owner`'s channel-chain
@@ -171,13 +183,18 @@ export interface PrivateChannelWithdrawal {
   destination: string;
   mint: string;
   amount: string;
-  status: PrivateChannelWithdrawalStatus;
+  status: PrivateChannelTransferStatus;
   /** Channel-chain burn signature (null until submitted). */
-  burnSignature: string | null;
-  /** Devnet release signature = the settlement correlation (null until released). */
-  releaseSignature: string | null;
+  signature: string | null;
+  /**
+   * Devnet release signature — the settlement correlation. Populated when
+   * `status === "settled"`.
+   */
+  settlementRef: string | null;
   /** Set when `status === "failed"`. */
   failureReason: string | null;
+  /** Audit snapshot; may have secrets redacted per caller permissions. */
+  context: PrivateChannelTransferContext;
   createdAt: string;
   updatedAt: string;
 }
@@ -301,16 +318,24 @@ export const PRIVATE_CHANNEL_EVENT_TYPES = {
   MEMBER_WALLET_CHALLENGE_REQUESTED: "member.wallet_challenge_requested",
   MEMBER_WALLET_VERIFIED: "member.wallet_verified",
   MEMBER_WALLET_VERIFICATION_REVOKED: "member.wallet_verification_revoked",
+  // Lifecycle — one per state transition, per kind. Emitted by the poll
+  // handler after a CAS-successful advance.
   TRANSFER_DEPOSIT_SUBMITTED: "transfer.deposit.submitted",
-  TRANSFER_DEPOSIT_CREDITED: "transfer.deposit.credited",
-  TRANSFER_TRANSFER_SUBMITTED: "transfer.transfer.submitted",
-  TRANSFER_TRANSFER_CONFIRMED: "transfer.transfer.confirmed",
+  TRANSFER_DEPOSIT_CONFIRMED: "transfer.deposit.confirmed",
+  TRANSFER_DEPOSIT_SETTLED: "transfer.deposit.settled",
+  TRANSFER_DEPOSIT_FAILED: "transfer.deposit.failed",
   TRANSFER_WITHDRAWAL_SUBMITTED: "transfer.withdrawal.submitted",
-  TRANSFER_WITHDRAWAL_RELEASED: "transfer.withdrawal.released",
+  TRANSFER_WITHDRAWAL_CONFIRMED: "transfer.withdrawal.confirmed",
+  TRANSFER_WITHDRAWAL_SETTLED: "transfer.withdrawal.settled",
+  TRANSFER_WITHDRAWAL_FAILED: "transfer.withdrawal.failed",
+  // Diagnostic — actionable operator signals. Never affect the intent state
+  // machine; emitted opportunistically by the oracle during a poll and
+  // debounced via context.lastStuckWarningAt.
+  TRANSFER_DEPOSIT_AWAITING_SPC_CREDIT: "transfer.deposit.awaiting_spc_credit",
+  TRANSFER_WITHDRAWAL_RELEASE_ATTEMPT_FAILED: "transfer.withdrawal.release_attempt_failed",
+  TRANSFER_STUCK_WARNING: "transfer.stuck_warning",
+  TRANSFER_NEEDS_MANUAL_REVIEW: "transfer.needs_manual_review",
   ERROR_SPC_UNREACHABLE: "error.spc_unreachable",
-  ERROR_INTENT_SUBMIT_REJECTED: "error.intent.submit_rejected",
-  ERROR_JWT_REFRESH_FAILED: "error.jwt_refresh_failed",
-  ERROR_RECONCILIATION_MISMATCH: "error.reconciliation_mismatch",
 } as const;
 
 export type PrivateChannelEventType =

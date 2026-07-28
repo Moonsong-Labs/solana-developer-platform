@@ -10,10 +10,12 @@ import { cn } from "@/lib/utils";
 import { fetchDepositAction } from "./actions";
 
 const RANK: Record<PrivateChannelDeposit["status"], number> = {
-  prepared: 0,
+  pending: 0,
   submitted: 1,
   confirmed: 2,
-  credited: 3,
+  // `settled` is unreachable for deposits under the chain-heuristic oracle;
+  // reserved for when SPC ships an event stream.
+  settled: 3,
   failed: -1,
 };
 
@@ -28,14 +30,13 @@ const STAGES = [
     title: "Confirmed on devnet",
     description: "The deposit transaction confirmed on-chain.",
   },
-  {
-    rank: 3,
-    title: "Credited in the channel",
-    description: "The operator credited your channel balance.",
-  },
 ] as const;
 
-const TERMINAL: ReadonlySet<PrivateChannelDeposit["status"]> = new Set(["credited", "failed"]);
+const TERMINAL: ReadonlySet<PrivateChannelDeposit["status"]> = new Set([
+  "confirmed",
+  "settled",
+  "failed",
+]);
 const POLL_INTERVAL_MS = 1500;
 
 export function DepositProgress({
@@ -71,7 +72,7 @@ export function DepositProgress({
 
   const rank = RANK[deposit.status];
   const failed = deposit.status === "failed";
-  const credited = deposit.status === "credited";
+  const done = deposit.status === "confirmed" || deposit.status === "settled";
 
   return (
     <div className="space-y-5">
@@ -91,20 +92,16 @@ export function DepositProgress({
 
       <ol className="space-y-3">
         {STAGES.map((stage) => {
-          const done = rank >= stage.rank;
-          const activeStage = !failed && !done && rank + 1 === stage.rank;
+          const stageDone = rank >= stage.rank;
+          const activeStage = !failed && !stageDone && rank + 1 === stage.rank;
           return (
             <li key={stage.rank} className="flex items-start gap-3">
-              <StageIcon done={done} active={activeStage} failed={failed && !done} />
+              <StageIcon done={stageDone} active={activeStage} failed={failed && !stageDone} />
               <div className="space-y-0.5">
                 <p
                   className={cn(
                     "font-medium text-sm",
-                    done
-                      ? "text-foreground"
-                      : activeStage
-                        ? "text-foreground"
-                        : "text-muted-foreground"
+                    stageDone || activeStage ? "text-foreground" : "text-muted-foreground"
                   )}
                 >
                   {stage.title}
@@ -117,20 +114,24 @@ export function DepositProgress({
       </ol>
 
       {deposit.signature && (
-        <a
-          className="inline-block text-primary text-xs underline underline-offset-2"
-          href={explorerTxUrl(deposit.signature, cluster)}
-          rel="noreferrer"
-          target="_blank"
-        >
-          View transaction on Solana Explorer
-        </a>
+        <div>
+          <a
+            className="text-primary text-xs underline underline-offset-2 hover:no-underline"
+            href={explorerTxUrl(deposit.signature, cluster)}
+            rel="noreferrer"
+            target="_blank"
+          >
+            View transaction on Solana Explorer
+          </a>
+        </div>
       )}
 
-      {(credited || failed) && (
-        <Button onClick={onReset} variant="secondary">
-          New deposit
-        </Button>
+      {(done || failed) && (
+        <div>
+          <Button onClick={onReset} variant="secondary">
+            New deposit
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -151,18 +152,18 @@ function StageIcon({ done, active, failed }: { done: boolean; active: boolean; f
 
 function StatusBadge({ status }: { status: PrivateChannelDeposit["status"] }) {
   const label: Record<PrivateChannelDeposit["status"], string> = {
-    prepared: "Preparing",
+    pending: "Preparing",
     submitted: "Submitted",
     confirmed: "Confirmed",
-    credited: "Credited",
+    settled: "Settled",
     failed: "Failed",
   };
   const tone =
-    status === "credited"
-      ? "bg-green-500/10 text-green-600"
+    status === "confirmed" || status === "settled"
+      ? "bg-green-500/15 text-green-600 dark:text-green-400"
       : status === "failed"
-        ? "bg-destructive/10 text-destructive"
-        : "bg-muted text-muted-foreground";
+        ? "bg-destructive/15 text-destructive"
+        : "bg-muted text-foreground";
   return (
     <span className={cn("rounded-full px-2.5 py-1 font-medium text-xs", tone)}>
       {label[status]}

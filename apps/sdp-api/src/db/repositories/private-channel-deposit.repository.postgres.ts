@@ -1,14 +1,28 @@
+import type { PrivateChannelTransferContext } from "@sdp/types";
 import type { AppDb } from "@/db";
 import {
   type CreateDepositInput,
   type DepositProjectScope,
-  type DepositRecipientScope,
   generatePrivateChannelDepositId,
-  type ListDepositsByStatusInput,
   type PrivateChannelDepositRepository,
   type PrivateChannelDepositRow,
   type UpdateDepositInput,
 } from "./private-channel-deposit.repository";
+
+function readContext(raw: unknown): PrivateChannelTransferContext {
+  if (raw && typeof raw === "object") {
+    return raw as PrivateChannelTransferContext;
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed as PrivateChannelTransferContext;
+    } catch {
+      // fall through
+    }
+  }
+  return {};
+}
 
 function mapRow(row: Record<string, unknown>): PrivateChannelDepositRow {
   return {
@@ -21,15 +35,11 @@ function mapRow(row: Record<string, unknown>): PrivateChannelDepositRow {
     recipient: row.recipient as string,
     mint: row.mint as string,
     amount: row.amount as string,
-    private_channel_user_id: (row.private_channel_user_id ?? null) as string | null,
-    baseline_credited: row.baseline_credited as string,
-    gateway_url: (row.gateway_url ?? "") as string,
-    chain_rpc_url: (row.chain_rpc_url ?? "") as string,
-    escrow_program_id: (row.escrow_program_id ?? "") as string,
-    escrow_instance_addr: (row.escrow_instance_addr ?? "") as string,
     status: row.status as PrivateChannelDepositRow["status"],
     signature: (row.signature ?? null) as string | null,
+    settlement_ref: (row.settlement_ref ?? null) as string | null,
     failure_reason: (row.failure_reason ?? null) as string | null,
+    context: readContext(row.context),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -44,10 +54,8 @@ export function createPostgresPrivateChannelDepositRepository(
         .prepare(
           `INSERT INTO private_channel_deposits (
                id, organization_id, project_id, instance_id, wallet_id,
-               depositor, recipient, mint, amount, private_channel_user_id,
-               baseline_credited,
-               gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               depositor, recipient, mint, amount, context
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
           RETURNING *`
         )
         .bind(
@@ -60,27 +68,22 @@ export function createPostgresPrivateChannelDepositRepository(
           input.recipient,
           input.mint,
           input.amount,
-          input.privateChannelUserId,
-          input.baselineCredited,
-          input.gatewayUrl,
-          input.chainRpcUrl,
-          input.escrowProgramId,
-          input.escrowInstanceAddr
+          JSON.stringify(input.context ?? {})
         )
         .first<Record<string, unknown>>();
       return row ? mapRow(row) : null;
     },
 
     async updateDeposit(input: UpdateDepositInput) {
-      // COALESCE keeps the existing signature/failure_reason when the transition
-      // doesn't supply them (e.g. confirmed->credited leaves the signature intact).
-      // The optional `expectedStatus` adds a compare-and-swap guard so a concurrent
-      // worker can't regress/overwrite state (returns null when the row moved on).
+      // COALESCE preserves fields the caller didn't touch. The (?::text IS NULL
+      // OR status = ?) pair is a compare-and-swap guard — the update returns 0
+      // rows if the intent moved on, so a concurrent poller can't regress state.
       const row = await db
         .prepare(
           `UPDATE private_channel_deposits
               SET status = ?,
                   signature = COALESCE(?, signature),
+                  settlement_ref = COALESCE(?, settlement_ref),
                   failure_reason = COALESCE(?, failure_reason),
                   updated_at = sdp_iso_now()
             WHERE id = ?
@@ -90,6 +93,7 @@ export function createPostgresPrivateChannelDepositRepository(
         .bind(
           input.status,
           input.signature ?? null,
+          input.settlementRef ?? null,
           input.failureReason ?? null,
           input.id,
           input.expectedStatus ?? null,
@@ -122,40 +126,31 @@ export function createPostgresPrivateChannelDepositRepository(
       return result.results.map(mapRow);
     },
 
-    async listDepositsByStatus(input: ListDepositsByStatusInput) {
-      if (input.statuses.length === 0) {
-        return [];
-      }
-      const placeholders = input.statuses.map(() => "?").join(", ");
+    async listNonTerminalByProject(scope: DepositProjectScope) {
       const result = await db
         .prepare(
-          // Tie-broken because of the LIMIT: this is the reconciler's work queue, so
-          // rows sharing an updated_at at the cutoff would otherwise be included or
-          // dropped arbitrarily from tick to tick, and one could be starved.
           `SELECT * FROM private_channel_deposits
-             WHERE status IN (${placeholders})
-             ORDER BY updated_at ASC, id ASC
-             LIMIT ?`
+             WHERE organization_id = ? AND project_id = ?
+               AND status IN ('pending', 'submitted', 'confirmed')
+             ORDER BY updated_at ASC, id ASC`
         )
-        .bind(...input.statuses, input.limit)
+        .bind(scope.organizationId, scope.projectId)
         .all<Record<string, unknown>>();
       return result.results.map(mapRow);
     },
 
-    async listDepositsForRecipient(scope: DepositRecipientScope) {
+    async listNonTerminal(limit: number) {
       const result = await db
         .prepare(
-          // The `, id ASC` tie-break decides which deposits get credited. deposit-credit
-          // walks this list in order, anchors its threshold on the first row's
-          // baseline_credited and breaks at the first row exceeding balance, and
-          // created_at is sdp_iso_now() at millisecond precision — so untie-broken, two
-          // deposits created in the same millisecond could swap places between
-          // reconciler ticks.
+          // Tie-broken because of the LIMIT: this is the cron's work queue, so
+          // rows sharing an updated_at at the cutoff would otherwise be included
+          // or dropped arbitrarily from tick to tick, and one could be starved.
           `SELECT * FROM private_channel_deposits
-             WHERE instance_id = ? AND recipient = ? AND mint = ?
-             ORDER BY created_at ASC, id ASC`
+             WHERE status IN ('pending', 'submitted', 'confirmed')
+             ORDER BY updated_at ASC, id ASC
+             LIMIT ?`
         )
-        .bind(scope.instanceId, scope.recipient, scope.mint)
+        .bind(limit)
         .all<Record<string, unknown>>();
       return result.results.map(mapRow);
     },
@@ -164,11 +159,23 @@ export function createPostgresPrivateChannelDepositRepository(
       const row = await db
         .prepare(
           `SELECT COUNT(*)::int AS count FROM private_channel_deposits
-             WHERE instance_id = ? AND status IN ('prepared', 'submitted', 'confirmed')`
+             WHERE instance_id = ? AND status IN ('pending', 'submitted', 'confirmed')`
         )
         .bind(instanceId)
         .first<{ count: number }>();
       return row?.count ?? 0;
+    },
+
+    async patchContext(id: string, patch: PrivateChannelTransferContext) {
+      // jsonb || jsonb is a right-biased merge — the patch wins for shared keys.
+      await db
+        .prepare(
+          `UPDATE private_channel_deposits
+              SET context = context || ?::jsonb
+            WHERE id = ?`
+        )
+        .bind(JSON.stringify(patch ?? {}), id)
+        .run();
     },
   };
 }

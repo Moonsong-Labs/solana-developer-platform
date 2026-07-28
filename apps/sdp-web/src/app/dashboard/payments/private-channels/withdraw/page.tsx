@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { privateChannels } from "@/flags";
 import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchPrivateChannelInstance, fetchSignableCustodyWallets } from "@/lib/private-channels";
+import { fetchPrivateChannelInstance, fetchVerifiedSignableWallets } from "@/lib/private-channels";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { WithdrawForm } from "./withdraw-form";
 
@@ -14,7 +14,7 @@ async function loadWallets(): Promise<CustodyWalletSummary[]> {
   if (!instance?.isActive) {
     redirect("/dashboard/payments/private-channels/instance");
   }
-  return fetchSignableCustodyWallets(client);
+  return fetchVerifiedSignableWallets(client);
 }
 
 export default async function PrivateChannelsWithdrawPage() {

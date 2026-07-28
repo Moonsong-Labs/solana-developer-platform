@@ -1,8 +1,9 @@
 -- Private Channels (SPC): the whole feature's schema, in one migration.
 --
 -- Tables are declared in dependency order — the connected instance, then its
--- channels, members and event feed, then deposits, withdrawals and verified
--- wallets. Every statement is IF NOT EXISTS, so re-running is a no-op.
+-- channels, members and event feed, then deposits, withdrawals, the oracle's
+-- settlement observations, and verified wallets. Every statement is
+-- IF NOT EXISTS, so re-running is a no-op.
 
 
 -- ==========================================================================
@@ -214,18 +215,26 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_events_project_occurred
 -- ==========================================================================
 -- private channel deposits
 
--- Private Channels deposits: escrow deposit intents that move USDC from a custody
--- wallet into the instance's escrow on-chain, then get credited into the channel.
--- Lifecycle: prepared -> submitted -> confirmed -> credited (or failed). Amounts
--- are decimal strings (never numeric/float). `baseline_credited` is the recipient's
--- channel balance captured at intent time.
+-- Deposit intents that move `amount` of `mint` from a custody wallet into the
+-- instance's escrow on-chain, credited to `recipient` in the channel by the
+-- operator. Lifecycle: pending -> submitted -> confirmed -> settled (or
+-- failed). Amounts are decimal strings, never numeric/float.
 --
--- Deposits are FINANCIAL/AUDIT records: `instance_id` is denormalized with NO FK
--- (like private_channel_events) so a deposit SURVIVES instance deletion; the
--- delete handler rejects deletion while non-terminal deposits exist. The
--- reconciliation endpoints (gateway/chain RPC/escrow) are SNAPSHOTTED on the row
--- so a later reconnect that changes the instance config can't move the chain a
--- pending deposit is reconciled against.
+-- Deposits are FINANCIAL/AUDIT records: `instance_id` is denormalized with NO
+-- FK so a deposit survives instance deletion; the delete handler rejects
+-- deletion while non-terminal deposits exist.
+--
+-- A deposit terminates at `confirmed` (tx confirmed on-chain). The operator's
+-- SPC-side credit is off-chain and not observable by this reconciler, so
+-- `settled` stays unreachable for deposits. The UI surfaces the credit via the
+-- SPC channel-balance read on the deposit page.
+--
+-- `context` is an audit-only JSONB snapshot of the SPC instance parameters at
+-- intent time (gateway URL, chain RPC, escrow addr, acting user). NEVER
+-- consulted by the oracle or the poll handler — reconciliation always reads
+-- the current instance row so an operator can repoint a stale endpoint without
+-- stranding in-flight intents. Purely for forensics; secrets redacted at
+-- render time (see redactCredentialSecrets).
 
 CREATE TABLE IF NOT EXISTS private_channel_deposits (
     id TEXT PRIMARY KEY,
@@ -237,90 +246,62 @@ CREATE TABLE IF NOT EXISTS private_channel_deposits (
     recipient TEXT NOT NULL,
     mint TEXT NOT NULL,
     amount TEXT NOT NULL,
-    -- The member who created this intent, captured while the request was still
-    -- authenticated. The reconciler needs an SPC identity to read the channel
-    -- balance, and this is the only unambiguous one: deriving it later from
-    -- `recipient` answers "whose wallet is this" (a different question with 0, 1 or
-    -- many answers) and fails outright for an external recipient.
-    --
-    -- SET NULL rather than CASCADE: revoking a member must not delete financial
-    -- history, matching the no-FK stance on instance_id below.
-    private_channel_user_id TEXT,
-    baseline_credited TEXT NOT NULL DEFAULT '0',
-    -- Instance config snapshotted at intent time (immutable reconciliation context).
-    --
-    -- TODO(snapshot-recovery): immutability cuts both ways. It stops a reconnect from
-    -- silently moving the chain a pending deposit reconciles against, but it also
-    -- pins a deposit to an endpoint that may DIE — if `chain_rpc_url` goes down or
-    -- runs out of credits and the operator repoints the instance at a working URL,
-    -- deposits snapshotted against the old one can never confirm. Needs an explicit,
-    -- audited operator action to re-point a stuck deposit's snapshot (accepting
-    -- responsibility for the change), rather than either silently following the
-    -- instance or stranding the row.
-    gateway_url TEXT NOT NULL DEFAULT '',
-    chain_rpc_url TEXT NOT NULL DEFAULT '',
-    escrow_program_id TEXT NOT NULL DEFAULT '',
-    escrow_instance_addr TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'prepared',
+    status TEXT NOT NULL DEFAULT 'pending',
+    -- On-chain deposit tx signature (null until submitted).
     signature TEXT,
+    -- Settlement reference. Populated when `status = 'settled'`. The chain
+    -- oracle cannot reach this for deposits; set by the future SPC event source.
+    settlement_ref TEXT,
     failure_reason TEXT,
+    context JSONB NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT sdp_iso_now(),
     updated_at TEXT NOT NULL DEFAULT sdp_iso_now(),
 
-    -- org/project cascade with their parents; instance_id is intentionally NOT a
-    -- FK so the deposit record outlives the instance (financial history).
+    -- org/project cascade; instance_id is intentionally NOT an FK so the
+    -- deposit record outlives the instance (financial history).
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE SET NULL,
 
     CONSTRAINT private_channel_deposits_status_check
-        CHECK (status IN ('prepared', 'submitted', 'confirmed', 'credited', 'failed'))
+        CHECK (status IN ('pending', 'submitted', 'confirmed', 'settled', 'failed'))
 );
 
 -- List a project's deposits, newest first.
 CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_project_created
     ON private_channel_deposits(project_id, created_at DESC);
 
--- The reconciler scans non-terminal deposits (drive submitted->confirmed->credited,
--- fail stale). Partial index keeps that scan cheap as terminal rows accumulate.
+-- Opportunistic non-terminal sweep (page load / operator view). Partial index
+-- keeps the scan cheap as terminal rows accumulate.
 CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_pending
     ON private_channel_deposits(updated_at)
-    WHERE status IN ('prepared', 'submitted', 'confirmed');
+    WHERE status IN ('pending', 'submitted', 'confirmed');
 
 -- Guard query: are there non-terminal deposits blocking instance deletion?
 CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_instance_status
     ON private_channel_deposits(instance_id)
-    WHERE status IN ('prepared', 'submitted', 'confirmed');
-
--- The reconciler's per-tick credit grouping (listDepositsForRecipient) reads every
--- deposit for one (instance, recipient, mint) with NO status predicate, because
--- crediting is cumulative over already-credited rows. Neither partial index above
--- can serve that, and project_id doesn't lead — so without this the query is a
--- sequential scan of a table this file declares append-only and unbounded.
-CREATE INDEX IF NOT EXISTS idx_private_channel_deposits_instance_recipient_mint
-    ON private_channel_deposits(instance_id, recipient, mint, created_at);
+    WHERE status IN ('pending', 'submitted', 'confirmed');
 
 
 -- ==========================================================================
 -- private channel withdrawals
 
--- Private Channels withdrawals: withdrawal intents that burn a user's channel-chain
--- token balance (via the withdraw program) and are later settled by the operator
--- releasing real USDC on devnet from the instance escrow ATA to `destination`.
--- Lifecycle: pending -> submitted -> burn_confirmed -> release_pending -> released
--- (or failed pre-burn / manual_review after burn). Amounts are decimal strings.
+-- Withdrawal intents that burn `amount` of `mint` from the `owner`'s
+-- channel-chain balance, later settled by the operator releasing real USDC on
+-- devnet from the instance escrow ATA to `destination`. Lifecycle: pending ->
+-- submitted -> confirmed -> settled (or failed). Amounts are decimal strings.
 --
--- Like private_channel_deposits above, withdrawals are FINANCIAL/AUDIT records: `instance_id` is
--- denormalized with NO FK so a withdrawal SURVIVES instance deletion, and the
--- reconciliation endpoints (gateway/chain RPC/escrow instance) are SNAPSHOTTED on
--- the row so a later reconnect can't move the chain a pending withdrawal reconciles
--- against. `release_signature` is the devnet settlement correlation (settlement_ref).
+-- Withdrawals are FINANCIAL/AUDIT records: `instance_id` is denormalized with
+-- NO FK so a withdrawal survives instance deletion. `context` is the same
+-- audit-only snapshot as private_channel_deposits above.
 --
--- Asymmetry vs deposits: release detection is UNAUTHENTICATED (the release lands on
--- public devnet, found by getSignaturesForAddress on the instance ATA), so a
--- withdrawal can reach `released` without any authenticated gateway read, unlike
--- deposit crediting. NEVER auto-`failed` after `burn_confirmed` (the balance is
--- already gone) — an unobservable release is a settlement issue → `manual_review`.
+-- Under the chain-heuristic oracle a withdrawal CAN reach `settled`: after
+-- `confirmed` (burn seen on the channel chain), the oracle scans the escrow
+-- ATA on devnet for a matching release transfer, records the attribution in
+-- private_channel_settlement_observations, and advances the intent with
+-- settlement_ref = the release signature. A withdrawal may park at `confirmed`
+-- indefinitely if the operator's release hasn't landed — never auto-failed
+-- after the burn is confirmed (the balance is already gone; only a human or
+-- an authoritative SPC event moves it forward).
 
 CREATE TABLE IF NOT EXISTS private_channel_withdrawals (
     id TEXT PRIMARY KEY,
@@ -334,51 +315,81 @@ CREATE TABLE IF NOT EXISTS private_channel_withdrawals (
     destination TEXT NOT NULL,
     mint TEXT NOT NULL,
     amount TEXT NOT NULL,
-    -- The member who created this intent (see private_channel_deposits above); the
-    -- reconciler authenticates its gateway reads as this member.
-    private_channel_user_id TEXT,
-    -- Instance config snapshotted at intent time (immutable reconciliation context).
-    gateway_url TEXT NOT NULL DEFAULT '',
-    chain_rpc_url TEXT NOT NULL DEFAULT '',
-    escrow_program_id TEXT NOT NULL DEFAULT '',
-    escrow_instance_addr TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
-    -- Channel-chain burn signature (set on submit).
-    burn_signature TEXT,
-    -- Devnet release signature = the settlement correlation (set on released).
-    release_signature TEXT,
+    -- Channel-chain burn signature (null until submitted). Named for symmetry
+    -- with private_channel_deposits.signature.
+    signature TEXT,
+    -- Devnet release signature (settlement correlation). Populated when
+    -- `status = 'settled'`.
+    settlement_ref TEXT,
     failure_reason TEXT,
+    context JSONB NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT sdp_iso_now(),
     updated_at TEXT NOT NULL DEFAULT sdp_iso_now(),
 
-    -- org/project cascade with their parents; instance_id is intentionally NOT a
-    -- FK so the withdrawal record outlives the instance (financial history).
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (private_channel_user_id) REFERENCES private_channel_users(id) ON DELETE SET NULL,
 
     CONSTRAINT private_channel_withdrawals_status_check
-        CHECK (status IN (
-            'pending', 'submitted', 'burn_confirmed', 'release_pending',
-            'released', 'failed', 'manual_review'
-        ))
+        CHECK (status IN ('pending', 'submitted', 'confirmed', 'settled', 'failed'))
 );
 
 -- List a project's withdrawals, newest first.
 CREATE INDEX IF NOT EXISTS idx_private_channel_withdrawals_project_created
     ON private_channel_withdrawals(project_id, created_at DESC);
 
--- The reconciler scans non-terminal withdrawals (drive submitted->burn_confirmed->
--- release_pending->released, fail stale pre-burn). Partial index keeps that scan
--- cheap as terminal rows (released/failed/manual_review) accumulate.
+-- Opportunistic non-terminal sweep. Partial index for cheap scans.
 CREATE INDEX IF NOT EXISTS idx_private_channel_withdrawals_pending
     ON private_channel_withdrawals(updated_at)
-    WHERE status IN ('pending', 'submitted', 'burn_confirmed', 'release_pending');
+    WHERE status IN ('pending', 'submitted', 'confirmed');
 
 -- Guard query: are there non-terminal withdrawals blocking instance deletion?
 CREATE INDEX IF NOT EXISTS idx_private_channel_withdrawals_instance_status
     ON private_channel_withdrawals(instance_id)
-    WHERE status IN ('pending', 'submitted', 'burn_confirmed', 'release_pending');
+    WHERE status IN ('pending', 'submitted', 'confirmed');
+
+
+-- ==========================================================================
+-- private channel settlement observations
+
+-- Oracle-internal correlation log. One row per attributed on-chain release
+-- transfer. Nothing outside the withdrawal reconciler reads or writes this.
+--
+-- Two constraints do all the work:
+--   PRIMARY KEY (signature, instruction_index) — one on-chain transfer can
+--     only be attributed once. instruction_index lets an operator batch
+--     several releases in a single tx without collision.
+--   UNIQUE (intent_kind, intent_id) — each intent can only settle once.
+--     Concurrent pollers racing to claim the same release collide here; the
+--     loser reads the winner's row and returns the same settlement_ref.
+--
+-- The oracle decides from copied-in values (destination/mint/amount) rather
+-- than re-reading the intent row, so external mutations can't retroactively
+-- change a claim.
+
+CREATE TABLE IF NOT EXISTS private_channel_settlement_observations (
+    -- On-chain release signature.
+    signature TEXT NOT NULL,
+    -- Position within the tx for batched releases (0 for atomic sources).
+    instruction_index INT NOT NULL DEFAULT 0,
+    -- 'deposit' | 'withdrawal'. Only 'withdrawal' is populated today; deposit
+    -- settlement is not observable from chain (see track-pending-deposits).
+    intent_kind TEXT NOT NULL,
+    intent_id TEXT NOT NULL,
+    -- Copied in from the observed transfer. Redundant with the intent row on
+    -- purpose — the oracle claims from its own copy.
+    destination TEXT NOT NULL,
+    mint TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    block_time BIGINT,
+    observed_at TEXT NOT NULL DEFAULT sdp_iso_now(),
+
+    PRIMARY KEY (signature, instruction_index),
+    UNIQUE (intent_kind, intent_id),
+
+    CONSTRAINT private_channel_settlement_observations_kind_check
+        CHECK (intent_kind IN ('deposit', 'withdrawal'))
+);
 
 
 -- ==========================================================================

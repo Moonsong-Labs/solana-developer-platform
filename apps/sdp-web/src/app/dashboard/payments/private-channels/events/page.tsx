@@ -29,23 +29,25 @@ export default async function PrivateChannelsEventsPage() {
   const { events, hasMore, nextCursor } = await loadEvents();
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <Card>
-        <CardHeader>
-          <CardTitle>Events</CardTitle>
-          <CardDescription>
-            Project activity for Private Channels (lifecycle, errors, and future member/transfer
-            events). History is kept even after an instance is disconnected or deleted.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <EventsList
-            initialEvents={events}
-            initialHasMore={hasMore}
-            initialNextCursor={nextCursor}
-          />
-        </CardContent>
-      </Card>
+    <div className="h-full overflow-y-auto overscroll-contain">
+      <div className="mx-auto w-full max-w-3xl py-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Events</CardTitle>
+            <CardDescription>
+              Project activity for Private Channels (lifecycle, errors, and future member/transfer
+              events). History is kept even after an instance is disconnected or deleted.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EventsList
+              initialEvents={events}
+              initialHasMore={hasMore}
+              initialNextCursor={nextCursor}
+            />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
