@@ -1,13 +1,7 @@
 "use client";
 
 import type { PrivateChannelWithdrawal } from "@sdp/types";
-import {
-  AlertTriangleIcon,
-  CheckCircle2Icon,
-  CircleIcon,
-  Loader2Icon,
-  XCircleIcon,
-} from "lucide-react";
+import { CheckCircle2Icon, CircleIcon, Loader2Icon, XCircleIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,11 +14,9 @@ import { fetchWithdrawalAction } from "./actions";
 const RANK: Record<PrivateChannelWithdrawal["status"], number> = {
   pending: 0,
   submitted: 1,
-  burn_confirmed: 2,
-  release_pending: 3,
-  released: 4,
+  confirmed: 2,
+  settled: 3,
   failed: -1,
-  manual_review: -1,
 };
 
 const STAGES = [
@@ -40,21 +32,12 @@ const STAGES = [
   },
   {
     rank: 3,
-    titleKey: "DashboardPrivateChannels.withdraw.stageAwaitingReleaseTitle",
-    descriptionKey: "DashboardPrivateChannels.withdraw.stageAwaitingReleaseDescription",
-  },
-  {
-    rank: 4,
     titleKey: "DashboardPrivateChannels.withdraw.stageReleasedTitle",
     descriptionKey: "DashboardPrivateChannels.withdraw.stageReleasedDescription",
   },
 ] as const;
 
-const TERMINAL: ReadonlySet<PrivateChannelWithdrawal["status"]> = new Set([
-  "released",
-  "failed",
-  "manual_review",
-]);
+const TERMINAL: ReadonlySet<PrivateChannelWithdrawal["status"]> = new Set(["settled", "failed"]);
 const POLL_INTERVAL_MS = 1500;
 
 export function WithdrawProgress({
@@ -91,9 +74,8 @@ export function WithdrawProgress({
 
   const rank = RANK[withdrawal.status];
   const failed = withdrawal.status === "failed";
-  const flagged = withdrawal.status === "manual_review";
-  const released = withdrawal.status === "released";
-  const terminal = failed || flagged || released;
+  const settled = withdrawal.status === "settled";
+  const terminal = failed || settled;
 
   return (
     <div className="space-y-5">
@@ -115,25 +97,13 @@ export function WithdrawProgress({
         </div>
       )}
 
-      {flagged && (
-        <div className="rounded-md border border-warning-border bg-warning-bg p-3 text-sm text-warning">
-          {t("DashboardPrivateChannels.withdraw.flagged")}{" "}
-          {withdrawal.failureReason ?? t("DashboardPrivateChannels.withdraw.flaggedFallback")}
-        </div>
-      )}
-
       <ol className="space-y-3">
         {STAGES.map((stage) => {
           const done = rank >= stage.rank;
-          const activeStage = !failed && !flagged && !done && rank + 1 === stage.rank;
+          const activeStage = !failed && !done && rank + 1 === stage.rank;
           return (
             <li key={stage.rank} className="flex items-start gap-3">
-              <StageIcon
-                done={done}
-                active={activeStage}
-                failed={failed && !done}
-                flagged={flagged && !done}
-              />
+              <StageIcon done={done} active={activeStage} failed={failed && !done} />
               <div className="space-y-0.5">
                 <p
                   className={cn(
@@ -150,17 +120,17 @@ export function WithdrawProgress({
         })}
       </ol>
 
-      {withdrawal.burnSignature && (
+      {withdrawal.signature && (
         <p className="text-secondary text-xs">
           {t("DashboardPrivateChannels.withdraw.burnSignature")}{" "}
-          <span className="font-mono text-xs">{withdrawal.burnSignature}</span>
+          <span className="font-mono text-xs">{withdrawal.signature}</span>
         </p>
       )}
 
-      {withdrawal.releaseSignature && (
+      {withdrawal.settlementRef && (
         <a
-          className="inline-block text-primary text-xs underline underline-offset-2"
-          href={explorerTxUrl(withdrawal.releaseSignature, cluster)}
+          className="inline-block text-primary text-xs underline underline-offset-2 hover:no-underline"
+          href={explorerTxUrl(withdrawal.settlementRef, cluster)}
           rel="noreferrer"
           target="_blank"
         >
@@ -177,17 +147,7 @@ export function WithdrawProgress({
   );
 }
 
-function StageIcon({
-  done,
-  active,
-  failed,
-  flagged,
-}: {
-  done: boolean;
-  active: boolean;
-  failed: boolean;
-  flagged: boolean;
-}) {
+function StageIcon({ done, active, failed }: { done: boolean; active: boolean; failed: boolean }) {
   if (done) {
     return <CheckCircle2Icon className="mt-0.5 size-5 text-success" />;
   }
@@ -196,9 +156,6 @@ function StageIcon({
   }
   if (failed) {
     return <XCircleIcon className="mt-0.5 size-5 text-destructive" />;
-  }
-  if (flagged) {
-    return <AlertTriangleIcon className="mt-0.5 size-5 text-warning" />;
   }
   return <CircleIcon className="mt-0.5 size-5 text-tertiary" />;
 }
@@ -213,19 +170,17 @@ function StatusBadge({
   const label: Record<PrivateChannelWithdrawal["status"], string> = {
     pending: t("DashboardPrivateChannels.withdraw.statusPending"),
     submitted: t("DashboardPrivateChannels.withdraw.statusSubmitted"),
-    burn_confirmed: t("DashboardPrivateChannels.withdraw.statusBurnConfirmed"),
-    release_pending: t("DashboardPrivateChannels.withdraw.statusReleasePending"),
-    released: t("DashboardPrivateChannels.withdraw.statusReleased"),
+    confirmed: t("DashboardPrivateChannels.withdraw.statusBurnConfirmed"),
+    settled: t("DashboardPrivateChannels.withdraw.statusSettled"),
     failed: t("DashboardPrivateChannels.withdraw.statusFailed"),
-    manual_review: t("DashboardPrivateChannels.withdraw.statusManualReview"),
   };
   const variant: BadgeVariant =
-    status === "released"
+    status === "settled"
       ? "success"
-      : status === "failed"
-        ? "danger"
-        : status === "manual_review"
-          ? "warning"
+      : status === "confirmed"
+        ? "info"
+        : status === "failed"
+          ? "danger"
           : "default";
   return <Badge variant={variant}>{label[status]}</Badge>;
 }

@@ -10,12 +10,13 @@ import type {
 } from "@sdp/types";
 import {
   fetchCustodyWallets,
+  fetchPrivateChannelBalance,
   fetchPrivateChannelEvents,
   fetchPrivateChannelInstance,
   fetchPrivateChannelOverview,
   fetchPrivateChannels,
   fetchPrivateChannelUsers,
-  fetchSignableCustodyWallets,
+  fetchVerifiedSignableWallets,
   fetchVerifiedWallets,
 } from "@/lib/private-channels";
 import { extractSdpApiErrorMessage, type SdpApiClient, SdpApiResponseError } from "@/lib/sdp-api";
@@ -81,11 +82,16 @@ export function loadChannels(
   return toResult(() => fetchPrivateChannels(client), []);
 }
 
-/** Custody wallets SDP can actually sign from — the deposit/withdraw picker source. */
+/**
+ * Custody wallets SDP can sign from AND that are SPC-verified — the
+ * deposit/withdraw picker source. Verification is required either way: an
+ * unverified wallet can't burn or receive channel credit, so offering it in the
+ * picker would only produce a rejected intent.
+ */
 export function loadSignableWallets(
   client: SdpApiClient
 ): Promise<PrivateChannelsResult<CustodyWalletSummary[]>> {
-  return toResult(() => fetchSignableCustodyWallets(client), []);
+  return toResult(() => fetchVerifiedSignableWallets(client), []);
 }
 
 export function loadEvents(
@@ -116,6 +122,38 @@ export function loadWalletVerification(client: SdpApiClient): Promise<
     },
     { verified: [], custody: [] }
   );
+}
+
+/** A verified wallet's channel-side balance for a single mint. */
+export interface WalletChannelBalance {
+  uiAmount: string;
+  mint: string;
+}
+
+/**
+ * Each verified wallet's channel balance, keyed by pubkey, read in parallel.
+ *
+ * Unlike the loaders above this returns a bare record rather than a
+ * `PrivateChannelsResult`: a failed read is per-wallet, not per-page, so it is
+ * dropped from the map instead of failing the whole card. A missing key means
+ * "balance unavailable" and the row simply renders without one — an `ok` flag
+ * here would be permanently true and tell the caller nothing.
+ */
+export async function loadChannelBalances(
+  client: SdpApiClient,
+  verified: PrivateChannelVerifiedWalletDto[]
+): Promise<Record<string, WalletChannelBalance>> {
+  const entries = await Promise.all(
+    verified.map(async (wallet): Promise<[string, WalletChannelBalance] | null> => {
+      try {
+        const balance = await fetchPrivateChannelBalance(client, wallet.pubkey);
+        return [wallet.pubkey, { uiAmount: balance.uiAmount, mint: balance.mint }];
+      } catch {
+        return null;
+      }
+    })
+  );
+  return Object.fromEntries(entries.filter((entry) => entry !== null));
 }
 
 /**

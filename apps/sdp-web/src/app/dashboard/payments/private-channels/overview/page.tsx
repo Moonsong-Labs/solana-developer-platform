@@ -7,7 +7,11 @@ import {
   requirePrivateChannelsAccess,
 } from "../private-channels-access";
 import { PrivateChannelsLoadError } from "../private-channels-load-error";
-import { loadOverview, loadWalletVerification } from "../private-channels-page.data";
+import {
+  loadChannelBalances,
+  loadOverview,
+  loadWalletVerification,
+} from "../private-channels-page.data";
 import { InstanceOverviewCard } from "./instance-overview-card";
 import { VerifiedWalletsSection } from "./verified-wallets-section";
 
@@ -27,6 +31,11 @@ export default async function PrivateChannelsOverviewPage() {
   if (overview.ok && !overview.data) {
     redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
+
+  // Channel balances only exist for verified wallets — unverified reads would 403.
+  const channelBalances = wallets.ok
+    ? await loadChannelBalances(client, wallets.data.verified)
+    : {};
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -58,6 +67,7 @@ export default async function PrivateChannelsOverviewPage() {
           <VerifiedWalletsSection
             verifiedWallets={wallets.data.verified}
             custodyWallets={wallets.data.custody}
+            channelBalances={channelBalances}
             loadError={!wallets.ok}
           />
         </CardContent>

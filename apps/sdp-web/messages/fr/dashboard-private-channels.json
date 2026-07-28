@@ -13,7 +13,9 @@
       "loadError": "Une erreur s'est produite lors du chargement de cette section.",
       "cancel": "Annuler",
       "amountUsdc": "Montant (USDC)",
-      "amountPlaceholder": "1.5"
+      "amountPlaceholder": "1.5",
+      "onChainBalance": "Sur la chaîne :",
+      "channelBalance": "Solde du canal :"
     },
     "overview": {
       "title": "Aperçu",
@@ -46,7 +48,9 @@
       "revokeAria": "Révoquer la vérification pour {pubkey}",
       "orphaned": "Wallet de conservation absent de la liste",
       "verifySuccess": "Wallet {key} vérifié.",
-      "revokeSuccess": "Vérification de {key} révoquée."
+      "revokeSuccess": "Vérification de {key} révoquée.",
+      "channelBalanceTooltip": "Solde du canal pour le mint {mint}",
+      "channelBalanceAmount": "{amount} USDC"
     },
     "channels": {
       "title": "Canaux",
@@ -101,8 +105,7 @@
     },
     "deposit": {
       "title": "Dépôt",
-      "description": "Transférez des USDC depuis un wallet de conservation vers l'entiercement du canal sur devnet. Suivez la progression depuis le contrat d'entiercement jusqu'au crédit de votre solde de canal.",
-      "noWallets": "Vous n'avez pas encore de wallet de conservation. Créez-en un dans Wallets, approvisionnez-le en USDC devnet, puis revenez pour déposer.",
+      "description": "Transférez des USDC depuis un wallet de conservation vers l’entiercement du canal sur devnet. Suivez la progression depuis le contrat d’entiercement jusqu’à la confirmation sur la chaîne.",
       "fromWallet": "Depuis le wallet",
       "fromWalletHelp": "Le dépôt est signé depuis ce wallet. Il doit détenir des USDC devnet (et un peu de SOL).",
       "recipient": "Destinataire (facultatif)",
@@ -119,18 +122,18 @@
       "stageSentDescription": "Diffusion du dépôt vers le programme d'entiercement sur devnet.",
       "stageConfirmedTitle": "Confirmé sur devnet",
       "stageConfirmedDescription": "La transaction de dépôt a été confirmée sur la chaîne.",
-      "stageCreditedTitle": "Crédité dans le canal",
-      "stageCreditedDescription": "L'opérateur a crédité votre solde de canal.",
-      "statusPrepared": "Préparation",
       "statusSubmitted": "Soumis",
       "statusConfirmed": "Confirmé",
-      "statusCredited": "Crédité",
-      "statusFailed": "Échec"
+      "statusFailed": "Échec",
+      "noWalletsBefore": "Aucun wallet vérifié pour le moment. Vérifiez un wallet de conservation dans l’",
+      "noWalletsLink": "aperçu des canaux privés",
+      "noWalletsAfter": " et approvisionnez-le en USDC devnet, puis revenez pour déposer.",
+      "statusPending": "Préparation",
+      "statusSettled": "Réglé"
     },
     "withdraw": {
       "title": "Retrait",
       "description": "Brûlez le solde de canal d'un wallet de conservation et laissez l'opérateur libérer les USDC correspondants sur devnet. Suivez la progression depuis le burn jusqu'à la libération sur devnet.",
-      "noWallets": "Vous n'avez pas encore de wallet de conservation. Créez-en un dans Wallets, déposez dans le canal, puis revenez pour retirer.",
       "fromWallet": "Retirer depuis",
       "fromWalletHelp": "Le burn est signé depuis ce wallet. Son solde de canal est débité.",
       "destination": "Libérer vers (facultatif)",
@@ -141,8 +144,6 @@
       "progressLabel": "Retrait en cours",
       "amountWithUnit": "{amount} USDC",
       "failed": "Le retrait a échoué.",
-      "flagged": "Signalé pour examen manuel.",
-      "flaggedFallback": "Un opérateur va rapprocher ce retrait.",
       "burnSignature": "Signature du burn :",
       "viewRelease": "Voir la libération sur Solana Explorer",
       "newWithdrawal": "Nouveau retrait",
@@ -150,17 +151,16 @@
       "stageBurnSentDescription": "Diffusion du burn vers la chaîne du canal.",
       "stageBurnConfirmedTitle": "Burn confirmé (solde débité)",
       "stageBurnConfirmedDescription": "Le burn a été confirmé et votre solde de canal a été débité.",
-      "stageAwaitingReleaseTitle": "En attente de libération devnet",
-      "stageAwaitingReleaseDescription": "L'opérateur libère les USDC correspondants sur devnet.",
       "stageReleasedTitle": "Libéré sur devnet",
-      "stageReleasedDescription": "L'opérateur a libéré les USDC vers la destination.",
+      "stageReleasedDescription": "L’opérateur a libéré les USDC correspondants vers la destination.",
       "statusPending": "En attente",
       "statusSubmitted": "Soumis",
       "statusBurnConfirmed": "Burn confirmé",
-      "statusReleasePending": "Libération en cours",
-      "statusReleased": "Libéré",
       "statusFailed": "Échec",
-      "statusManualReview": "Examen manuel"
+      "noWalletsBefore": "Aucun wallet vérifié pour le moment. Vérifiez un wallet de conservation dans l’",
+      "noWalletsLink": "aperçu des canaux privés",
+      "noWalletsAfter": " et déposez dans le canal, puis revenez pour retirer.",
+      "statusSettled": "Réglé"
     },
     "events": {
       "title": "Événements",
@@ -191,15 +191,18 @@
       "typeWalletVerified": "Wallet vérifié",
       "typeWalletVerificationRevoked": "Vérification du wallet révoquée",
       "typeDepositSubmitted": "Dépôt soumis",
-      "typeDepositCredited": "Dépôt crédité",
-      "typeTransferSubmitted": "Transfert soumis",
-      "typeTransferConfirmed": "Transfert confirmé",
       "typeWithdrawalSubmitted": "Retrait soumis",
-      "typeWithdrawalReleased": "Retrait libéré",
       "typeSpcUnreachable": "Private Channels injoignable",
-      "typeIntentSubmitRejected": "Soumission rejetée",
-      "typeJwtRefreshFailed": "Échec du rafraîchissement de session",
-      "typeReconciliationMismatch": "Écart de rapprochement"
+      "typeDepositConfirmed": "Dépôt confirmé",
+      "typeDepositSettled": "Dépôt réglé",
+      "typeDepositFailed": "Dépôt échoué",
+      "typeWithdrawalConfirmed": "Burn du retrait confirmé",
+      "typeWithdrawalSettled": "Retrait réglé",
+      "typeWithdrawalFailed": "Retrait échoué",
+      "typeDepositAwaitingSpcCredit": "En attente du crédit du canal",
+      "typeWithdrawalReleaseAttemptFailed": "Échec de la tentative de libération",
+      "typeStuckWarning": "Transfert bloqué",
+      "typeNeedsManualReview": "Révision manuelle requise"
     },
     "instance": {
       "title": "Connecter un Private Channel",

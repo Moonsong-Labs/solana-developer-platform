@@ -37,24 +37,30 @@ const EVENT_TYPE_KEYS: Record<string, MessageKey> = {
     "DashboardPrivateChannels.events.typeWalletVerificationRevoked",
   [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_SUBMITTED]:
     "DashboardPrivateChannels.events.typeDepositSubmitted",
-  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_CREDITED]:
-    "DashboardPrivateChannels.events.typeDepositCredited",
-  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_SUBMITTED]:
-    "DashboardPrivateChannels.events.typeTransferSubmitted",
-  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_CONFIRMED]:
-    "DashboardPrivateChannels.events.typeTransferConfirmed",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_CONFIRMED]:
+    "DashboardPrivateChannels.events.typeDepositConfirmed",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_SETTLED]:
+    "DashboardPrivateChannels.events.typeDepositSettled",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_FAILED]:
+    "DashboardPrivateChannels.events.typeDepositFailed",
   [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_SUBMITTED]:
     "DashboardPrivateChannels.events.typeWithdrawalSubmitted",
-  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_RELEASED]:
-    "DashboardPrivateChannels.events.typeWithdrawalReleased",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_CONFIRMED]:
+    "DashboardPrivateChannels.events.typeWithdrawalConfirmed",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_SETTLED]:
+    "DashboardPrivateChannels.events.typeWithdrawalSettled",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_FAILED]:
+    "DashboardPrivateChannels.events.typeWithdrawalFailed",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_AWAITING_SPC_CREDIT]:
+    "DashboardPrivateChannels.events.typeDepositAwaitingSpcCredit",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_RELEASE_ATTEMPT_FAILED]:
+    "DashboardPrivateChannels.events.typeWithdrawalReleaseAttemptFailed",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_STUCK_WARNING]:
+    "DashboardPrivateChannels.events.typeStuckWarning",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_NEEDS_MANUAL_REVIEW]:
+    "DashboardPrivateChannels.events.typeNeedsManualReview",
   [PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE]:
     "DashboardPrivateChannels.events.typeSpcUnreachable",
-  [PRIVATE_CHANNEL_EVENT_TYPES.ERROR_INTENT_SUBMIT_REJECTED]:
-    "DashboardPrivateChannels.events.typeIntentSubmitRejected",
-  [PRIVATE_CHANNEL_EVENT_TYPES.ERROR_JWT_REFRESH_FAILED]:
-    "DashboardPrivateChannels.events.typeJwtRefreshFailed",
-  [PRIVATE_CHANNEL_EVENT_TYPES.ERROR_RECONCILIATION_MISMATCH]:
-    "DashboardPrivateChannels.events.typeReconciliationMismatch",
 };
 
 const EVENT_FAMILY_KEYS: Record<PrivateChannelEventFamily, MessageKey> = {
@@ -89,7 +95,7 @@ export const EVENT_STATUS_BADGE: Record<PrivateChannelEventStatus, BadgeVariant>
 
 type Translate = (key: MessageKey) => string;
 
-/** `transfer.deposit.credited` → `Transfer deposit credited`. */
+/** `transfer.deposit.settled` → `Transfer deposit settled`. */
 function humanizeRawEventValue(value: string): string {
   const words = value.replace(/[._]/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);

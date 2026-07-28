@@ -2,14 +2,20 @@
 
 import type { CustodyWalletSummary, PrivateChannelWithdrawal } from "@sdp/types";
 import { Loader2Icon } from "lucide-react";
-import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
 import { useTranslations } from "@/i18n/provider";
-import { createWithdrawalAction } from "./actions";
+import { PRIVATE_CHANNELS_OVERVIEW_PATH } from "../private-channels-routes";
+import {
+  createWithdrawalAction,
+  fetchWalletBalancesAction,
+  type WalletBalanceView,
+} from "./actions";
 import { WithdrawProgress } from "./withdraw-progress";
 
 function walletLabel(wallet: CustodyWalletSummary): string {
@@ -25,6 +31,24 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   const [withdrawal, setWithdrawal] = useState<PrivateChannelWithdrawal | null>(null);
   const [isSubmitting, startTransition] = useTransition();
   const t = useTranslations();
+  const [balances, setBalances] = useState<WalletBalanceView>({ channel: null, onChain: null });
+  const [refetchKey, setRefetchKey] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetchKey is the refetch trigger, not a value read in the effect.
+  useEffect(() => {
+    if (!walletId) {
+      setBalances({ channel: null, onChain: null });
+      return;
+    }
+    let active = true;
+    setBalances({ channel: null, onChain: null });
+    fetchWalletBalancesAction(walletId).then((result) => {
+      if (active) setBalances(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [walletId, refetchKey]);
 
   if (withdrawal) {
     return (
@@ -35,6 +59,7 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
           setAmount("");
           setDestination("");
           setError(null);
+          setRefetchKey((n) => n + 1);
         }}
       />
     );
@@ -42,7 +67,16 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
 
   if (wallets.length === 0) {
     return (
-      <p className="text-secondary text-sm">{t("DashboardPrivateChannels.withdraw.noWallets")}</p>
+      <p className="text-secondary text-sm">
+        {t("DashboardPrivateChannels.withdraw.noWalletsBefore")}
+        <Link
+          className="text-primary underline underline-offset-2 hover:no-underline"
+          href={PRIVATE_CHANNELS_OVERVIEW_PATH}
+        >
+          {t("DashboardPrivateChannels.withdraw.noWalletsLink")}
+        </Link>
+        {t("DashboardPrivateChannels.withdraw.noWalletsAfter")}
+      </p>
     );
   }
 
@@ -97,6 +131,30 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
           placeholder={t("DashboardPrivateChannels.common.amountPlaceholder")}
           value={amount}
         />
+        {(balances.channel !== null || balances.onChain !== null) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {balances.channel !== null && (
+              <span className="text-primary">
+                {t("DashboardPrivateChannels.common.channelBalance")}{" "}
+                <span className="font-mono font-medium">
+                  {t("DashboardPrivateChannels.withdraw.amountWithUnit", {
+                    amount: balances.channel,
+                  })}
+                </span>
+              </span>
+            )}
+            {balances.onChain !== null && (
+              <span className="text-primary">
+                {t("DashboardPrivateChannels.common.onChainBalance")}{" "}
+                <span className="font-mono font-medium">
+                  {t("DashboardPrivateChannels.withdraw.amountWithUnit", {
+                    amount: balances.onChain,
+                  })}
+                </span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -116,8 +174,11 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
 
       {error && <p className="text-destructive text-sm">{error}</p>}
 
-      <Button disabled={isSubmitting || !walletId || !amount.trim()} type="submit">
-        {isSubmitting && <Loader2Icon className="mr-2 size-4 animate-spin" />}
+      <Button
+        disabled={isSubmitting || !walletId || !amount.trim()}
+        iconLeft={isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : undefined}
+        type="submit"
+      >
         {t("DashboardPrivateChannels.withdraw.submit")}
       </Button>
     </form>

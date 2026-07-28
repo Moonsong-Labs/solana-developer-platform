@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { mapPrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
-import { badRequest, notFound, walletNotFound } from "@/lib/errors";
+import { badRequest, notFound, unauthorized, walletNotFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { resolveScope, resolveWalletAddress } from "@/routes/payments/wallets";
 import {
@@ -30,9 +30,9 @@ async function loadActiveInstance(c: AppContext, organizationId: string, project
  * POST /withdrawals — burn the custody wallet's channel-chain balance (via the
  * withdraw program) and broadcast it to the gateway; the operator later releases
  * the matching real USDC on devnet to `destination` (defaults to the owner).
- * Feature-gated + `payments:write`. Returns the withdrawal DTO with its current status (submitted/
- * burn_confirmed, or failed with a reason). Release (`released`) is detected
- * asynchronously by the reconciler via the devnet release on the instance ATA.
+ * Feature-gated + `payments:write`. Returns the withdrawal DTO with its current
+ * status (submitted/confirmed, or failed with a reason). `settled` (operator's
+ * devnet release observed) is detected asynchronously by the oracle.
  */
 export async function createPrivateChannelWithdrawal(c: AppContext) {
   const body = await c.req.json().catch(() => null);
@@ -45,6 +45,10 @@ export async function createPrivateChannelWithdrawal(c: AppContext) {
 
   try {
     const { auth, wallets } = await resolveScope(c);
+    const userId = auth.userId;
+    if (!userId) {
+      throw unauthorized("Private Channel withdrawals require a user session.");
+    }
     const projectId = requireProjectId(c);
     const instance = await loadActiveInstance(c, auth.organizationId, projectId);
 
@@ -69,13 +73,14 @@ export async function createPrivateChannelWithdrawal(c: AppContext) {
       instance,
       organizationId: auth.organizationId,
       projectId,
-      userId: auth.userId,
+      userId,
     });
 
     const withdrawal = await createChannelWithdrawal(c.env, {
       instance,
       organizationId: auth.organizationId,
       projectId,
+      userId,
       wallet,
       amount: parsed.data.amount,
       destination,

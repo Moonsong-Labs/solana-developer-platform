@@ -48,7 +48,6 @@ export type DashboardLoadingRoute =
   | "policies"
   | "approvals-list"
   | "approval-detail"
-  | "members"
   | "settings"
   | "allowlist";
 
@@ -112,7 +111,6 @@ export function resolveDashboardLoadingRoute(rawPathname: string): DashboardLoad
   if (pathname === "/dashboard/policies") return "policies";
   if (pathname === "/dashboard/approvals") return "approvals-list";
   if (/^\/dashboard\/approvals\/[^/]+$/.test(pathname)) return "approval-detail";
-  if (pathname === "/dashboard/members") return "members";
   if (pathname === "/dashboard/settings") return "settings";
   if (pathname === "/dashboard/allowlist") return "allowlist";
 

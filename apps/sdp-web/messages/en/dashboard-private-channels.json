@@ -13,7 +13,9 @@
       "loadError": "Something went wrong loading this section.",
       "cancel": "Cancel",
       "amountUsdc": "Amount (USDC)",
-      "amountPlaceholder": "1.5"
+      "amountPlaceholder": "1.5",
+      "onChainBalance": "On-chain:",
+      "channelBalance": "Channel balance:"
     },
     "overview": {
       "title": "Overview",
@@ -46,7 +48,9 @@
       "revokeAria": "Revoke verification for {pubkey}",
       "orphaned": "Custody wallet no longer listed",
       "verifySuccess": "Wallet {key} verified.",
-      "revokeSuccess": "Verification for {key} revoked."
+      "revokeSuccess": "Verification for {key} revoked.",
+      "channelBalanceTooltip": "Channel balance for mint {mint}",
+      "channelBalanceAmount": "{amount} USDC"
     },
     "channels": {
       "title": "Channels",
@@ -101,8 +105,7 @@
     },
     "deposit": {
       "title": "Deposit",
-      "description": "Move USDC from a custody wallet into the channel escrow on devnet. Watch it progress from the escrow contract to your credited channel balance.",
-      "noWallets": "You have no custody wallets yet. Create one under Wallets, fund it with devnet USDC, then come back to deposit.",
+      "description": "Move USDC from a custody wallet into the channel escrow on devnet. Watch it progress from the escrow contract to an on-chain confirmation.",
       "fromWallet": "From wallet",
       "fromWalletHelp": "The deposit is signed from this wallet. It must hold devnet USDC (and a little SOL).",
       "recipient": "Recipient (optional)",
@@ -119,18 +122,18 @@
       "stageSentDescription": "Broadcasting the deposit to the escrow program on devnet.",
       "stageConfirmedTitle": "Confirmed on devnet",
       "stageConfirmedDescription": "The deposit transaction confirmed on-chain.",
-      "stageCreditedTitle": "Credited in the channel",
-      "stageCreditedDescription": "The operator credited your channel balance.",
-      "statusPrepared": "Preparing",
       "statusSubmitted": "Submitted",
       "statusConfirmed": "Confirmed",
-      "statusCredited": "Credited",
-      "statusFailed": "Failed"
+      "statusFailed": "Failed",
+      "noWalletsBefore": "No verified wallets yet. Verify a custody wallet on the ",
+      "noWalletsLink": "Private Channels overview",
+      "noWalletsAfter": " and fund it with devnet USDC, then come back to deposit.",
+      "statusPending": "Preparing",
+      "statusSettled": "Settled"
     },
     "withdraw": {
       "title": "Withdraw",
       "description": "Burn a custody wallet's channel balance and have the operator release the matching USDC on devnet. Watch it progress from the burn to the devnet release.",
-      "noWallets": "You have no custody wallets yet. Create one under Wallets, deposit into the channel, then come back to withdraw.",
       "fromWallet": "Withdraw from",
       "fromWalletHelp": "The burn is signed from this wallet. Its channel balance is debited.",
       "destination": "Release to (optional)",
@@ -141,8 +144,6 @@
       "progressLabel": "Withdrawing",
       "amountWithUnit": "{amount} USDC",
       "failed": "The withdrawal failed.",
-      "flagged": "Flagged for manual review.",
-      "flaggedFallback": "An operator will reconcile this withdrawal.",
       "burnSignature": "Burn signature:",
       "viewRelease": "View release on Solana Explorer",
       "newWithdrawal": "New withdrawal",
@@ -150,17 +151,16 @@
       "stageBurnSentDescription": "Broadcasting the burn to the channel chain.",
       "stageBurnConfirmedTitle": "Burn confirmed (balance debited)",
       "stageBurnConfirmedDescription": "The burn confirmed and your channel balance was debited.",
-      "stageAwaitingReleaseTitle": "Awaiting devnet release",
-      "stageAwaitingReleaseDescription": "The operator is releasing the matching USDC on devnet.",
       "stageReleasedTitle": "Released on devnet",
-      "stageReleasedDescription": "The operator released the USDC to the destination.",
+      "stageReleasedDescription": "The operator released the matching USDC to the destination.",
       "statusPending": "Pending",
       "statusSubmitted": "Submitted",
       "statusBurnConfirmed": "Burn confirmed",
-      "statusReleasePending": "Releasing",
-      "statusReleased": "Released",
       "statusFailed": "Failed",
-      "statusManualReview": "Manual review"
+      "noWalletsBefore": "No verified wallets yet. Verify a custody wallet on the ",
+      "noWalletsLink": "Private Channels overview",
+      "noWalletsAfter": " and deposit into the channel, then come back to withdraw.",
+      "statusSettled": "Settled"
     },
     "events": {
       "title": "Events",
@@ -191,15 +191,18 @@
       "typeWalletVerified": "Wallet verified",
       "typeWalletVerificationRevoked": "Wallet verification revoked",
       "typeDepositSubmitted": "Deposit submitted",
-      "typeDepositCredited": "Deposit credited",
-      "typeTransferSubmitted": "Transfer submitted",
-      "typeTransferConfirmed": "Transfer confirmed",
       "typeWithdrawalSubmitted": "Withdrawal submitted",
-      "typeWithdrawalReleased": "Withdrawal released",
       "typeSpcUnreachable": "Private Channels unreachable",
-      "typeIntentSubmitRejected": "Submission rejected",
-      "typeJwtRefreshFailed": "Session refresh failed",
-      "typeReconciliationMismatch": "Reconciliation mismatch"
+      "typeDepositConfirmed": "Deposit confirmed",
+      "typeDepositSettled": "Deposit settled",
+      "typeDepositFailed": "Deposit failed",
+      "typeWithdrawalConfirmed": "Withdrawal burn confirmed",
+      "typeWithdrawalSettled": "Withdrawal settled",
+      "typeWithdrawalFailed": "Withdrawal failed",
+      "typeDepositAwaitingSpcCredit": "Awaiting channel credit",
+      "typeWithdrawalReleaseAttemptFailed": "Release attempt failed",
+      "typeStuckWarning": "Transfer stuck",
+      "typeNeedsManualReview": "Needs manual review"
     },
     "instance": {
       "title": "Connect Private Channel",

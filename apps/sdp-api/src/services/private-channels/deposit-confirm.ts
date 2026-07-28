@@ -18,6 +18,10 @@ import type { Env } from "@/types/env";
  *  - on-chain error → `failed`
  *  - confirmed      → `confirmed`
  *  - transport/timeout error → no change (stays `submitted`); returns `null`.
+ *
+ * Deposits stop at `confirmed` under the chain-heuristic oracle: SPC does not
+ * expose an event stream, so the operator's credit into the channel is not
+ * observable. `settled` becomes reachable when SPC ships events.
  */
 export async function confirmAndPersistDeposit(
   env: Env,

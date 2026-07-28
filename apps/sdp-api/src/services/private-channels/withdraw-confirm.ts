@@ -9,9 +9,11 @@
  *    `submitted` and let the reconciler finalize it. Returns `null`.
  *  - a real on-chain burn error (`confirmation.err`) is a terminal `failed` — this
  *    is a PRE-burn-confirmation failure, so `failed` is legitimate here (no balance
- *    moved). After `burn_confirmed` the reconciler NEVER auto-fails (the balance is
- *    already gone → manual_review instead).
- *  - confirmed → `burn_confirmed` (authoritative: the user's channel balance is gone).
+ *    moved). After `confirmed` the reconciler NEVER auto-fails (the balance is
+ *    already gone → operator alert instead).
+ *  - confirmed → `confirmed` (authoritative: the user's channel balance is gone;
+ *    the oracle drives `confirmed → settled` once it observes the operator's
+ *    devnet release).
  */
 
 import * as solanaRpc from "@sdp/rpc/solana";
@@ -26,7 +28,7 @@ import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 /**
  * Confirm a broadcast burn on the gateway (channel chain) and persist the outcome:
  *  - on-chain burn error → `failed`
- *  - confirmed           → `burn_confirmed`
+ *  - confirmed           → `confirmed`
  *  - transport/auth/timeout error → no change (stays `submitted`); returns `null`.
  */
 export async function confirmAndPersistWithdrawal(
@@ -58,7 +60,7 @@ export async function confirmAndPersistWithdrawal(
     }
     return repo.updateWithdrawal({
       id: input.withdrawalId,
-      status: "burn_confirmed",
+      status: "confirmed",
       expectedStatus: "submitted",
     });
   } catch {

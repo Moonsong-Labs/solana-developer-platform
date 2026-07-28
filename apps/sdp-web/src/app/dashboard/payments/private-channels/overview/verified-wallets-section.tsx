@@ -13,11 +13,14 @@ import { WalletProviderMark } from "@/app/dashboard/custody/wallet-provider-mark
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "@/i18n/provider";
+import type { WalletChannelBalance } from "../private-channels-page.data";
 import { deleteVerifiedWalletAction, verifyWalletAction } from "./actions";
 
 interface Props {
   verifiedWallets: PrivateChannelVerifiedWalletDto[];
   custodyWallets: CustodyWalletSummary[];
+  /** Keyed by wallet pubkey; entry present when the balance read succeeded. */
+  channelBalances: Record<string, WalletChannelBalance>;
   loadError: boolean;
 }
 
@@ -25,7 +28,35 @@ function shortKey(pk: string): string {
   return pk.length > 12 ? `${pk.slice(0, 4)}…${pk.slice(-4)}` : pk;
 }
 
-export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadError }: Props) {
+/** Renders nothing when the gateway read for this wallet failed. */
+function ChannelBalance({
+  balance,
+  t,
+}: {
+  balance: WalletChannelBalance | undefined;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (!balance) return null;
+  return (
+    <span
+      className="font-mono text-sm text-secondary"
+      title={t("DashboardPrivateChannels.verifiedWallets.channelBalanceTooltip", {
+        mint: balance.mint,
+      })}
+    >
+      {t("DashboardPrivateChannels.verifiedWallets.channelBalanceAmount", {
+        amount: balance.uiAmount,
+      })}
+    </span>
+  );
+}
+
+export function VerifiedWalletsSection({
+  verifiedWallets,
+  custodyWallets,
+  channelBalances,
+  loadError,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const t = useTranslations();
@@ -110,6 +141,7 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
             <div className="flex shrink-0 items-center gap-2">
               {verified ? (
                 <>
+                  <ChannelBalance balance={channelBalances[wallet.publicKey]} t={t} />
                   <Badge variant="success">
                     <span className="inline-flex items-center gap-1">
                       <CheckCircle2Icon className="size-3" />
@@ -158,6 +190,7 @@ export function VerifiedWalletsSection({ verifiedWallets, custodyWallets, loadEr
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <ChannelBalance balance={channelBalances[w.pubkey]} t={t} />
             <Badge variant="success">
               {t("DashboardPrivateChannels.verifiedWallets.verified")}
             </Badge>

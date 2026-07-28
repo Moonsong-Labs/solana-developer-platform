@@ -12,10 +12,12 @@ import { cn } from "@/lib/utils";
 import { fetchDepositAction } from "./actions";
 
 const RANK: Record<PrivateChannelDeposit["status"], number> = {
-  prepared: 0,
+  pending: 0,
   submitted: 1,
   confirmed: 2,
-  credited: 3,
+  // `settled` is unreachable for deposits under the chain-heuristic oracle;
+  // reserved for when SPC ships an event stream.
+  settled: 3,
   failed: -1,
 };
 
@@ -30,14 +32,13 @@ const STAGES = [
     titleKey: "DashboardPrivateChannels.deposit.stageConfirmedTitle",
     descriptionKey: "DashboardPrivateChannels.deposit.stageConfirmedDescription",
   },
-  {
-    rank: 3,
-    titleKey: "DashboardPrivateChannels.deposit.stageCreditedTitle",
-    descriptionKey: "DashboardPrivateChannels.deposit.stageCreditedDescription",
-  },
 ] as const;
 
-const TERMINAL: ReadonlySet<PrivateChannelDeposit["status"]> = new Set(["credited", "failed"]);
+const TERMINAL: ReadonlySet<PrivateChannelDeposit["status"]> = new Set([
+  "confirmed",
+  "settled",
+  "failed",
+]);
 const POLL_INTERVAL_MS = 1500;
 
 export function DepositProgress({
@@ -74,7 +75,7 @@ export function DepositProgress({
 
   const rank = RANK[deposit.status];
   const failed = deposit.status === "failed";
-  const credited = deposit.status === "credited";
+  const done = deposit.status === "confirmed" || deposit.status === "settled";
 
   return (
     <div className="space-y-5">
@@ -98,16 +99,16 @@ export function DepositProgress({
 
       <ol className="space-y-3">
         {STAGES.map((stage) => {
-          const done = rank >= stage.rank;
-          const activeStage = !failed && !done && rank + 1 === stage.rank;
+          const stageDone = rank >= stage.rank;
+          const activeStage = !failed && !stageDone && rank + 1 === stage.rank;
           return (
             <li key={stage.rank} className="flex items-start gap-3">
-              <StageIcon done={done} active={activeStage} failed={failed && !done} />
+              <StageIcon done={stageDone} active={activeStage} failed={failed && !stageDone} />
               <div className="space-y-0.5">
                 <p
                   className={cn(
                     "font-medium text-sm",
-                    done || activeStage ? "text-primary" : "text-tertiary"
+                    stageDone || activeStage ? "text-primary" : "text-tertiary"
                   )}
                 >
                   {t(stage.titleKey)}
@@ -121,7 +122,7 @@ export function DepositProgress({
 
       {deposit.signature && (
         <a
-          className="inline-block text-primary text-xs underline underline-offset-2"
+          className="inline-block text-primary text-xs underline underline-offset-2 hover:no-underline"
           href={explorerTxUrl(deposit.signature, cluster)}
           rel="noreferrer"
           target="_blank"
@@ -130,7 +131,7 @@ export function DepositProgress({
         </a>
       )}
 
-      {(credited || failed) && (
+      {(done || failed) && (
         <Button onClick={onReset} variant="secondary">
           {t("DashboardPrivateChannels.deposit.newDeposit")}
         </Button>
@@ -160,13 +161,17 @@ function StatusBadge({
   t: ReturnType<typeof useTranslations>;
 }) {
   const label: Record<PrivateChannelDeposit["status"], string> = {
-    prepared: t("DashboardPrivateChannels.deposit.statusPrepared"),
+    pending: t("DashboardPrivateChannels.deposit.statusPending"),
     submitted: t("DashboardPrivateChannels.deposit.statusSubmitted"),
     confirmed: t("DashboardPrivateChannels.deposit.statusConfirmed"),
-    credited: t("DashboardPrivateChannels.deposit.statusCredited"),
+    settled: t("DashboardPrivateChannels.deposit.statusSettled"),
     failed: t("DashboardPrivateChannels.deposit.statusFailed"),
   };
   const variant: BadgeVariant =
-    status === "credited" ? "success" : status === "failed" ? "danger" : "default";
+    status === "confirmed" || status === "settled"
+      ? "success"
+      : status === "failed"
+        ? "danger"
+        : "default";
   return <Badge variant={variant}>{label[status]}</Badge>;
 }

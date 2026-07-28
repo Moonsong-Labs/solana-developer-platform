@@ -25,6 +25,10 @@ export async function requirePrivateChannelsAccess(): Promise<void> {
   }
 }
 
-/** Where a page sends the operator when no instance is connected yet. */
-export const PRIVATE_CHANNELS_INSTANCE_PATH = "/dashboard/payments/private-channels/instance";
-export const PRIVATE_CHANNELS_OVERVIEW_PATH = "/dashboard/payments/private-channels/overview";
+// Re-exported so server pages keep a single import for gate + redirect targets.
+// The literals themselves live in an import-free module because client
+// components need them too — see private-channels-routes.ts.
+export {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  PRIVATE_CHANNELS_OVERVIEW_PATH,
+} from "./private-channels-routes";
