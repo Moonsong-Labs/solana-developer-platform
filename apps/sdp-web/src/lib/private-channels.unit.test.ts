@@ -8,7 +8,6 @@ import type { SdpApiClient } from "@/lib/sdp-api";
 import {
   createPrivateChannelTransfer,
   fetchAuthenticatedPrivateChannelUser,
-  fetchPrivateChannelTransfer,
   fetchPrivateChannelTransferRecipients,
 } from "./private-channels";
 
@@ -109,12 +108,5 @@ describe("private-channel transfer API helpers", () => {
         }),
       }
     );
-  });
-
-  it("loads one retained transfer by id", async () => {
-    const client = createClient(transfer);
-
-    await expect(fetchPrivateChannelTransfer(client, "pct/one")).resolves.toEqual(transfer);
-    expect(client.fetch).toHaveBeenCalledWith("/v1/private-channels/transfers/pct%2Fone");
   });
 });

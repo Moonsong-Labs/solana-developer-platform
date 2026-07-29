@@ -28,7 +28,6 @@ import {
   type PrivateChannelTransferRow,
 } from "@/db/repositories";
 import { AppError, badRequest } from "@/lib/errors";
-import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
 import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
@@ -47,6 +46,12 @@ export interface CreateChannelTransferInput {
   channelId: string;
   /** The already-resolved SDP custody wallet selected by the acting user. */
   wallet: CustodyWallet;
+  /**
+   * Signer for `wallet`, derived once by the route's access seam, which also holds
+   * it against the member's verified pubkey. Passed in rather than re-derived so a
+   * transfer makes one custody-provider round trip instead of two.
+   */
+  signer: TransactionSigner;
   /** The already-resolved verified wallet of another channel member. */
   recipient: {
     privateChannelUserId: string;
@@ -99,28 +104,17 @@ async function broadcastTransfer(
   env: Env,
   input: {
     instance: TransferInstance;
-    organizationId: string;
-    projectId: string;
-    wallet: CustodyWallet;
+    signer: TransactionSigner;
     mint: Address;
     recipient: Address;
     amountBaseUnits: bigint;
     gatewayAuth: SpcAuthContext;
   }
 ): Promise<Signature> {
-  // Signer derivation + the (blockhash-independent) instructions are built ONCE,
-  // outside the retried gateway unit — a 401 retry re-signs against a fresh
-  // blockhash but must not re-derive the signer.
-  const signer = await solanaServices.createOrgSigner(
-    env,
-    input.organizationId,
-    input.projectId,
-    input.wallet.walletId
-  );
-  if (signer.address !== input.wallet.publicKey) {
-    throw badRequest("Resolved signing wallet does not match the transfer wallet");
-  }
-
+  const signer = input.signer;
+  // The (blockhash-independent) instructions are built ONCE, outside the retried
+  // gateway unit — a 401 retry re-signs against a fresh blockhash but must not
+  // rebuild the instructions.
   const { instructions } = await buildClassicTransferInstructions({
     signer,
     mint: input.mint,
@@ -273,9 +267,7 @@ export async function createChannelTransfer(
   try {
     signature = await broadcastTransfer(env, {
       instance: input.instance,
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      wallet: input.wallet,
+      signer: input.signer,
       mint,
       recipient: recipientAddress,
       amountBaseUnits,

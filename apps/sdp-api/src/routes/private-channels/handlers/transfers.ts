@@ -60,6 +60,7 @@ export async function createPrivateChannelTransfer(c: AppContext) {
       projectId: context.projectId,
       channelId,
       wallet: context.wallet,
+      signer: context.signer,
       recipient: context.recipient,
       amount: parsed.data.amount,
       gatewayAuth,

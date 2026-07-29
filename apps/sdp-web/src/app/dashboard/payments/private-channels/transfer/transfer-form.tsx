@@ -80,6 +80,13 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
   const [submittedTransfer, setSubmittedTransfer] = useState<SubmittedTransfer | null>(null);
   const [isSubmitting, startTransition] = useTransition();
   const recipientRequest = useRef(0);
+  /**
+   * Freezes every financial field for the duration of a submit. Deliberately NOT
+   * redundant with `disabled={isSubmitting}`: the transition state lags a tick
+   * behind the submit, and `disabled` on a `Select` only reaches a third-party
+   * component's internals. On a money path the guard is explicit here so the
+   * freeze holds regardless of either.
+   */
   const submitting = useRef(false);
 
   const recipientOptions = useMemo(
@@ -87,10 +94,6 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
       recipientLoad.status === "ready" ? flattenRecipientOptions(recipientLoad.recipients) : [],
     [recipientLoad]
   );
-
-  const invalidateFinancialAttempt = () => {
-    setError(null);
-  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recipientReload intentionally triggers a fresh server-action request.
   useEffect(() => {
@@ -271,7 +274,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
             if (submitting.current) return;
             const next = value ?? "";
             if (next !== channelId) {
-              invalidateFinancialAttempt();
+              setError(null);
               recipientRequest.current += 1;
               setChannelId(next);
               setRecipientVerifiedWalletId("");
@@ -297,7 +300,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
             if (submitting.current) return;
             const next = value ?? "";
             if (next !== walletId) {
-              invalidateFinancialAttempt();
+              setError(null);
               setWalletId(next);
             }
           }}
@@ -346,7 +349,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
               if (submitting.current) return;
               const next = value ?? "";
               if (next !== recipientVerifiedWalletId) {
-                invalidateFinancialAttempt();
+                setError(null);
                 setRecipientVerifiedWalletId(next);
               }
             }}
@@ -376,7 +379,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           onChange={(event) => {
             if (submitting.current) return;
             if (event.target.value !== amount) {
-              invalidateFinancialAttempt();
+              setError(null);
               setAmount(event.target.value);
             }
           }}

@@ -198,16 +198,6 @@ export function createPrivateChannelTransfer(
   );
 }
 
-/** Read one retained verified-wallet transfer within the project scope. */
-export function fetchPrivateChannelTransfer(
-  client: SdpApiClient,
-  id: string
-): Promise<PrivateChannelTransfer> {
-  return client.fetch<PrivateChannelTransfer>(
-    `/v1/private-channels/transfers/${encodeURIComponent(id)}`
-  );
-}
-
 /** Project-scoped activity feed (survives instance deletion). */
 export function fetchPrivateChannelEvents(
   client: SdpApiClient,

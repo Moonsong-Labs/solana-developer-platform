@@ -6,10 +6,8 @@ const mocks = vi.hoisted(() => ({
   createPrivateChannelTransfer: vi.fn(),
   fetchPrivateChannelTransferRecipients: vi.fn(),
   extractSdpApiErrorMessage: vi.fn(),
-  revalidatePath: vi.fn(),
 }));
 
-vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/private-channels", () => ({
   createPrivateChannelTransfer: mocks.createPrivateChannelTransfer,
   fetchPrivateChannelTransferRecipients: mocks.fetchPrivateChannelTransferRecipients,
@@ -123,9 +121,6 @@ describe("private-channel transfer actions", () => {
       recipientVerifiedWalletId: "pcvw_recipient",
       amount: "1.25",
     });
-    expect(mocks.revalidatePath).toHaveBeenCalledWith(
-      "/dashboard/payments/private-channels/transfer"
-    );
   });
 
   it("returns a recoverable server error", async () => {

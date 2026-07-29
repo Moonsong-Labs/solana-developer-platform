@@ -25,7 +25,6 @@ import type {
   UpdatePrivateChannelTransferInput,
 } from "@/db/repositories";
 import * as repositories from "@/db/repositories";
-import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
 import type { SpcAuthContext } from "./auth/gateway-auth";
@@ -91,6 +90,8 @@ function makeInput(overrides: Partial<Parameters<typeof createChannelTransfer>[1
     projectId: PROJECT_ID,
     channelId: CHANNEL_ID,
     wallet,
+    // Resolved by the route's access seam in production; the service never derives it.
+    signer: senderSigner,
     recipient: {
       privateChannelUserId: RECIPIENT_PC_USER_ID,
       verifiedWalletId: RECIPIENT_VERIFIED_WALLET_ID,
@@ -156,7 +157,6 @@ beforeEach(async () => {
 
   vi.spyOn(repositories, "createPrivateChannelTransferRepository").mockReturnValue(repo);
   vi.spyOn(balanceService, "getChannelBalance").mockResolvedValue(makeBalance());
-  vi.spyOn(solanaServices, "createOrgSigner").mockResolvedValue(senderSigner);
   vi.spyOn(gatewayAuthService, "withGatewayRpc").mockImplementation(
     async (_env, _gatewayUrl, _context, run) => run(GATEWAY_RPC as never)
   );
@@ -409,25 +409,6 @@ describe("createChannelTransfer", () => {
       "failed"
     );
     expect(solanaRpc.sendTransaction).toHaveBeenCalledTimes(2);
-  });
-
-  it("records a signing failure without attempting an SPC send", async () => {
-    vi.mocked(solanaServices.createOrgSigner).mockResolvedValue(await generateKeyPairSigner());
-
-    const result = await createChannelTransfer(TEST_ENV, makeInput());
-
-    expect(result).toMatchObject({
-      status: "failed",
-      signature: null,
-      failureReason: "Resolved signing wallet does not match the transfer wallet",
-    });
-    expect(solanaRpc.sendTransaction).not.toHaveBeenCalled();
-    expect(repo.updateTransfer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "failed",
-        failureReason: "Resolved signing wallet does not match the transfer wallet",
-      })
-    );
   });
 
   it("fails the request without sending when the pending row cannot be stored", async () => {

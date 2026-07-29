@@ -1,7 +1,6 @@
 "use server";
 
 import type { PrivateChannelTransfer, PrivateChannelTransferRecipientDto } from "@sdp/types";
-import { revalidatePath } from "next/cache";
 import type { MessageKey } from "@/i18n/messages";
 import {
   createPrivateChannelTransfer,
@@ -66,7 +65,6 @@ export async function createTransferAction(
       recipientVerifiedWalletId: input.recipientVerifiedWalletId,
       amount: input.amount.trim(),
     });
-    revalidatePath("/dashboard/payments/private-channels/transfer");
     return { ok: true, transfer };
   } catch (error) {
     return { ok: false, kind: "server", message: extractSdpApiErrorMessage(error) };

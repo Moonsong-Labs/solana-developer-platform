@@ -34,8 +34,24 @@ export interface TransferCreateContext extends TransferActorContext {
     verifiedWalletId: string;
     pubkey: string;
   };
+  /**
+   * Resolved here and handed to the service so a transfer derives its signer once.
+   * This is also the stricter check of the two: it holds the signer against BOTH
+   * the custody wallet and the member's verified pubkey.
+   */
+  signer: Awaited<ReturnType<typeof createOrgSigner>>;
 }
 
+/**
+ * Program, system and connected-instance addresses, which must never be an endpoint
+ * of a member transfer.
+ *
+ * Reaching one should be impossible: both sides of a transfer must be a wallet that
+ * passed challenge-signature verification, and none of these addresses has a private
+ * key — the program ids are fixed accounts and the escrow instance is a PDA. This is
+ * kept as a cheap invariant on the money path rather than a filter, so a change to
+ * how wallets become verified fails loudly instead of silently allowing one.
+ */
 function unsafeAddresses(instance: PrivateChannelInstance): ReadonlySet<string> {
   return new Set([
     SYSTEM_PROGRAM_ADDRESS,
@@ -46,17 +62,6 @@ function unsafeAddresses(instance: PrivateChannelInstance): ReadonlySet<string> 
     instance.withdrawProgramId,
     instance.escrowInstanceAddr,
   ]);
-}
-
-function filterUnsafeRecipients(
-  recipients: PrivateChannelTransferRecipientDto[],
-  instance: PrivateChannelInstance
-): PrivateChannelTransferRecipientDto[] {
-  const unsafe = unsafeAddresses(instance);
-  return recipients.flatMap((recipient) => {
-    const wallets = recipient.wallets.filter((wallet) => !unsafe.has(wallet.pubkey));
-    return wallets.length > 0 ? [{ ...recipient, wallets }] : [];
-  });
 }
 
 async function resolveTransferActor(
@@ -109,7 +114,7 @@ export async function resolveTransferRecipients(
   channelId: string
 ): Promise<PrivateChannelTransferRecipientDto[]> {
   const context = await resolveTransferActor(c, channelId);
-  return filterUnsafeRecipients(context.recipients, context.instance);
+  return context.recipients;
 }
 
 /** The single access-policy seam for creating a channel transfer. */
@@ -192,5 +197,5 @@ export async function resolveTransferCreateContext(
     throw badRequest("Resolved signer does not match the verified source custody wallet.");
   }
 
-  return { ...context, wallet, recipient };
+  return { ...context, wallet, recipient, signer };
 }
