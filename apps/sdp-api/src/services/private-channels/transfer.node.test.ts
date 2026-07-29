@@ -22,6 +22,7 @@ import type {
   CreatePrivateChannelTransferInput,
   PrivateChannelTransferRepository,
   PrivateChannelTransferRow,
+  UpdatePrivateChannelTransferInput,
 } from "@/db/repositories";
 import * as repositories from "@/db/repositories";
 import * as solanaServices from "@/services/solana";
@@ -55,7 +56,8 @@ let wallet: CustodyWallet;
 let auth: SpcAuthContext;
 let repo: PrivateChannelTransferRepository;
 
-function makeRow(input: CreatePrivateChannelTransferInput): PrivateChannelTransferRow {
+/** A freshly inserted row, which the repository always writes as `pending`. */
+function makePendingRow(input: CreatePrivateChannelTransferInput): PrivateChannelTransferRow {
   return {
     id: "pct_transfer_test",
     organization_id: input.organizationId,
@@ -70,9 +72,9 @@ function makeRow(input: CreatePrivateChannelTransferInput): PrivateChannelTransf
     recipient: input.recipient,
     mint: input.mint,
     amount: input.amount,
-    status: input.status,
-    signature: input.signature,
-    failure_reason: input.failureReason,
+    status: "pending",
+    signature: null,
+    failure_reason: null,
     created_at: "2026-07-28T10:00:00.000Z",
     updated_at: "2026-07-28T10:00:00.000Z",
   };
@@ -129,8 +131,27 @@ beforeEach(async () => {
     refresh: vi.fn(async () => "refreshed-spc-jwt"),
     pcUserId: "pcu_transfer_sender",
   };
+  // A minimal stand-in for the real repository: the insert yields a `pending` row
+  // and the update applies the patch to it, so tests observe the same two-step
+  // write the service performs.
+  let inserted: PrivateChannelTransferRow | null = null;
   repo = {
-    createTransfer: vi.fn(async (input: CreatePrivateChannelTransferInput) => makeRow(input)),
+    createTransfer: vi.fn(async (input: CreatePrivateChannelTransferInput) => {
+      inserted = makePendingRow(input);
+      return inserted;
+    }),
+    updateTransfer: vi.fn(async (input: UpdatePrivateChannelTransferInput) => {
+      if (!inserted || inserted.status !== (input.expectedStatus ?? inserted.status)) {
+        return null;
+      }
+      inserted = {
+        ...inserted,
+        status: input.status,
+        signature: input.signature ?? inserted.signature,
+        failure_reason: input.failureReason ?? inserted.failure_reason,
+      };
+      return inserted;
+    }),
   } as unknown as PrivateChannelTransferRepository;
 
   vi.spyOn(repositories, "createPrivateChannelTransferRepository").mockReturnValue(repo);
@@ -144,6 +165,14 @@ beforeEach(async () => {
     lastValidBlockHeight: 100n,
   });
   vi.spyOn(solanaRpc, "sendTransaction").mockResolvedValue(SIGNATURE);
+  // Default: SPC executed the transaction cleanly. `confirmationStatus` is always
+  // `finalized` on SPC — one sequencer, no fork choice — so a found status is final.
+  vi.spyOn(solanaRpc, "confirmTransaction").mockResolvedValue({
+    signature: SIGNATURE,
+    slot: 42n,
+    confirmationStatus: "finalized",
+    err: null,
+  });
   vi.spyOn(transferEvents, "emitTransferEvent").mockResolvedValue();
 });
 
@@ -214,7 +243,7 @@ describe("createChannelTransfer", () => {
     expect(repo.createTransfer).not.toHaveBeenCalled();
   });
 
-  it("stores a confirmed transfer only after SPC accepts it", async () => {
+  it("persists the transfer before sending, then records submitted and confirmed", async () => {
     const result = await createChannelTransfer(TEST_ENV, makeInput());
 
     expect(solanaRpc.sendTransaction).toHaveBeenCalledWith(GATEWAY_RPC, expect.any(Uint8Array));
@@ -231,14 +260,33 @@ describe("createChannelTransfer", () => {
       recipient,
       mint: MINT,
       amount: "1.25",
-      status: "confirmed",
+    });
+    // The audit row must exist before anything can move funds.
+    expect(vi.mocked(repo.createTransfer).mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      vi.mocked(solanaRpc.sendTransaction).mock.invocationCallOrder[0] ?? 0
+    );
+    expect(repo.updateTransfer).toHaveBeenNthCalledWith(1, {
+      id: "pct_transfer_test",
+      status: "submitted",
       signature: SIGNATURE,
       failureReason: null,
+      expectedStatus: "pending",
     });
-    expect(vi.mocked(solanaRpc.sendTransaction).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(repo.createTransfer).mock.invocationCallOrder[0] ?? 0
+    // The confirm write is CAS'd on `submitted` and leaves the signature in place.
+    expect(repo.updateTransfer).toHaveBeenNthCalledWith(2, {
+      id: "pct_transfer_test",
+      status: "confirmed",
+      expectedStatus: "submitted",
+    });
+    expect(transferEvents.emitTransferEvent).toHaveBeenNthCalledWith(
+      1,
+      TEST_ENV,
+      expect.objectContaining({ status: "submitted", signature: SIGNATURE }),
+      "transfer.transfer.submitted",
+      "pending"
     );
-    expect(transferEvents.emitTransferEvent).toHaveBeenCalledWith(
+    expect(transferEvents.emitTransferEvent).toHaveBeenNthCalledWith(
+      2,
       TEST_ENV,
       expect.objectContaining({ status: "confirmed", signature: SIGNATURE }),
       "transfer.transfer.confirmed",
@@ -254,7 +302,78 @@ describe("createChannelTransfer", () => {
     expect(message.version).toBe(0);
   });
 
-  it("stores an SPC error as a failed transfer and allows a later retry", async () => {
+  // The blockhash must be fetched inside the same gateway unit as the send: SPC's
+  // dedup stage silently drops a transaction whose blockhash left the live window.
+  it("fetches the blockhash and sends within one gateway unit", async () => {
+    await createChannelTransfer(TEST_ENV, makeInput());
+
+    expect(gatewayAuthService.withGatewayRpc).toHaveBeenCalledTimes(2);
+    const blockhashOrder = vi.mocked(solanaRpc.getRecentBlockhash).mock.invocationCallOrder[0] ?? 0;
+    const sendOrder = vi.mocked(solanaRpc.sendTransaction).mock.invocationCallOrder[0] ?? 0;
+    const firstUnitOrder =
+      vi.mocked(gatewayAuthService.withGatewayRpc).mock.invocationCallOrder[0] ?? 0;
+    const confirmUnitOrder =
+      vi.mocked(gatewayAuthService.withGatewayRpc).mock.invocationCallOrder[1] ?? 0;
+    // Blockhash AND send both happen inside the first unit, before the confirm unit.
+    expect(firstUnitOrder).toBeLessThan(blockhashOrder);
+    expect(blockhashOrder).toBeLessThan(sendOrder);
+    expect(sendOrder).toBeLessThan(confirmUnitOrder);
+  });
+
+  it("records an execution error as failed with the real transaction error", async () => {
+    vi.mocked(solanaRpc.confirmTransaction).mockResolvedValue({
+      signature: SIGNATURE,
+      slot: 42n,
+      confirmationStatus: "finalized",
+      err: { InstructionError: [1, { Custom: 1 }] },
+    });
+
+    const result = await createChannelTransfer(TEST_ENV, makeInput());
+
+    expect(result).toMatchObject({
+      status: "failed",
+      failureReason: '{"InstructionError":[1,{"Custom":1}]}',
+    });
+    expect(transferEvents.emitTransferEvent).toHaveBeenLastCalledWith(
+      TEST_ENV,
+      expect.objectContaining({ status: "failed" }),
+      "transfer.transfer.failed",
+      "failed"
+    );
+  });
+
+  // A dedup drop (stale blockhash / duplicate) means the transaction never appears,
+  // so the confirm read times out. That is NOT evidence of success or of failure.
+  it("leaves a transfer submitted when the confirm read returns no verdict", async () => {
+    vi.mocked(solanaRpc.confirmTransaction).mockRejectedValue(new Error("confirmation timed out"));
+
+    const result = await createChannelTransfer(TEST_ENV, makeInput());
+
+    expect(result).toMatchObject({ status: "submitted", signature: SIGNATURE });
+    expect(vi.mocked(repo.updateTransfer).mock.calls.map(([call]) => call.status)).toEqual([
+      "submitted",
+    ]);
+    expect(
+      vi.mocked(transferEvents.emitTransferEvent).mock.calls.map(([, , type]) => type)
+    ).toEqual(["transfer.transfer.submitted"]);
+  });
+
+  // SPC sheds at ingress before the dedup insert, so nothing was queued and the
+  // same transfer is immediately resubmittable — the reason must say so.
+  it("marks a capacity shed as retryable rather than an opaque rejection", async () => {
+    vi.mocked(solanaRpc.sendTransaction).mockRejectedValueOnce(
+      Object.assign(new Error("Node at capacity, retry shortly"), { code: -32003 })
+    );
+
+    const result = await createChannelTransfer(TEST_ENV, makeInput());
+
+    expect(result.status).toBe("failed");
+    expect(result.failureReason).toBe(
+      "SPC is at capacity and did not accept the transfer. Try again shortly."
+    );
+  });
+
+  it("records an SPC error as failed, emits a failed event, and allows a later retry", async () => {
     vi.mocked(solanaRpc.sendTransaction)
       .mockRejectedValueOnce(new Error("SPC rejected transfer"))
       .mockResolvedValueOnce(SIGNATURE);
@@ -267,26 +386,32 @@ describe("createChannelTransfer", () => {
       failureReason: "SPC rejected transfer",
     });
     expect(retried).toMatchObject({ status: "confirmed", signature: SIGNATURE });
-    expect(repo.createTransfer).toHaveBeenNthCalledWith(
+    expect(repo.updateTransfer).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         status: "failed",
-        signature: expect.any(String),
         failureReason: "SPC rejected transfer",
       })
     );
-    expect(repo.createTransfer).toHaveBeenNthCalledWith(
+    expect(repo.updateTransfer).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({
-        status: "confirmed",
-        signature: SIGNATURE,
-        failureReason: null,
-      })
+      expect.objectContaining({ status: "submitted", signature: SIGNATURE })
+    );
+    expect(repo.updateTransfer).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ status: "confirmed", expectedStatus: "submitted" })
+    );
+    expect(transferEvents.emitTransferEvent).toHaveBeenNthCalledWith(
+      1,
+      TEST_ENV,
+      expect.objectContaining({ status: "failed" }),
+      "transfer.transfer.failed",
+      "failed"
     );
     expect(solanaRpc.sendTransaction).toHaveBeenCalledTimes(2);
   });
 
-  it("stores a signing failure without attempting an SPC send", async () => {
+  it("records a signing failure without attempting an SPC send", async () => {
     vi.mocked(solanaServices.createOrgSigner).mockResolvedValue(await generateKeyPairSigner());
 
     const result = await createChannelTransfer(TEST_ENV, makeInput());
@@ -297,47 +422,36 @@ describe("createChannelTransfer", () => {
       failureReason: "Resolved signing wallet does not match the transfer wallet",
     });
     expect(solanaRpc.sendTransaction).not.toHaveBeenCalled();
-    expect(repo.createTransfer).toHaveBeenCalledWith(
+    expect(repo.updateTransfer).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "failed",
-        signature: null,
         failureReason: "Resolved signing wallet does not match the transfer wallet",
       })
     );
   });
 
-  it("returns the SPC signature as confirmed when persistence fails after accept", async () => {
+  it("fails the request without sending when the pending row cannot be stored", async () => {
     vi.mocked(repo.createTransfer).mockResolvedValueOnce(null);
+
+    await expect(createChannelTransfer(TEST_ENV, makeInput())).rejects.toMatchObject({
+      code: "INTERNAL_ERROR",
+    });
+
+    // Nothing was broadcast, so there is no funds movement to reconcile.
+    expect(solanaRpc.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("leaves the row pending and still returns it when the status write fails after accept", async () => {
+    vi.mocked(repo.updateTransfer).mockRejectedValueOnce(new Error("database unavailable"));
 
     const result = await createChannelTransfer(TEST_ENV, makeInput());
 
     expect(solanaRpc.sendTransaction).toHaveBeenCalledOnce();
+    // The id is the real persisted one, so an operator can find the stuck row.
     expect(result).toMatchObject({
-      status: "confirmed",
-      signature: SIGNATURE,
-      failureReason: null,
+      id: "pct_transfer_test",
+      status: "pending",
       amount: "1.25",
     });
-    expect(result.id).toMatch(/^pct_/);
-    expect(transferEvents.emitTransferEvent).toHaveBeenCalledWith(
-      TEST_ENV,
-      expect.objectContaining({ status: "confirmed", signature: SIGNATURE }),
-      "transfer.transfer.confirmed",
-      "confirmed"
-    );
-  });
-
-  it("returns a failed terminal DTO when persistence throws after an SPC error", async () => {
-    vi.mocked(solanaRpc.sendTransaction).mockRejectedValueOnce(new Error("SPC rejected transfer"));
-    vi.mocked(repo.createTransfer).mockRejectedValueOnce(new Error("database unavailable"));
-
-    const result = await createChannelTransfer(TEST_ENV, makeInput());
-
-    expect(result).toMatchObject({
-      status: "failed",
-      signature: expect.any(String),
-      failureReason: "SPC rejected transfer",
-    });
-    expect(result.id).toMatch(/^pct_/);
   });
 });

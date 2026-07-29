@@ -89,7 +89,22 @@ vi.mock("./transfer-progress", () => ({
   ),
 }));
 
+import { getMessages } from "@/i18n/messages";
+import { I18nProvider } from "@/i18n/provider";
 import { TransferForm } from "./transfer-form";
+
+/** Passed as `wrapper` so `rerender` keeps the provider in place. */
+function I18nWrapper({ children }: { children: ReactNode }) {
+  return (
+    <I18nProvider locale="en" messages={getMessages("en")}>
+      {children}
+    </I18nProvider>
+  );
+}
+
+function renderForm(props: ComponentProps<typeof TransferForm>) {
+  return render(<TransferForm {...props} />, { wrapper: I18nWrapper });
+}
 
 const channels: PrivateChannelMembershipChannelDto[] = [
   { id: "channel_alpha", name: "Alpha", isDefault: true },
@@ -152,7 +167,7 @@ function makeTransfer(overrides: Partial<PrivateChannelTransfer> = {}): PrivateC
     recipient: alphaRecipients[0]?.wallets[0]?.pubkey ?? "",
     mint: "Usdc111111111111111111111111111111111111",
     amount: "1.25",
-    status: "confirmed",
+    status: "submitted",
     signature: "signature",
     failureReason: null,
     createdAt: "2026-07-28T00:00:00.000Z",
@@ -175,13 +190,11 @@ async function renderReadyForm() {
     recipients: alphaRecipients,
   });
   const user = userEvent.setup();
-  render(
-    <TransferForm
-      channels={channels}
-      scopeKey="org_test:project_test:pci_test"
-      sourceWallets={sourceWallets}
-    />
-  );
+  renderForm({
+    channels,
+    scopeKey: "org_test:project_test:pci_test",
+    sourceWallets,
+  });
   await screen.findByRole("option", { name: /Alice.*alice@example\.com.*Alic…1111/ });
   await user.selectOptions(screen.getByLabelText("Recipient wallet"), "pcvw_alice");
   await user.type(screen.getByLabelText("Amount (USDC)"), "1.25");
@@ -199,26 +212,22 @@ beforeEach(() => {
 
 describe("TransferForm", () => {
   it("explains when the authenticated member has no eligible channels", () => {
-    render(
-      <TransferForm
-        channels={[]}
-        scopeKey="org_test:project_test:pci_test"
-        sourceWallets={sourceWallets}
-      />
-    );
+    renderForm({
+      channels: [],
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets,
+    });
 
     expect(screen.getByText(/not a member of any active private channel/i)).toBeTruthy();
     expect(mocks.fetchTransferRecipientsAction).not.toHaveBeenCalled();
   });
 
   it("does not offer unverified or non-signable source wallets", () => {
-    render(
-      <TransferForm
-        channels={channels}
-        scopeKey="org_test:project_test:pci_test"
-        sourceWallets={[]}
-      />
-    );
+    renderForm({
+      channels,
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets: [],
+    });
 
     expect(screen.getByText(/no verified custody wallet that SDP can sign with/i)).toBeTruthy();
     expect(mocks.fetchTransferRecipientsAction).not.toHaveBeenCalled();
@@ -227,13 +236,11 @@ describe("TransferForm", () => {
   it("shows an empty state when a channel has no eligible recipient wallets", async () => {
     mocks.fetchTransferRecipientsAction.mockResolvedValue({ ok: true, recipients: [] });
 
-    render(
-      <TransferForm
-        channels={channels}
-        scopeKey="org_test:project_test:pci_test"
-        sourceWallets={sourceWallets}
-      />
-    );
+    renderForm({
+      channels,
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets,
+    });
 
     expect(
       await screen.findByText(/no other channel member has a verified wallet eligible to receive/i)
@@ -249,13 +256,11 @@ describe("TransferForm", () => {
       .mockResolvedValueOnce({ ok: true, recipients: alphaRecipients })
       .mockReturnValueOnce(betaResponse.promise);
     const user = userEvent.setup();
-    render(
-      <TransferForm
-        channels={channels}
-        scopeKey="org_test:project_test:pci_test"
-        sourceWallets={sourceWallets}
-      />
-    );
+    renderForm({
+      channels,
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets,
+    });
 
     await screen.findByRole("option", { name: /Alic…1111/ });
     await user.selectOptions(screen.getByLabelText("Recipient wallet"), "pcvw_alice");
@@ -283,13 +288,11 @@ describe("TransferForm", () => {
       .mockReturnValueOnce(alphaResponse.promise)
       .mockReturnValueOnce(betaResponse.promise);
     const user = userEvent.setup();
-    render(
-      <TransferForm
-        channels={channels}
-        scopeKey="org_test:project_test:pci_test"
-        sourceWallets={sourceWallets}
-      />
-    );
+    renderForm({
+      channels,
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets,
+    });
 
     await user.selectOptions(screen.getByLabelText("Channel"), "channel_beta");
     betaResponse.resolve({ ok: true, recipients: betaRecipients });
@@ -331,7 +334,7 @@ describe("TransferForm", () => {
     await waitFor(() => expect(mocks.createTransferAction).toHaveBeenCalledTimes(1));
 
     response.resolve({ ok: true, transfer: makeTransfer() });
-    await screen.findByText("Progress: confirmed");
+    await screen.findByText("Progress: submitted");
   });
 
   it("freezes financial fields during a slow submit and keeps result labels", async () => {
@@ -363,7 +366,7 @@ describe("TransferForm", () => {
     expect(mocks.fetchTransferRecipientsAction).toHaveBeenCalledTimes(1);
 
     response.resolve({ ok: true, transfer: makeTransfer() });
-    await screen.findByText("Progress: confirmed");
+    await screen.findByText("Progress: submitted");
     expect(screen.getByText("Submitted sender: Treasury (Send…1111)")).toBeTruthy();
     expect(
       screen.getByText("Submitted recipient: Alice (alice@example.com) · Alic…1111")
@@ -423,19 +426,17 @@ describe("TransferForm", () => {
         }),
       });
     const user = userEvent.setup();
-    const view = render(
-      <TransferForm
-        channels={channels}
-        scopeKey="org_one:project_one:instance_one"
-        sourceWallets={sourceWallets}
-      />
-    );
+    const view = renderForm({
+      channels,
+      scopeKey: "org_one:project_one:instance_one",
+      sourceWallets,
+    });
 
     await screen.findByRole("option", { name: /Alic…1111/ });
     await user.selectOptions(screen.getByLabelText("Recipient wallet"), "pcvw_alice");
     await user.type(screen.getByLabelText("Amount (USDC)"), "1.25");
     await user.click(screen.getByRole("button", { name: "Transfer USDC" }));
-    await screen.findByText("Progress: confirmed");
+    await screen.findByText("Progress: submitted");
 
     view.rerender(
       <TransferForm
@@ -445,7 +446,7 @@ describe("TransferForm", () => {
       />
     );
 
-    expect(screen.queryByText("Progress: confirmed")).toBeNull();
+    expect(screen.queryByText("Progress: submitted")).toBeNull();
     expect(screen.getByLabelText("Channel")).toHaveProperty("value", "channel_gamma");
     expect(screen.getByLabelText("From verified wallet")).toHaveProperty("value", "wallet_gamma");
     expect(screen.getByLabelText("Amount (USDC)")).toHaveProperty("value", "");

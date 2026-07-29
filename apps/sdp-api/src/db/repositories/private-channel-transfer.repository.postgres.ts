@@ -2,12 +2,14 @@ import type { PrivateChannelTransferRecipientDto } from "@sdp/types";
 import type { AppDb } from "@/db";
 import {
   type CreatePrivateChannelTransferInput,
+  DEFAULT_TRANSFER_LIST_LIMIT,
   generatePrivateChannelTransferId,
   type ListEligiblePrivateChannelTransferRecipientsInput,
   type ListPrivateChannelTransfersInput,
   type PrivateChannelTransferProjectScope,
   type PrivateChannelTransferRepository,
   type PrivateChannelTransferRow,
+  type UpdatePrivateChannelTransferInput,
 } from "./private-channel-transfer.repository";
 
 function mapRow(row: Record<string, unknown>): PrivateChannelTransferRow {
@@ -53,8 +55,8 @@ export function createPostgresPrivateChannelTransferRepository(
                id, organization_id, project_id, instance_id, channel_id,
                sender_private_channel_user_id, recipient_private_channel_user_id,
                sender_wallet_id, recipient_verified_wallet_id,
-               sender, recipient, mint, amount, status, signature, failure_reason
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               sender, recipient, mint, amount, status
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
           RETURNING *`
         )
         .bind(
@@ -70,10 +72,33 @@ export function createPostgresPrivateChannelTransferRepository(
           input.sender,
           input.recipient,
           input.mint,
-          input.amount,
+          input.amount
+        )
+        .first<Record<string, unknown>>();
+      return row ? mapRow(row) : null;
+    },
+
+    async updateTransfer(input: UpdatePrivateChannelTransferInput) {
+      // COALESCE preserves fields the caller didn't touch. The (?::text IS NULL
+      // OR status = ?) pair is a compare-and-swap guard, as in the withdrawal repo.
+      const row = await db
+        .prepare(
+          `UPDATE private_channel_transfers
+              SET status = ?,
+                  signature = COALESCE(?, signature),
+                  failure_reason = COALESCE(?, failure_reason),
+                  updated_at = sdp_iso_now()
+            WHERE id = ?
+              AND (?::text IS NULL OR status = ?)
+          RETURNING *`
+        )
+        .bind(
           input.status,
-          input.signature,
-          input.failureReason
+          input.signature ?? null,
+          input.failureReason ?? null,
+          input.id,
+          input.expectedStatus ?? null,
+          input.expectedStatus ?? null
         )
         .first<Record<string, unknown>>();
       return row ? mapRow(row) : null;
@@ -94,16 +119,18 @@ export function createPostgresPrivateChannelTransferRepository(
 
     async listTransfersByProject(input: ListPrivateChannelTransfersInput) {
       const channelFilter = input.channelId === undefined ? "" : " AND channel_id = ?";
+      const limit = input.limit ?? DEFAULT_TRANSFER_LIST_LIMIT;
       const statement = db.prepare(
         `SELECT * FROM private_channel_transfers
           WHERE organization_id = ?
             AND project_id = ?
             ${channelFilter}
-          ORDER BY created_at DESC, id DESC`
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?`
       );
       const result = await (input.channelId === undefined
-        ? statement.bind(input.organizationId, input.projectId)
-        : statement.bind(input.organizationId, input.projectId, input.channelId)
+        ? statement.bind(input.organizationId, input.projectId, limit)
+        : statement.bind(input.organizationId, input.projectId, input.channelId, limit)
       ).all<Record<string, unknown>>();
       return result.results.map(mapRow);
     },

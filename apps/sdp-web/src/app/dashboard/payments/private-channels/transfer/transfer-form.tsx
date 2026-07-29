@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
+import { useTranslations } from "@/i18n/provider";
 import { createTransferAction, fetchTransferRecipientsAction } from "./actions";
 import { TransferProgress } from "./transfer-progress";
 import { getTransferAmountError } from "./transfer-validation";
@@ -67,6 +68,7 @@ export function TransferForm({ scopeKey, ...props }: TransferFormProps) {
 }
 
 function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, "scopeKey">) {
+  const t = useTranslations();
   const [channelId, setChannelId] = useState(channels[0]?.id ?? "");
   const [walletId, setWalletId] = useState(sourceWallets[0]?.walletId ?? "");
   const [recipientVerifiedWalletId, setRecipientVerifiedWalletId] = useState("");
@@ -111,7 +113,10 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
         if (result.ok) {
           setRecipientLoad({ status: "ready", recipients: result.recipients });
         } else {
-          setRecipientLoad({ status: "error", message: result.message });
+          setRecipientLoad({
+            status: "error",
+            message: "messageKey" in result ? t(result.messageKey) : result.message,
+          });
         }
       } catch (loadError) {
         if (!active || request !== recipientRequest.current) {
@@ -122,20 +127,19 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           message:
             loadError instanceof Error
               ? loadError.message
-              : "Verified recipient wallets could not be loaded.",
+              : t("DashboardPrivateChannels.transfer.recipientsLoadFailed"),
         });
       }
     })();
     return () => {
       active = false;
     };
-  }, [channelId, channels.length, recipientReload, sourceWallets.length]);
+  }, [channelId, channels.length, recipientReload, sourceWallets.length, t]);
 
   if (channels.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        You are not a member of any active private channel. Ask a channel administrator to add you
-        before making a transfer.
+        {t("DashboardPrivateChannels.transfer.noChannels")}
       </p>
     );
   }
@@ -143,8 +147,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
   if (sourceWallets.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        You have no verified custody wallet that SDP can sign with. Verify a provisioned wallet
-        under Overview before making a transfer.
+        {t("DashboardPrivateChannels.transfer.noSourceWallets")}
       </p>
     );
   }
@@ -177,7 +180,8 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     );
   }
 
-  const amountError = showAmountError ? getTransferAmountError(amount) : null;
+  const amountErrorKey = showAmountError ? getTransferAmountError(amount) : null;
+  const amountError = amountErrorKey ? t(amountErrorKey) : null;
 
   const submit = () => {
     if (submitting.current) {
@@ -185,13 +189,15 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     }
 
     setShowAmountError(true);
-    const validationMessage = getTransferAmountError(amount);
-    if (validationMessage || !channelId || !walletId || !recipientVerifiedWalletId) {
+    const validationKey = getTransferAmountError(amount);
+    if (validationKey || !channelId || !walletId || !recipientVerifiedWalletId) {
       setError(
-        validationMessage ??
-          (!recipientVerifiedWalletId
-            ? "Select a verified recipient wallet."
-            : "Complete every transfer field.")
+        t(
+          validationKey ??
+            (recipientVerifiedWalletId
+              ? "DashboardPrivateChannels.transfer.incomplete"
+              : "DashboardPrivateChannels.transfer.selectRecipient")
+        )
       );
       return;
     }
@@ -215,22 +221,26 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           setSubmittedTransfer({ transfer: result.transfer, ...submittedLabels });
           if (result.transfer.status === "failed") {
             toast.error(
-              result.transfer.failureReason ?? "The private-channel transfer failed to submit."
+              result.transfer.failureReason ?? t("DashboardPrivateChannels.transfer.failedToast")
             );
+          } else if (result.transfer.status === "confirmed") {
+            toast.success(t("DashboardPrivateChannels.transfer.confirmedToast"));
           } else {
-            toast.success("Transfer confirmed");
+            // `submitted`/`pending`: accepted but no execution verdict, so this must
+            // not be a success toast.
+            toast.warning(t("DashboardPrivateChannels.transfer.submittedToast"));
           }
-        } else {
+        } else if (result.kind === "server") {
           setError(result.message);
-          if (result.kind === "server") {
-            toast.error(result.message);
-          }
+          toast.error(result.message);
+        } else {
+          setError(t(result.messageKey));
         }
       } catch (submitError) {
         const message =
           submitError instanceof Error
             ? submitError.message
-            : "The transfer could not be submitted. Retry with the same details.";
+            : t("DashboardPrivateChannels.transfer.submitFailed");
         setError(message);
         toast.error(message);
       } finally {
@@ -248,15 +258,13 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
       }}
     >
       <p className="text-muted-foreground text-sm">
-        This transfer is signed from your selected verified wallet and can only go to another
-        verified member wallet in the selected channel. Balances belong to the wallet and are shared
-        across logical channels.
+        {t("DashboardPrivateChannels.transfer.formIntro")}
       </p>
 
       <div className="space-y-1.5">
-        <Label>Channel</Label>
+        <Label>{t("DashboardPrivateChannels.transfer.channel")}</Label>
         <Select
-          ariaLabel="Channel"
+          ariaLabel={t("DashboardPrivateChannels.transfer.channel")}
           disabled={isSubmitting}
           value={channelId}
           onValueChange={(value) => {
@@ -273,16 +281,16 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           {channels.map((channel) => (
             <SelectItem key={channel.id} value={channel.id}>
               {channel.name}
-              {channel.isDefault ? " (Default)" : ""}
+              {channel.isDefault ? t("DashboardPrivateChannels.transfer.channelDefaultSuffix") : ""}
             </SelectItem>
           ))}
         </Select>
       </div>
 
       <div className="space-y-1.5">
-        <Label>From verified wallet</Label>
+        <Label>{t("DashboardPrivateChannels.transfer.fromWallet")}</Label>
         <Select
-          ariaLabel="From verified wallet"
+          ariaLabel={t("DashboardPrivateChannels.transfer.fromWallet")}
           disabled={isSubmitting}
           value={walletId}
           onValueChange={(value) => {
@@ -303,10 +311,10 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
       </div>
 
       <div className="space-y-1.5">
-        <Label>Recipient wallet</Label>
+        <Label>{t("DashboardPrivateChannels.transfer.recipientWallet")}</Label>
         {recipientLoad.status === "loading" && (
           <p aria-live="polite" className="text-muted-foreground text-sm" role="status">
-            Loading verified recipient wallets…
+            {t("DashboardPrivateChannels.transfer.recipientsLoading")}
           </p>
         )}
         {recipientLoad.status === "error" && (
@@ -320,18 +328,18 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
               type="button"
               variant="secondary"
             >
-              Retry recipients
+              {t("DashboardPrivateChannels.transfer.recipientsRetry")}
             </Button>
           </div>
         )}
         {recipientLoad.status === "ready" && recipientOptions.length === 0 && (
           <p className="text-muted-foreground text-sm">
-            No other channel member has a verified wallet eligible to receive this transfer.
+            {t("DashboardPrivateChannels.transfer.recipientsEmpty")}
           </p>
         )}
         {recipientLoad.status === "ready" && recipientOptions.length > 0 && (
           <Select
-            ariaLabel="Recipient wallet"
+            ariaLabel={t("DashboardPrivateChannels.transfer.recipientWallet")}
             disabled={isSubmitting}
             value={recipientVerifiedWalletId}
             onValueChange={(value) => {
@@ -353,7 +361,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="transfer-amount">Amount (USDC)</Label>
+        <Label htmlFor="transfer-amount">{t("DashboardPrivateChannels.transfer.amount")}</Label>
         <Input
           aria-describedby={amountError ? "transfer-amount-error" : "transfer-amount-help"}
           aria-invalid={Boolean(amountError)}
@@ -372,7 +380,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
               setAmount(event.target.value);
             }
           }}
-          placeholder="1.5"
+          placeholder={t("DashboardPrivateChannels.transfer.amountPlaceholder")}
           step="0.000001"
           value={amount}
         />
@@ -382,7 +390,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           </p>
         ) : (
           <p className="text-muted-foreground text-xs" id="transfer-amount-help">
-            Enter a positive amount with up to 6 decimal places.
+            {t("DashboardPrivateChannels.transfer.amountHelp")}
           </p>
         )}
       </div>
@@ -400,7 +408,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
         type="submit"
       >
         {isSubmitting && <Loader2Icon aria-hidden="true" className="mr-2 size-4 animate-spin" />}
-        Transfer USDC
+        {t("DashboardPrivateChannels.transfer.submit")}
       </Button>
     </form>
   );

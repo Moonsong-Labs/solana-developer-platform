@@ -1,5 +1,5 @@
 import { hashString } from "@sdp/payments/hash";
-import { type CachedApiKey, type PrivateChannelTransfer } from "@sdp/types";
+import type { CachedApiKey, PrivateChannelTransfer } from "@sdp/types";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db";
 import app from "@/index";
@@ -98,7 +98,7 @@ function transferDto(overrides: Partial<PrivateChannelTransfer> = {}): PrivateCh
     recipient: RECIPIENT_ADDRESS,
     mint: OUTSIDER_ADDRESS,
     amount: "1.5",
-    status: "confirmed",
+    status: "submitted",
     signature: "signature-route",
     failureReason: null,
     createdAt: "2026-07-28T12:00:00.000Z",
@@ -344,7 +344,7 @@ async function seedTransfer(input: {
   projectId?: string;
   instanceId?: string;
   channelId?: string;
-  status?: "confirmed" | "failed";
+  status?: "pending" | "submitted" | "failed";
 }): Promise<void> {
   await getDb(env)
     .prepare(
@@ -368,7 +368,7 @@ async function seedTransfer(input: {
       ACTOR_ADDRESS,
       RECIPIENT_ADDRESS,
       OUTSIDER_ADDRESS,
-      input.status ?? "confirmed"
+      input.status ?? "submitted"
     )
     .run();
 }

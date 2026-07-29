@@ -2,6 +2,7 @@
 
 import type { PrivateChannelTransfer, PrivateChannelTransferRecipientDto } from "@sdp/types";
 import { revalidatePath } from "next/cache";
+import type { MessageKey } from "@/i18n/messages";
 import {
   createPrivateChannelTransfer,
   fetchPrivateChannelTransferRecipients,
@@ -16,42 +17,55 @@ export interface CreateTransferInput {
   amount: string;
 }
 
+/**
+ * Validation failures carry a `messageKey` for the client to translate; server
+ * failures carry already-formatted text from the API, which has no key.
+ */
 export type CreateTransferResult =
   | { ok: true; transfer: PrivateChannelTransfer }
-  | { ok: false; kind: "validation"; message: string }
+  | { ok: false; kind: "validation"; messageKey: MessageKey }
   | { ok: false; kind: "server"; message: string };
 
 export type FetchTransferRecipientsResult =
   | { ok: true; recipients: PrivateChannelTransferRecipientDto[] }
+  | { ok: false; messageKey: MessageKey }
   | { ok: false; message: string };
 
 export async function createTransferAction(
   input: CreateTransferInput
 ): Promise<CreateTransferResult> {
   if (!input.channelId) {
-    return { ok: false, kind: "validation", message: "Select a channel." };
+    return {
+      ok: false,
+      kind: "validation",
+      messageKey: "DashboardPrivateChannels.transfer.selectChannel",
+    };
   }
   if (!input.walletId) {
-    return { ok: false, kind: "validation", message: "Select a verified source wallet." };
+    return {
+      ok: false,
+      kind: "validation",
+      messageKey: "DashboardPrivateChannels.transfer.selectSourceWallet",
+    };
   }
   if (!input.recipientVerifiedWalletId) {
-    return { ok: false, kind: "validation", message: "Select a verified recipient wallet." };
+    return {
+      ok: false,
+      kind: "validation",
+      messageKey: "DashboardPrivateChannels.transfer.selectRecipient",
+    };
   }
   const amountError = getTransferAmountError(input.amount);
   if (amountError) {
-    return { ok: false, kind: "validation", message: amountError };
+    return { ok: false, kind: "validation", messageKey: amountError };
   }
   try {
     const client = await createSdpApiClient();
-    const transfer = await createPrivateChannelTransfer(
-      client,
-      input.channelId,
-      {
-        walletId: input.walletId,
-        recipientVerifiedWalletId: input.recipientVerifiedWalletId,
-        amount: input.amount.trim(),
-      }
-    );
+    const transfer = await createPrivateChannelTransfer(client, input.channelId, {
+      walletId: input.walletId,
+      recipientVerifiedWalletId: input.recipientVerifiedWalletId,
+      amount: input.amount.trim(),
+    });
     revalidatePath("/dashboard/payments/private-channels/transfer");
     return { ok: true, transfer };
   } catch (error) {
@@ -63,7 +77,10 @@ export async function fetchTransferRecipientsAction(
   channelId: string
 ): Promise<FetchTransferRecipientsResult> {
   if (!channelId) {
-    return { ok: false, message: "Select a channel to load verified recipients." };
+    return {
+      ok: false,
+      messageKey: "DashboardPrivateChannels.transfer.selectChannelForRecipients",
+    };
   }
   try {
     const client = await createSdpApiClient();
@@ -73,4 +90,3 @@ export async function fetchTransferRecipientsAction(
     return { ok: false, message: extractSdpApiErrorMessage(error) };
   }
 }
-

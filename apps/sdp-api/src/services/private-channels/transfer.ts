@@ -1,17 +1,12 @@
 import * as solanaRpc from "@sdp/rpc/solana";
 import { AmountError, parseDecimalAmount } from "@sdp/solana/amount";
-import type {
-  PrivateChannelInstance,
-  PrivateChannelTransfer,
-  PrivateChannelMemberTransferStatus,
-} from "@sdp/types";
+import type { PrivateChannelInstance, PrivateChannelTransfer } from "@sdp/types";
 import { PRIVATE_CHANNEL_EVENT_STATUSES, PRIVATE_CHANNEL_EVENT_TYPES } from "@sdp/types";
 import {
   type Address,
   address,
   appendTransactionMessageInstructions,
   createTransactionMessage,
-  getSignatureFromTransaction,
   getTransactionEncoder,
   pipe,
   type Signature,
@@ -28,7 +23,6 @@ import {
 } from "@solana-program/token";
 import {
   createPrivateChannelTransferRepository,
-  generatePrivateChannelTransferId,
   mapPrivateChannelTransferRow,
   type PrivateChannelTransferRepository,
   type PrivateChannelTransferRow,
@@ -40,7 +34,9 @@ import type { Env } from "@/types/env";
 import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 import { getChannelBalance } from "./balance";
 import { defaultChannelMint, inferCluster, knownMintDecimals } from "./mint";
+import { confirmAndPersistTransfer } from "./transfer-confirm";
 import { emitTransferEvent } from "./transfer-events";
+import { describeTxError, isNodeAtCapacityError } from "./tx-error";
 
 type TransferInstance = Pick<PrivateChannelInstance, "id" | "gatewayUrl" | "chainRpcUrl">;
 
@@ -99,7 +95,7 @@ export async function buildClassicTransferInstructions(input: {
   };
 }
 
-async function prepareTransferTransaction(
+async function broadcastTransfer(
   env: Env,
   input: {
     instance: TransferInstance;
@@ -111,7 +107,10 @@ async function prepareTransferTransaction(
     amountBaseUnits: bigint;
     gatewayAuth: SpcAuthContext;
   }
-): Promise<{ signature: Signature; signedBytes: Uint8Array }> {
+): Promise<Signature> {
+  // Signer derivation + the (blockhash-independent) instructions are built ONCE,
+  // outside the retried gateway unit — a 401 retry re-signs against a fresh
+  // blockhash but must not re-derive the signer.
   const signer = await solanaServices.createOrgSigner(
     env,
     input.organizationId,
@@ -128,111 +127,82 @@ async function prepareTransferTransaction(
     recipient: input.recipient,
     amountBaseUnits: input.amountBaseUnits,
   });
-  const { blockhash, lastValidBlockHeight } = await withGatewayRpc(
-    env,
-    input.instance.gatewayUrl,
-    input.gatewayAuth,
-    (gatewayRpc) => solanaRpc.getRecentBlockhash(gatewayRpc, "confirmed")
-  );
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayerSigner(signer, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions(instructions, m)
-  );
-  const signed = await signTransactionMessageWithSigners(message);
-  return {
-    signature: getSignatureFromTransaction(signed),
-    signedBytes: new Uint8Array(getTransactionEncoder().encode(signed)),
-  };
-}
 
-type PersistTransferInput = CreateChannelTransferInput & {
-  sender: Address;
-  recipientAddress: Address;
-  mint: Address;
-  status: PrivateChannelMemberTransferStatus;
-  signature: Signature | null;
-  failureReason: string | null;
-};
-
-/** Build a client-visible terminal row when the audit insert cannot be stored. */
-function ephemeralTransferRow(input: PersistTransferInput): PrivateChannelTransferRow {
-  const now = new Date().toISOString();
-  return {
-    id: generatePrivateChannelTransferId(),
-    organization_id: input.organizationId,
-    project_id: input.projectId,
-    instance_id: input.instance.id,
-    channel_id: input.channelId,
-    sender_private_channel_user_id: input.gatewayAuth.pcUserId,
-    recipient_private_channel_user_id: input.recipient.privateChannelUserId,
-    sender_wallet_id: input.wallet.walletId,
-    recipient_verified_wallet_id: input.recipient.verifiedWalletId,
-    sender: input.sender,
-    recipient: input.recipientAddress,
-    mint: input.mint,
-    amount: input.amount,
-    status: input.status,
-    signature: input.signature,
-    failure_reason: input.failureReason,
-    created_at: now,
-    updated_at: now,
-  };
+  // Blockhash + sign + send is ONE withGatewayRpc unit, matching the withdrawal
+  // burn. This is load-bearing, not stylistic: SPC's dedup stage silently drops a
+  // transaction whose blockhash has left the live window, so the hash must not be
+  // allowed to age across a separate round trip. Signing inside the unit also
+  // means a 401 retry re-signs against a fresh blockhash and therefore carries a
+  // NEW signature — resending identical bytes would be discarded as a duplicate.
+  return withGatewayRpc(env, input.instance.gatewayUrl, input.gatewayAuth, async (gatewayRpc) => {
+    // SPC accepts and then discards `commitment` (one sequencer, no fork choice),
+    // so the level here is inert; it is passed only to match the other SPC paths.
+    const { blockhash, lastValidBlockHeight } = await solanaRpc.getRecentBlockhash(
+      gatewayRpc,
+      "confirmed"
+    );
+    const message = pipe(
+      createTransactionMessage({ version: 0 }),
+      (m) => setTransactionMessageFeePayerSigner(signer, m),
+      (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
+      (m) => appendTransactionMessageInstructions(instructions, m)
+    );
+    const signed = await signTransactionMessageWithSigners(message);
+    const signedBytes = new Uint8Array(getTransactionEncoder().encode(signed));
+    return solanaRpc.sendTransaction(gatewayRpc, signedBytes);
+  });
 }
 
 /**
- * Persist the terminal result. On insert failure, still return a DTO-shaped row so
- * callers can surface the SPC outcome (especially a post-accept signature) instead of
- * a bare 500 that invites an unsafe blind retry.
+ * Advance a `pending` row. The CAS guard means a lost race leaves the row alone;
+ * the caller falls back to what it already has rather than inventing a result.
  */
-async function persistTransfer(
+async function settleTransfer(
   repo: PrivateChannelTransferRepository,
-  input: PersistTransferInput
+  pending: PrivateChannelTransferRow,
+  outcome:
+    | { status: "submitted"; signature: Signature }
+    | { status: "failed"; failureReason: string }
 ): Promise<PrivateChannelTransferRow> {
   try {
-    const row = await repo.createTransfer({
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      instanceId: input.instance.id,
-      channelId: input.channelId,
-      senderPrivateChannelUserId: input.gatewayAuth.pcUserId,
-      recipientPrivateChannelUserId: input.recipient.privateChannelUserId,
-      senderWalletId: input.wallet.walletId,
-      recipientVerifiedWalletId: input.recipient.verifiedWalletId,
-      sender: input.sender,
-      recipient: input.recipientAddress,
-      mint: input.mint,
-      amount: input.amount,
-      status: input.status,
-      signature: input.signature,
-      failureReason: input.failureReason,
+    const row = await repo.updateTransfer({
+      id: pending.id,
+      status: outcome.status,
+      signature: outcome.status === "submitted" ? outcome.signature : null,
+      failureReason: outcome.status === "failed" ? outcome.failureReason : null,
+      expectedStatus: "pending",
     });
     if (row) {
       return row;
     }
+    console.error("private-channel-transfer settle found no pending row", {
+      transferId: pending.id,
+      status: outcome.status,
+    });
   } catch (error) {
-    console.error("private-channel-transfer persist failed", {
-      status: input.status,
-      signature: input.signature,
-      channelId: input.channelId,
+    // The transfer's real outcome is already known; losing the status write only
+    // costs accuracy in history, so surface it and leave the row `pending` for an
+    // operator rather than failing a request whose funds may have moved.
+    console.error("private-channel-transfer settle failed", {
+      transferId: pending.id,
+      status: outcome.status,
       error: error instanceof Error ? error.message : error,
     });
   }
-
-  console.error("private-channel-transfer returning unpersisted terminal result", {
-    status: input.status,
-    signature: input.signature,
-    channelId: input.channelId,
-  });
-  return ephemeralTransferRow(input);
+  return pending;
 }
 
 /**
- * Send once through SPC, then persist the terminal response.
+ * Persist a `pending` row, send once through SPC, then confirm the result:
+ * `pending` → `submitted` → `confirmed` | `failed`.
  *
- * An SPC success is recorded as confirmed. Any build or SPC error is recorded as
- * failed and may be retried by the user; no status polling or automatic retry occurs.
+ * The confirm read is what makes `confirmed` truthful — SPC accepting a submission
+ * only means it was queued, and one status read is final because SPC has a single
+ * sequencer and no fork choice. See `./transfer-confirm` for the full reasoning and
+ * for why a read that never returns a verdict leaves the row `submitted` rather
+ * than guessing either way.
+ *
+ * Anything that fails before or during execution is `failed` and may be retried.
  */
 export async function createChannelTransfer(
   env: Env,
@@ -266,10 +236,42 @@ export async function createChannelTransfer(
     throw new AppError("INSUFFICIENT_TOKEN_BALANCE");
   }
 
+  // Persist BEFORE anything is broadcast, so a request that dies mid-flight still
+  // leaves an auditable row. A failure here means nothing was sent, which is a
+  // legitimate 500 — there is no funds movement to report.
   const repo = createPrivateChannelTransferRepository(env);
-  let prepared: { signature: Signature; signedBytes: Uint8Array };
+  const pending = await repo.createTransfer({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    instanceId: input.instance.id,
+    channelId: input.channelId,
+    senderPrivateChannelUserId: input.gatewayAuth.pcUserId,
+    recipientPrivateChannelUserId: input.recipient.privateChannelUserId,
+    senderWalletId: input.wallet.walletId,
+    recipientVerifiedWalletId: input.recipient.verifiedWalletId,
+    sender,
+    recipient: recipientAddress,
+    mint,
+    amount: input.amount,
+  });
+  if (!pending) {
+    throw new AppError("INTERNAL_ERROR", "Failed to persist the transfer.");
+  }
+
+  const fail = async (failureReason: string) => {
+    const failed = await settleTransfer(repo, pending, { status: "failed", failureReason });
+    await emitTransferEvent(
+      env,
+      failed,
+      PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_FAILED,
+      PRIVATE_CHANNEL_EVENT_STATUSES.FAILED
+    );
+    return mapPrivateChannelTransferRow(failed);
+  };
+
+  let signature: Signature;
   try {
-    prepared = await prepareTransferTransaction(env, {
+    signature = await broadcastTransfer(env, {
       instance: input.instance,
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -280,53 +282,49 @@ export async function createChannelTransfer(
       gatewayAuth: input.gatewayAuth,
     });
   } catch (error) {
-    const failed = await persistTransfer(repo, {
-      ...input,
-      sender,
-      recipientAddress,
-      mint,
-      status: "failed",
-      signature: null,
-      failureReason: error instanceof Error ? error.message : "Transfer preparation failed.",
-    });
-    return mapPrivateChannelTransferRow(failed);
+    // A capacity shed happens at ingress before the dedup insert, so nothing was
+    // queued and the same transfer is immediately retryable. Say so, instead of
+    // filing it as if SPC had rejected the transfer itself.
+    if (isNodeAtCapacityError(error)) {
+      return fail("SPC is at capacity and did not accept the transfer. Try again shortly.");
+    }
+    return fail(describeTxError(error, "Transfer submission failed."));
   }
 
-  let gatewaySignature: Signature;
-  try {
-    gatewaySignature = await withGatewayRpc(
-      env,
-      input.instance.gatewayUrl,
-      input.gatewayAuth,
-      (gatewayRpc) => solanaRpc.sendTransaction(gatewayRpc, prepared.signedBytes)
-    );
-  } catch (error) {
-    const failed = await persistTransfer(repo, {
-      ...input,
-      sender,
-      recipientAddress,
-      mint,
-      status: "failed",
-      signature: prepared.signature,
-      failureReason: error instanceof Error ? error.message : "SPC transfer failed.",
-    });
-    return mapPrivateChannelTransferRow(failed);
-  }
-
-  const confirmed = await persistTransfer(repo, {
-    ...input,
-    sender,
-    recipientAddress,
-    mint,
-    status: "confirmed",
-    signature: gatewaySignature,
-    failureReason: null,
-  });
+  let latest = await settleTransfer(repo, pending, { status: "submitted", signature });
+  // `pending`: SPC has accepted the transaction but not yet executed it, so the
+  // event must not claim more than the row does.
   await emitTransferEvent(
     env,
-    confirmed,
-    PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_CONFIRMED,
-    PRIVATE_CHANNEL_EVENT_STATUSES.CONFIRMED
+    latest,
+    PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_SUBMITTED,
+    PRIVATE_CHANNEL_EVENT_STATUSES.PENDING
   );
-  return mapPrivateChannelTransferRow(confirmed);
+
+  const settled = await confirmAndPersistTransfer(env, repo, {
+    transferId: pending.id,
+    gatewayUrl: input.instance.gatewayUrl,
+    signature,
+    gatewayAuth: input.gatewayAuth,
+  });
+  if (settled) {
+    latest = settled;
+    if (latest.status === "confirmed") {
+      await emitTransferEvent(
+        env,
+        latest,
+        PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_CONFIRMED,
+        PRIVATE_CHANNEL_EVENT_STATUSES.CONFIRMED
+      );
+    } else if (latest.status === "failed") {
+      await emitTransferEvent(
+        env,
+        latest,
+        PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_FAILED,
+        PRIVATE_CHANNEL_EVENT_STATUSES.FAILED
+      );
+    }
+  }
+
+  return mapPrivateChannelTransferRow(latest);
 }

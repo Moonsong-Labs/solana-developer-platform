@@ -105,7 +105,7 @@ describe("Private Channel transfer OpenAPI", () => {
     expect(JSON.stringify(create?.responses?.["400"])).toContain('"INSUFFICIENT_TOKEN_BALANCE"');
   });
 
-  it("documents recipient wallets, terminal results, and optional channel filtering", () => {
+  it("documents recipient wallets, lifecycle statuses, and optional channel filtering", () => {
     const document = createOpenApiDocument();
     const recipients =
       document.paths?.["/v1/private-channels/channels/{channelId}/transfer-recipients"]?.get;
@@ -123,8 +123,18 @@ describe("Private Channel transfer OpenAPI", () => {
       in: "query",
       required: false,
     });
-    for (const field of ["privateChannelUserId", "wallets", "pubkey", "confirmed", "failed"]) {
+    for (const field of [
+      "privateChannelUserId",
+      "wallets",
+      "pubkey",
+      "pending",
+      "submitted",
+      "confirmed",
+      "failed",
+    ]) {
       expect(serializedResponses).toContain(`"${field}"`);
     }
+    // Transfers end at `confirmed`; only deposits and withdrawals reach `settled`.
+    expect(serializedResponses).not.toContain('"settled"');
   });
 });

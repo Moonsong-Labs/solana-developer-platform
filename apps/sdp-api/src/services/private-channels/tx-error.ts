@@ -72,3 +72,55 @@ export function describeTxError(error: unknown, fallback: string): string {
   const joined = parts.join(" | ").slice(0, 2000);
   return joined.length > 0 ? joined : fallback;
 }
+
+/**
+ * Describe the `err` field of a signature status — a `TransactionError`, which is a
+ * bare value (`"AccountNotFound"`, `{ InstructionError: [1, { Custom: 1 }] }`) and
+ * not an Error, so `describeTxError` does not apply. Kept verbatim rather than
+ * mapped to prose: the operator reading `failure_reason` needs the real variant.
+ */
+export function describeTransactionErr(err: unknown, fallback: string): string {
+  if (err === undefined || err === null) {
+    return fallback;
+  }
+  const described = stringify(err).slice(0, 2000);
+  return described.length > 0 ? described : fallback;
+}
+
+/**
+ * SPC sheds a submission with JSON-RPC code -32003 when the write pipeline's
+ * ingress queue is full ("Node at capacity, retry shortly"). The shed happens at
+ * ingress BEFORE the dedup cache insert, which SPC guarantees so the identical
+ * transaction stays resubmittable — so this is a "try again", not a failed
+ * transfer. Distinguishing it keeps a capacity blip from being recorded as if the
+ * transfer itself were rejected.
+ *
+ * Only meaningful on a submission: the gateway reuses -32003 for "operator role
+ * required", but only on the operator-gated read methods, never `sendTransaction`.
+ */
+const SPC_NODE_AT_CAPACITY_CODE = -32003;
+
+/** SPC's shed message, matched because `@solana/kit` re-wraps JSON-RPC codes. */
+const NODE_AT_CAPACITY_TEXT = /node at capacity/i;
+
+export function isNodeAtCapacityError(error: unknown): boolean {
+  let current: unknown = error;
+  let depth = 0;
+  while (isRecord(current) && depth < 5) {
+    const context = (current as SolanaErrorLike).context;
+    const code = current.code ?? (isRecord(context) ? context.code : undefined);
+    if (code === SPC_NODE_AT_CAPACITY_CODE) {
+      return true;
+    }
+    if (typeof current.message === "string" && NODE_AT_CAPACITY_TEXT.test(current.message)) {
+      return true;
+    }
+    const cause = (current as SolanaErrorLike).cause;
+    if (!cause || cause === current) {
+      break;
+    }
+    current = cause;
+    depth++;
+  }
+  return false;
+}

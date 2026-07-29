@@ -21,7 +21,7 @@ const TRANSFER: PrivateChannelTransferRow = {
   recipient: "4Nd1mYB7RzSdyWLdgS2vFfrZAzifV44vCV9NFV1mCMbV",
   mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
   amount: "2.5",
-  status: "confirmed",
+  status: "submitted",
   signature: SIGNATURE,
   failure_reason: null,
   created_at: "2026-07-28T10:00:00.000Z",
@@ -43,7 +43,7 @@ afterEach(() => {
 
 describe("emitTransferEvent", () => {
   it("emits a channel-scoped transfer event with the financial payload", async () => {
-    await emitTransferEvent(ENV, TRANSFER, "transfer.transfer.confirmed", "confirmed");
+    await emitTransferEvent(ENV, TRANSFER, "transfer.transfer.submitted", "pending");
 
     expect(emit).toHaveBeenCalledWith({
       organizationId: "org_event_test",
@@ -52,8 +52,8 @@ describe("emitTransferEvent", () => {
       channelId: "pch_event_test",
       sdpUserId: null,
       family: "transfer",
-      type: "transfer.transfer.confirmed",
-      status: "confirmed",
+      type: "transfer.transfer.submitted",
+      status: "pending",
       payload: {
         transferId: "pct_event_test",
         sender: TRANSFER.sender,
@@ -69,7 +69,7 @@ describe("emitTransferEvent", () => {
     emit.mockRejectedValueOnce(new Error("event sink unavailable"));
 
     await expect(
-      emitTransferEvent(ENV, TRANSFER, "transfer.transfer.confirmed", "confirmed")
+      emitTransferEvent(ENV, TRANSFER, "transfer.transfer.submitted", "pending")
     ).resolves.toBeUndefined();
   });
 });

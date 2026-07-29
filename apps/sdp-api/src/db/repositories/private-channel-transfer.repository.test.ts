@@ -49,9 +49,6 @@ function makeInput(
     recipient: RECIPIENT,
     mint: MINT,
     amount: "12.34",
-    status: "confirmed",
-    signature: "transfer_signature",
-    failureReason: null,
     ...overrides,
   };
 }
@@ -230,13 +227,36 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
     return row;
   }
 
-  it("creates and maps a terminal transfer without exposing internal audit fields", async () => {
+  /** Seed a row and advance it out of `pending`, as the service does. */
+  async function seedSubmitted(overrides: Partial<CreatePrivateChannelTransferInput> = {}) {
+    const pending = await seedTransfer(overrides);
+    const row = await repo.updateTransfer({
+      id: pending.id,
+      status: "submitted",
+      signature: "transfer_signature",
+      expectedStatus: "pending",
+    });
+    if (!row) {
+      throw new Error("test setup: updateTransfer returned null");
+    }
+    return row;
+  }
+
+  it("creates a transfer as pending with no signature or failure reason", async () => {
     const row = await seedTransfer();
 
     expect(row.id).toMatch(/^pct_/);
-    expect(row.status).toBe("confirmed");
+    expect(row.status).toBe("pending");
+    expect(row.signature).toBeNull();
+    expect(row.failure_reason).toBeNull();
     expect(row.sender_wallet_id).toBe("wal_pct_sender");
     expect(row.recipient_verified_wallet_id).toBe(RECIPIENT_WALLET_A_ID);
+  });
+
+  it("maps a submitted transfer without exposing internal audit fields", async () => {
+    const row = await seedSubmitted();
+
+    expect(row.status).toBe("submitted");
     expect(row.signature).toBe("transfer_signature");
     expect(row.failure_reason).toBeNull();
 
@@ -251,11 +271,65 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
       recipient: RECIPIENT,
       mint: MINT,
       amount: "12.34",
-      status: "confirmed",
+      status: "submitted",
       signature: "transfer_signature",
       failureReason: null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    });
+  });
+
+  // The confirm write passes no signature, so the column must survive via COALESCE —
+  // the `confirmed` CHECK constraint requires a non-null signature.
+  it("confirms a submitted transfer and keeps its signature", async () => {
+    const submitted = await seedSubmitted();
+
+    const confirmed = await repo.updateTransfer({
+      id: submitted.id,
+      status: "confirmed",
+      expectedStatus: "submitted",
+    });
+
+    expect(confirmed).toMatchObject({
+      status: "confirmed",
+      signature: "transfer_signature",
+      failure_reason: null,
+    });
+  });
+
+  it("does not confirm a row that never reached submitted", async () => {
+    const pending = await seedTransfer();
+
+    expect(
+      await repo.updateTransfer({
+        id: pending.id,
+        status: "confirmed",
+        expectedStatus: "submitted",
+      })
+    ).toBeNull();
+    expect(await repo.getTransferById({ ...SCOPE, id: pending.id })).toMatchObject({
+      status: "pending",
+    });
+  });
+
+  it("only advances a row that is still pending", async () => {
+    const submitted = await seedSubmitted();
+
+    // The compare-and-swap guard makes a second settle a no-op rather than a
+    // regression, so a stale writer cannot walk a terminal row backwards.
+    expect(
+      await repo.updateTransfer({
+        id: submitted.id,
+        status: "failed",
+        failureReason: "stale writer",
+        expectedStatus: "pending",
+      })
+    ).toBeNull();
+
+    expect(await repo.getTransferById({ ...SCOPE, id: submitted.id })).toMatchObject({
+      status: "submitted",
+      signature: "transfer_signature",
+      failure_reason: null,
     });
   });
 
@@ -293,10 +367,12 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
   });
 
   it("stores failed transfer errors as terminal history", async () => {
-    const failed = await seedTransfer({
+    const pending = await seedTransfer();
+    const failed = await repo.updateTransfer({
+      id: pending.id,
       status: "failed",
-      signature: null,
       failureReason: "SPC rejected transfer",
+      expectedStatus: "pending",
     });
 
     expect(failed).toMatchObject({
@@ -307,26 +383,32 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
   });
 
   it("allows repeated attempts with the same financial details", async () => {
-    const first = await seedTransfer({
+    const firstPending = await seedTransfer();
+    const first = await repo.updateTransfer({
+      id: firstPending.id,
       status: "failed",
-      signature: "failed_signature",
       failureReason: "SPC rejected transfer",
+      expectedStatus: "pending",
     });
-    const retry = await seedTransfer({
-      status: "confirmed",
-      signature: "retry_signature",
-      failureReason: null,
-    });
+    const retry = await seedSubmitted();
 
-    expect(first.id).not.toBe(retry.id);
+    expect(first?.id).not.toBe(retry.id);
     const rows = await repo.listTransfersByProject(SCOPE);
     expect(rows).toHaveLength(2);
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: retry.id, status: "confirmed" }),
-        expect.objectContaining({ id: first.id, status: "failed" }),
+        expect.objectContaining({ id: retry.id, status: "submitted" }),
+        expect.objectContaining({ id: firstPending.id, status: "failed" }),
       ])
     );
+  });
+
+  it("caps project history at the requested limit, newest first", async () => {
+    await seedSubmitted();
+    await seedSubmitted();
+    await seedSubmitted();
+
+    expect(await repo.listTransfersByProject({ ...SCOPE, limit: 2 })).toHaveLength(2);
   });
 
   it("groups eligible verified wallets by other channel member", async () => {

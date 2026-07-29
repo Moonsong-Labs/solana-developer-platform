@@ -394,13 +394,15 @@ export const privateChannelTransferSchema = z
     recipient: solanaAddressSchema,
     mint: solanaAddressSchema,
     amount: z.string().openapi({ description: "Decimal amount.", example: "1.5" }),
-    status: z
-      .enum(["confirmed", "failed"])
-      .openapi({ description: "Terminal SPC transfer result.", example: "confirmed" }),
+    status: z.enum(["pending", "submitted", "confirmed", "failed"]).openapi({
+      description:
+        "Transfer lifecycle. `pending` is written before broadcast. `submitted` means SPC accepted the transaction at ingress, which is not yet execution. `confirmed` means SPC executed it and is terminal — SPC runs a single sequencer with no fork choice, so one status read is final. `failed` covers preparation errors, ingress rejection and execution errors. A transfer left at `submitted` means the confirm read returned no verdict.",
+      example: "confirmed",
+    }),
     signature: z
       .string()
       .nullable()
-      .openapi({ description: "SPC signature; null if preparation failed before signing." }),
+      .openapi({ description: "SPC signature. Set once the transfer is submitted." }),
     failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
     createdAt: z.string(),
     updatedAt: z.string(),

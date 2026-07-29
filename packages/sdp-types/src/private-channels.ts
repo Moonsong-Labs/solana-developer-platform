@@ -200,11 +200,28 @@ export interface PrivateChannelWithdrawal {
 }
 
 /**
- * Terminal result for a custody-signed member-to-member channel transfer.
- * Distinct from {@link PrivateChannelTransferStatus}, which is the shared
- * deposit/withdrawal intent lifecycle.
+ * Lifecycle of a custody-signed member-to-member channel transfer. Distinct from
+ * {@link PrivateChannelTransferStatus}, which is the shared deposit/withdrawal
+ * intent lifecycle and runs further (through `confirmed` and `settled`).
+ *
+ * - `pending`: the row is written but nothing has been broadcast yet.
+ * - `submitted`: SPC accepted the transaction at ingress and returned a signature.
+ *   Acceptance is NOT execution: the transaction still flows through dedup →
+ *   sigverify → sequencer → execution, and dedup silently drops a stale-blockhash
+ *   or duplicate transaction without telling the caller.
+ * - `confirmed`: SPC executed the transaction successfully. Terminal and final —
+ *   SPC runs a single sequencer with no fork choice, so one signature-status read
+ *   is authoritative and there is no reorg to walk back. Unlike deposits and
+ *   withdrawals there is no `settled` beyond this: nothing leaves the channel.
+ * - `failed`: preparation errored, ingress rejected the transaction, or execution
+ *   returned a transaction error.
+ *
+ * A row left in `pending` means the request died between the insert and the
+ * broadcast result. A row left in `submitted` means the confirm read never
+ * returned a verdict (transport error, or a dedup drop that will never surface).
+ * Nothing sweeps either, so treat both as an operator signal.
  */
-export type PrivateChannelMemberTransferStatus = "confirmed" | "failed";
+export type PrivateChannelMemberTransferStatus = "pending" | "submitted" | "confirmed" | "failed";
 
 /**
  * A custody-signed token transfer between two verified private-channel member
@@ -223,7 +240,7 @@ export interface PrivateChannelTransfer {
   mint: string;
   amount: string;
   status: PrivateChannelMemberTransferStatus;
-  /** SPC transaction signature; null when preparation failed before signing. */
+  /** SPC transaction signature. Set when `status === "submitted"`. */
   signature: string | null;
   /** Set when `status === "failed"`. */
   failureReason: string | null;
@@ -375,7 +392,11 @@ export const PRIVATE_CHANNEL_EVENT_TYPES = {
   TRANSFER_WITHDRAWAL_CONFIRMED: "transfer.withdrawal.confirmed",
   TRANSFER_WITHDRAWAL_SETTLED: "transfer.withdrawal.settled",
   TRANSFER_WITHDRAWAL_FAILED: "transfer.withdrawal.failed",
+  // Member-to-member transfers end at `confirmed`: nothing leaves the channel, so
+  // there is deliberately no `transfer.transfer.settled`.
+  TRANSFER_TRANSFER_SUBMITTED: "transfer.transfer.submitted",
   TRANSFER_TRANSFER_CONFIRMED: "transfer.transfer.confirmed",
+  TRANSFER_TRANSFER_FAILED: "transfer.transfer.failed",
   // Diagnostic — actionable operator signals. Never affect the intent state
   // machine; emitted opportunistically by the oracle during a poll and
   // debounced via context.lastStuckWarningAt.

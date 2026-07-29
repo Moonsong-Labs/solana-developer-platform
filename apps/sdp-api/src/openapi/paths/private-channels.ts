@@ -360,7 +360,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     summary: "Create a verified member-to-member channel transfer",
     operationId: "createPrivateChannelTransfer",
     description:
-      "Server-signs with the acting member's verified SDP custody wallet and sends only to an opaque verified-wallet recipient returned by the channel recipient endpoint. Stores the terminal SPC response as confirmed or failed; failed requests may be retried by the user.",
+      "Server-signs with the acting member's verified SDP custody wallet and sends only to an opaque verified-wallet recipient returned by the channel recipient endpoint. Records the transfer as `pending` before broadcast, `submitted` once SPC accepts it, then `confirmed` once a signature-status read shows it executed. `failed` covers preparation errors, ingress rejection and execution errors, and may be retried by the user. Returns once the confirm read resolves; a transfer still `submitted` in the response means that read returned no verdict.",
     security: [{ sessionCookie: [] }],
     request: {
       headers: sessionProjectScopeHeaders,
@@ -369,7 +369,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     },
     responses: {
       200: {
-        description: "The stored confirmed or failed transfer result.",
+        description: "The stored transfer: confirmed, failed, or still submitted.",
         content: jsonContent(successResponseSchema(privateChannelTransferSchema)),
       },
       ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500, 503]),
@@ -383,7 +383,7 @@ export function registerPrivateChannelsPaths(registry: OpenAPIRegistry) {
     summary: "List private-channel transfers for the project",
     operationId: "listPrivateChannelTransfers",
     description:
-      "Lists retained project transfer history, newest first, optionally filtered by channel id.",
+      "Lists retained project transfer history, newest first, optionally filtered by channel id. Capped at the 200 most recent transfers.",
     security: [{ apiKeyAuth: [] }],
     request: {
       headers: projectScopeHeaders,

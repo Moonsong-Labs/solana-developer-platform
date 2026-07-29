@@ -399,11 +399,22 @@ CREATE TABLE IF NOT EXISTS private_channel_settlement_observations (
 -- on the channel chain. Amounts are decimal strings (never numeric/float).
 --
 -- These rows are FINANCIAL/AUDIT history. Instance, channel, member, custody
--- wallet and verification identifiers are deliberately denormalized with NO FK,
--- so disconnecting an instance, archiving/deleting a channel, revoking a member
--- or deleting a wallet verification cannot erase transfer history. Only terminal
--- SPC responses are stored: confirmed when sendTransaction returns successfully,
--- failed when transaction preparation or submission returns an error.
+-- wallet and verification identifiers carry NO FK, so disconnecting an instance,
+-- archiving/deleting a channel, revoking a member or deleting a wallet
+-- verification cannot erase transfer history. Only the owning org/project
+-- cascade, since nothing in the row is meaningful once those are gone.
+--
+-- Lifecycle: a row is inserted as `pending` BEFORE anything is broadcast, then
+-- `submitted` once SPC accepts the transaction at ingress, then `confirmed` once
+-- a signature-status read shows it executed cleanly. `failed` covers preparation
+-- errors, ingress rejection and execution errors. `confirmed` is terminal: SPC
+-- runs one sequencer with no fork choice, so a single status read is final and
+-- there is no `settled` (nothing leaves the channel).
+--
+-- A row still in `pending` means the request died mid-flight. A row still in
+-- `submitted` means the confirm read never returned a verdict — a transport
+-- error, or a dedup drop (stale blockhash / duplicate) that SPC discards without
+-- telling the caller. Nothing sweeps either; both are operator signals.
 
 CREATE TABLE IF NOT EXISTS private_channel_transfers (
     id TEXT PRIMARY KEY,
@@ -431,11 +442,13 @@ CREATE TABLE IF NOT EXISTS private_channel_transfers (
     CONSTRAINT private_channel_transfers_distinct_addresses_check
         CHECK (sender <> recipient),
     CONSTRAINT private_channel_transfers_status_check
-        CHECK (status IN ('confirmed', 'failed')),
+        CHECK (status IN ('pending', 'submitted', 'confirmed', 'failed')),
     CONSTRAINT private_channel_transfers_result_check
         CHECK (
-            (status = 'confirmed' AND signature IS NOT NULL AND failure_reason IS NULL)
-            OR status = 'failed'
+            (status = 'pending' AND signature IS NULL AND failure_reason IS NULL)
+            OR (status = 'submitted' AND signature IS NOT NULL AND failure_reason IS NULL)
+            OR (status = 'confirmed' AND signature IS NOT NULL AND failure_reason IS NULL)
+            OR (status = 'failed' AND failure_reason IS NOT NULL)
         )
 );
 

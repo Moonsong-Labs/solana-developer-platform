@@ -32,7 +32,7 @@ const transfer: PrivateChannelTransfer = {
   recipient: "Recipient11111111111111111111111111111111",
   mint: "Usdc111111111111111111111111111111111111",
   amount: "1.25",
-  status: "confirmed",
+  status: "submitted",
   signature: "signature",
   failureReason: null,
   createdAt: "2026-07-28T00:00:00.000Z",
@@ -68,7 +68,7 @@ describe("private-channel transfer actions", () => {
         recipientVerifiedWalletId: "pcvw_recipient",
         amount: "1",
       },
-      "Select a channel.",
+      "DashboardPrivateChannels.transfer.selectChannel",
     ],
     [
       {
@@ -77,7 +77,7 @@ describe("private-channel transfer actions", () => {
         recipientVerifiedWalletId: "pcvw_recipient",
         amount: "1",
       },
-      "Select a verified source wallet.",
+      "DashboardPrivateChannels.transfer.selectSourceWallet",
     ],
     [
       {
@@ -86,7 +86,7 @@ describe("private-channel transfer actions", () => {
         recipientVerifiedWalletId: "",
         amount: "1",
       },
-      "Select a verified recipient wallet.",
+      "DashboardPrivateChannels.transfer.selectRecipient",
     ],
     [
       {
@@ -95,13 +95,13 @@ describe("private-channel transfer actions", () => {
         recipientVerifiedWalletId: "pcvw_recipient",
         amount: "1.0000001",
       },
-      "Enter a USDC amount greater than zero with up to 6 decimal places.",
+      "DashboardPrivateChannels.transfer.amountInvalid",
     ],
-  ])("rejects invalid financial input %#", async (input, message) => {
+  ])("rejects invalid financial input %#", async (input, messageKey) => {
     await expect(createTransferAction(input)).resolves.toEqual({
       ok: false,
       kind: "validation",
-      message,
+      messageKey,
     });
     expect(mocks.createSdpApiClient).not.toHaveBeenCalled();
   });
@@ -118,15 +118,11 @@ describe("private-channel transfer actions", () => {
       })
     ).resolves.toEqual({ ok: true, transfer });
 
-    expect(mocks.createPrivateChannelTransfer).toHaveBeenCalledWith(
-      client,
-      "channel_alpha",
-      {
-        walletId: "wallet_sender",
-        recipientVerifiedWalletId: "pcvw_recipient",
-        amount: "1.25",
-      }
-    );
+    expect(mocks.createPrivateChannelTransfer).toHaveBeenCalledWith(client, "channel_alpha", {
+      walletId: "wallet_sender",
+      recipientVerifiedWalletId: "pcvw_recipient",
+      amount: "1.25",
+    });
     expect(mocks.revalidatePath).toHaveBeenCalledWith(
       "/dashboard/payments/private-channels/transfer"
     );
@@ -164,5 +160,4 @@ describe("private-channel transfer actions", () => {
       message: "Recipients unavailable",
     });
   });
-
 });

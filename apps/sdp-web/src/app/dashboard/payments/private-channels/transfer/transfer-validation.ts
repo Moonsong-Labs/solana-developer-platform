@@ -1,12 +1,19 @@
+import type { MessageKey } from "@/i18n/messages";
+
 const POSITIVE_USDC_AMOUNT = /^(?=[0-9.]*[1-9])(?:[0-9]+(?:\.[0-9]{0,6})?|\.[0-9]{1,6})$/;
 
-export function getTransferAmountError(amount: string): string | null {
+/**
+ * Returns the message key for the amount problem, or null when it is valid.
+ * Keys rather than text, so the client renders it in the caller's locale even
+ * when the check runs in a server action.
+ */
+export function getTransferAmountError(amount: string): MessageKey | null {
   const trimmed = amount.trim();
   if (!trimmed) {
-    return "Enter an amount of USDC.";
+    return "DashboardPrivateChannels.transfer.amountRequired";
   }
   if (!POSITIVE_USDC_AMOUNT.test(trimmed)) {
-    return "Enter a USDC amount greater than zero with up to 6 decimal places.";
+    return "DashboardPrivateChannels.transfer.amountInvalid";
   }
   return null;
 }

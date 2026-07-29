@@ -14,8 +14,8 @@ describe("getTransferAmountError", () => {
   });
 
   it("requires an amount", () => {
-    expect(getTransferAmountError("")).toBe("Enter an amount of USDC.");
-    expect(getTransferAmountError("   ")).toBe("Enter an amount of USDC.");
+    expect(getTransferAmountError("")).toBe("DashboardPrivateChannels.transfer.amountRequired");
+    expect(getTransferAmountError("   ")).toBe("DashboardPrivateChannels.transfer.amountRequired");
   });
 
   it.each([
@@ -27,8 +27,6 @@ describe("getTransferAmountError", () => {
     "1..2",
     "USDC 1",
   ])("rejects backend-incompatible amount %s", (amount) => {
-    expect(getTransferAmountError(amount)).toBe(
-      "Enter a USDC amount greater than zero with up to 6 decimal places."
-    );
+    expect(getTransferAmountError(amount)).toBe("DashboardPrivateChannels.transfer.amountInvalid");
   });
 });

@@ -215,20 +215,6 @@ export {
 } from "./private-channel-instance.repository";
 export { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 export type {
-  CreatePrivateChannelTransferInput,
-  ListEligiblePrivateChannelTransferRecipientsInput,
-  ListPrivateChannelTransfersInput,
-  PrivateChannelTransferProjectScope,
-  PrivateChannelTransferRepository,
-  PrivateChannelTransferRepositoryContext,
-  PrivateChannelTransferRow,
-} from "./private-channel-transfer.repository";
-export {
-  generatePrivateChannelTransferId,
-  mapPrivateChannelTransferRow,
-} from "./private-channel-transfer.repository";
-export { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
-export type {
   ClaimSettlementInput,
   PrivateChannelSettlementIntentKind,
   PrivateChannelSettlementObservationRepository,
@@ -236,6 +222,22 @@ export type {
   PrivateChannelSettlementObservationRow,
 } from "./private-channel-settlement-observation.repository";
 export { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
+export type {
+  CreatePrivateChannelTransferInput,
+  ListEligiblePrivateChannelTransferRecipientsInput,
+  ListPrivateChannelTransfersInput,
+  PrivateChannelTransferProjectScope,
+  PrivateChannelTransferRepository,
+  PrivateChannelTransferRepositoryContext,
+  PrivateChannelTransferRow,
+  UpdatePrivateChannelTransferInput,
+} from "./private-channel-transfer.repository";
+export {
+  DEFAULT_TRANSFER_LIST_LIMIT,
+  generatePrivateChannelTransferId,
+  mapPrivateChannelTransferRow,
+} from "./private-channel-transfer.repository";
+export { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
 export type {
   AddMembershipInput,
   CreatePrivateChannelUserInput,

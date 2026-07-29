@@ -1,13 +1,16 @@
 import type {
+  PrivateChannelMemberTransferStatus,
   PrivateChannelTransfer,
   PrivateChannelTransferRecipientDto,
-  PrivateChannelMemberTransferStatus,
 } from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
 export function generatePrivateChannelTransferId(): string {
   return `pct_${crypto.randomUUID()}`;
 }
+
+/** Upper bound on an unpaginated history read. */
+export const DEFAULT_TRANSFER_LIST_LIMIT = 200;
 
 export interface PrivateChannelTransferRow {
   id: string;
@@ -35,6 +38,7 @@ export interface PrivateChannelTransferProjectScope {
   projectId: string;
 }
 
+/** Always inserted as `pending`; later states arrive via `updateTransfer`. */
 export interface CreatePrivateChannelTransferInput extends PrivateChannelTransferProjectScope {
   instanceId: string;
   channelId: string;
@@ -46,13 +50,26 @@ export interface CreatePrivateChannelTransferInput extends PrivateChannelTransfe
   recipient: string;
   mint: string;
   amount: string;
+}
+
+export interface UpdatePrivateChannelTransferInput {
+  id: string;
   status: PrivateChannelMemberTransferStatus;
-  signature: string | null;
-  failureReason: string | null;
+  /** Set on submit; kept when omitted (so the confirm update preserves it). */
+  signature?: string | null;
+  /** Set on failure; kept when omitted. */
+  failureReason?: string | null;
+  /**
+   * Compare-and-swap guard: when set, the update only applies if the row is
+   * still in this status, so a late confirm cannot overwrite a terminal state.
+   */
+  expectedStatus?: PrivateChannelMemberTransferStatus;
 }
 
 export interface ListPrivateChannelTransfersInput extends PrivateChannelTransferProjectScope {
   channelId?: string;
+  /** Caps the history page; defaults to `DEFAULT_TRANSFER_LIST_LIMIT`. */
+  limit?: number;
 }
 
 export interface ListEligiblePrivateChannelTransferRecipientsInput
@@ -69,6 +86,9 @@ export interface PrivateChannelTransferRepositoryContext {
 export interface PrivateChannelTransferRepository {
   createTransfer(
     input: CreatePrivateChannelTransferInput
+  ): Promise<PrivateChannelTransferRow | null>;
+  updateTransfer(
+    input: UpdatePrivateChannelTransferInput
   ): Promise<PrivateChannelTransferRow | null>;
   getTransferById(
     scope: PrivateChannelTransferProjectScope & { id: string }

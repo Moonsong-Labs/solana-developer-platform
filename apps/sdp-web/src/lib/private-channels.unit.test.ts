@@ -56,7 +56,7 @@ const transfer: PrivateChannelTransfer = {
   recipient: "Recipient11111111111111111111111111111111",
   mint: "Usdc111111111111111111111111111111111111",
   amount: "1.25",
-  status: "confirmed",
+  status: "submitted",
   signature: "signature",
   failureReason: null,
   createdAt: "2026-07-28T00:00:00.000Z",
@@ -92,15 +92,11 @@ describe("private-channel transfer API helpers", () => {
     const client = createClient(transfer);
 
     await expect(
-      createPrivateChannelTransfer(
-        client,
-        "channel/alpha",
-        {
-          walletId: "wallet_sender",
-          recipientVerifiedWalletId: "pcvw_recipient",
-          amount: "1.25",
-        }
-      )
+      createPrivateChannelTransfer(client, "channel/alpha", {
+        walletId: "wallet_sender",
+        recipientVerifiedWalletId: "pcvw_recipient",
+        amount: "1.25",
+      })
     ).resolves.toEqual(transfer);
     expect(client.fetch).toHaveBeenCalledWith(
       "/v1/private-channels/channels/channel%2Falpha/transfers",
