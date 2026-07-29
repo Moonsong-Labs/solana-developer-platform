@@ -169,12 +169,12 @@
     "transfer": {
       "title": "Transfer",
       "description": "Transfer USDC from your selected verified custody wallet to another verified member wallet in the same logical channel. Balances belong to the wallet and are shared across logical channels.",
-      "formIntro": "This transfer is signed from your selected verified wallet and can only go to another verified member wallet in the selected channel. Balances belong to the wallet and are shared across logical channels.",
       "noChannels": "You are not a member of any active private channel. Ask a channel administrator to add you before making a transfer.",
       "noSourceWallets": "You have no verified custody wallet that SDP can sign with. Verify a provisioned wallet under Overview before making a transfer.",
       "channel": "Channel",
       "channelDefaultSuffix": " (Default)",
       "fromWallet": "From verified wallet",
+      "fromWalletHelp": "The transfer is signed from this wallet. Its channel balance is debited.",
       "recipientWallet": "Recipient wallet",
       "recipientsLoading": "Loading verified recipient wallets…",
       "recipientsRetry": "Retry recipients",

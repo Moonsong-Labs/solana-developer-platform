@@ -122,7 +122,7 @@ export function DepositProgress({
 
       {deposit.signature && (
         <a
-          className="inline-block text-primary text-xs underline underline-offset-2 hover:no-underline"
+          className="block w-fit text-primary text-xs underline underline-offset-2 hover:no-underline"
           href={explorerTxUrl(deposit.signature, cluster)}
           rel="noreferrer"
           target="_blank"

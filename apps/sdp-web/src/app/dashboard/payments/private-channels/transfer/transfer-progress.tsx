@@ -1,7 +1,8 @@
 "use client";
 
 import type { PrivateChannelTransfer } from "@sdp/types";
-import { CheckCircle2Icon, CircleAlertIcon, XCircleIcon } from "lucide-react";
+import { CheckCircle2Icon } from "lucide-react";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
@@ -22,50 +23,46 @@ export function TransferProgress({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
+      <div className="flex items-baseline justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-secondary">
             {t("DashboardPrivateChannels.transfer.progressLabel")}
           </p>
           <p className="font-semibold text-lg">
             {t("DashboardPrivateChannels.common.amountWithUnit", { amount: transfer.amount })}
           </p>
         </div>
-        <StatusBadge status={transfer.status} />
+        <StatusBadge status={transfer.status} t={t} />
       </div>
 
-      <dl className="grid gap-4 rounded-lg border border-border-default bg-surface-sunken p-4 sm:grid-cols-2">
+      <Outcome failureReason={transfer.failureReason} status={transfer.status} />
+
+      <dl className="grid gap-4 sm:grid-cols-2">
         <div className="min-w-0 space-y-1">
-          <dt className="text-muted-foreground text-xs">
+          <dt className="text-secondary text-xs">
             {t("DashboardPrivateChannels.transfer.fromWallet")}
           </dt>
           <dd className="truncate font-medium text-sm">
             {senderLabel ?? t("DashboardPrivateChannels.transfer.senderFallback")}
           </dd>
-          <dd className="break-all font-mono text-muted-foreground text-xs">{transfer.sender}</dd>
+          <dd className="break-all text-secondary text-xs">{transfer.sender}</dd>
         </div>
         <div className="min-w-0 space-y-1">
-          <dt className="text-muted-foreground text-xs">
+          <dt className="text-secondary text-xs">
             {t("DashboardPrivateChannels.transfer.toMemberWallet")}
           </dt>
           <dd className="truncate font-medium text-sm">
             {recipientLabel ?? t("DashboardPrivateChannels.transfer.recipientFallback")}
           </dd>
-          <dd className="break-all font-mono text-muted-foreground text-xs">
-            {transfer.recipient}
-          </dd>
+          <dd className="break-all text-secondary text-xs">{transfer.recipient}</dd>
         </div>
       </dl>
 
-      <Outcome failureReason={transfer.failureReason} status={transfer.status} />
-
       {transfer.signature && (
-        <div className="space-y-1 text-xs">
-          <p className="text-muted-foreground">
-            {t("DashboardPrivateChannels.transfer.signature")}
-          </p>
-          <p className="break-all font-mono text-foreground">{transfer.signature}</p>
-        </div>
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.transfer.signature")}{" "}
+          <span className="break-all text-primary">{transfer.signature}</span>
+        </p>
       )}
 
       <Button onClick={onReset} type="button" variant="secondary">
@@ -108,22 +105,12 @@ const OUTCOME_KEYS = {
   },
 } as const;
 
-const OUTCOME_STYLES = {
-  success: "border-green-500/40 bg-green-500/10",
-  unknown: "border-amber-500/40 bg-amber-500/10",
-  error: "border-destructive/40 bg-destructive/10",
-} as const;
-
-function OutcomeIcon({ tone }: { tone: keyof typeof OUTCOME_STYLES }) {
-  if (tone === "success") {
-    return <CheckCircle2Icon aria-hidden="true" className="mt-0.5 size-5 text-green-500" />;
-  }
-  if (tone === "unknown") {
-    return <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-5 text-amber-500" />;
-  }
-  return <XCircleIcon aria-hidden="true" className="mt-0.5 size-5 text-destructive" />;
-}
-
+/**
+ * A confirmed transfer reads as a completed step, matching the deposit and
+ * withdrawal stage rows. The states that need the operator to act — an unknown
+ * outcome or a failure — are tinted callouts instead, so they cannot be skimmed
+ * past as done.
+ */
 function Outcome({
   failureReason,
   status,
@@ -135,30 +122,33 @@ function Outcome({
   const tone = OUTCOME_TONE[status];
   const keys = OUTCOME_KEYS[status];
 
+  if (tone === "success") {
+    return (
+      <div className="flex items-start gap-3" role="status">
+        <CheckCircle2Icon aria-hidden="true" className="mt-0.5 size-5 text-success" />
+        <div className="space-y-0.5">
+          <p className="font-medium text-primary text-sm">{t(keys.title)}</p>
+          <p className="text-secondary text-xs">{t(keys.description)}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={cn("flex items-start gap-3 rounded-lg border p-4", OUTCOME_STYLES[tone])}
+      className={cn(
+        "space-y-0.5 rounded-lg border px-4 py-3",
+        tone === "error"
+          ? "border-error-border bg-error-bg text-error"
+          : "border-warning-border bg-warning-bg text-warning"
+      )}
       role={tone === "error" ? "alert" : "status"}
     >
-      <OutcomeIcon tone={tone} />
-      <div className="space-y-0.5">
-        <p className="font-medium text-sm">{t(keys.title)}</p>
-        <p
-          className={cn("text-xs", tone === "error" ? "text-destructive" : "text-muted-foreground")}
-        >
-          {(tone === "error" ? failureReason : null) ?? t(keys.description)}
-        </p>
-      </div>
+      <p className="font-medium text-sm">{t(keys.title)}</p>
+      <p className="text-xs">{(tone === "error" ? failureReason : null) ?? t(keys.description)}</p>
     </div>
   );
 }
-
-const STATUS_STYLES: Record<PrivateChannelTransfer["status"], string> = {
-  pending: "bg-amber-500/10 text-amber-600",
-  submitted: "bg-amber-500/10 text-amber-600",
-  confirmed: "bg-green-500/10 text-green-600",
-  failed: "bg-destructive/10 text-destructive",
-};
 
 const STATUS_KEYS = {
   pending: "DashboardPrivateChannels.transfer.statusPending",
@@ -167,16 +157,15 @@ const STATUS_KEYS = {
   failed: "DashboardPrivateChannels.transfer.statusFailed",
 } as const;
 
-function StatusBadge({ status }: { status: PrivateChannelTransfer["status"] }) {
-  const t = useTranslations();
+function StatusBadge({
+  status,
+  t,
+}: {
+  status: PrivateChannelTransfer["status"];
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const variant: BadgeVariant =
+    status === "confirmed" ? "success" : status === "failed" ? "danger" : "default";
 
-  return (
-    <span
-      aria-live="polite"
-      className={cn("rounded-full px-2.5 py-1 font-medium text-xs", STATUS_STYLES[status])}
-      role="status"
-    >
-      {t(STATUS_KEYS[status])}
-    </span>
-  );
+  return <Badge variant={variant}>{t(STATUS_KEYS[status])}</Badge>;
 }

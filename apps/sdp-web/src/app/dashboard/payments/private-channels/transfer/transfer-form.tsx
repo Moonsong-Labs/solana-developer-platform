@@ -159,15 +159,13 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
 
   if (channels.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        {t("DashboardPrivateChannels.transfer.noChannels")}
-      </p>
+      <p className="text-sm text-secondary">{t("DashboardPrivateChannels.transfer.noChannels")}</p>
     );
   }
 
   if (sourceWallets.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
+      <p className="text-sm text-secondary">
         {t("DashboardPrivateChannels.transfer.noSourceWallets")}
       </p>
     );
@@ -277,10 +275,6 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
         submit();
       }}
     >
-      <p className="text-muted-foreground text-sm">
-        {t("DashboardPrivateChannels.transfer.formIntro")}
-      </p>
-
       <div className="space-y-1.5">
         <Label>{t("DashboardPrivateChannels.transfer.channel")}</Label>
         <Select
@@ -328,12 +322,15 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
             </SelectItem>
           ))}
         </Select>
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.transfer.fromWalletHelp")}
+        </p>
       </div>
 
       <div className="space-y-1.5">
         <Label>{t("DashboardPrivateChannels.transfer.recipientWallet")}</Label>
         {recipientLoad.status === "loading" && (
-          <p aria-live="polite" className="text-muted-foreground text-sm" role="status">
+          <p aria-live="polite" className="text-sm text-secondary" role="status">
             {t("DashboardPrivateChannels.transfer.recipientsLoading")}
           </p>
         )}
@@ -353,7 +350,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           </div>
         )}
         {recipientLoad.status === "ready" && recipientOptions.length === 0 && (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-secondary">
             {t("DashboardPrivateChannels.transfer.recipientsEmpty")}
           </p>
         )}

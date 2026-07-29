@@ -123,13 +123,13 @@ export function WithdrawProgress({
       {withdrawal.signature && (
         <p className="text-secondary text-xs">
           {t("DashboardPrivateChannels.withdraw.burnSignature")}{" "}
-          <span className="font-mono text-xs">{withdrawal.signature}</span>
+          <span className="break-all text-primary">{withdrawal.signature}</span>
         </p>
       )}
 
       {withdrawal.settlementRef && (
         <a
-          className="inline-block text-primary text-xs underline underline-offset-2 hover:no-underline"
+          className="block w-fit text-primary text-xs underline underline-offset-2 hover:no-underline"
           href={explorerTxUrl(withdrawal.settlementRef, cluster)}
           rel="noreferrer"
           target="_blank"

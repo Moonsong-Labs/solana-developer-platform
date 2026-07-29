@@ -169,12 +169,12 @@
     "transfer": {
       "title": "Transfert",
       "description": "Transférez des USDC depuis votre wallet de conservation vérifié sélectionné vers le wallet vérifié d'un autre membre du même canal logique. Les soldes appartiennent au wallet et sont partagés entre les canaux logiques.",
-      "formIntro": "Ce transfert est signé depuis votre wallet vérifié sélectionné et ne peut aller que vers le wallet vérifié d'un autre membre du canal sélectionné. Les soldes appartiennent au wallet et sont partagés entre les canaux logiques.",
       "noChannels": "Vous n'êtes membre d'aucun canal privé actif. Demandez à un administrateur de canal de vous ajouter avant d'effectuer un transfert.",
       "noSourceWallets": "Vous n'avez aucun wallet de conservation vérifié que SDP peut utiliser pour signer. Vérifiez un wallet provisionné dans Aperçu avant d'effectuer un transfert.",
       "channel": "Canal",
       "channelDefaultSuffix": " (Par défaut)",
       "fromWallet": "Depuis le wallet vérifié",
+      "fromWalletHelp": "Le transfert est signé depuis ce wallet. Son solde de canal est débité.",
       "recipientWallet": "Wallet destinataire",
       "recipientsLoading": "Chargement des wallets destinataires vérifiés…",
       "recipientsRetry": "Réessayer les destinataires",

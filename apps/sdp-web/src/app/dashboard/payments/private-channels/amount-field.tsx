@@ -72,7 +72,7 @@ export function AmountField({
             {shownBalances.map(({ amount, source }) => (
               <span className="text-primary" key={source}>
                 {t(BALANCE_LABEL_KEYS[source])}{" "}
-                <span className="font-mono font-medium">
+                <span className="font-medium">
                   {t("DashboardPrivateChannels.common.amountWithUnit", { amount })}
                 </span>
               </span>
