@@ -1,17 +1,19 @@
-import { auth } from "@clerk/nextjs/server";
-import type { CustodyWalletSummary, PrivateChannelMembershipChannelDto } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
+import { getTranslations } from "@/i18n/server";
 import {
   fetchAuthenticatedPrivateChannelUser,
-  fetchPrivateChannelInstance,
   fetchPrivateChannels,
   fetchSignableCustodyWallets,
   fetchVerifiedWallets,
 } from "@/lib/private-channels";
-import { createSdpApiClient } from "@/lib/sdp-api";
+import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  requirePrivateChannelsAccess,
+} from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadInstance } from "../private-channels-page.data";
 import { TransferForm } from "./transfer-form";
 import {
   createTransferScopeKey,
@@ -19,58 +21,51 @@ import {
   intersectVerifiedSourceWallets,
 } from "./transfer-page-data";
 
-async function loadTransferData(organizationId: string): Promise<{
-  channels: PrivateChannelMembershipChannelDto[];
-  scopeKey: string;
-  sourceWallets: CustodyWalletSummary[];
-}> {
-  const client = await createSdpApiClient();
-  const { instance } = await fetchPrivateChannelInstance(client);
-  if (!instance?.isActive) {
-    redirect("/dashboard/payments/private-channels/instance");
-  }
-
-  const [member, activeChannels, signableWallets, verifiedWallets] = await Promise.all([
-    fetchAuthenticatedPrivateChannelUser(client),
-    fetchPrivateChannels(client),
-    fetchSignableCustodyWallets(client),
-    fetchVerifiedWallets(client),
-  ]);
-
-  return {
-    channels: intersectEligibleTransferChannels(member?.channels ?? [], activeChannels),
-    scopeKey: createTransferScopeKey(organizationId, instance.projectId, instance.id),
-    sourceWallets: intersectVerifiedSourceWallets(signableWallets, verifiedWallets),
-  };
-}
-
 export default async function PrivateChannelsTransferPage() {
-  if (!(await privateChannels())) {
-    notFound();
+  await requirePrivateChannelsAccess();
+
+  const t = await getTranslations();
+  const client = await createSdpApiClient();
+  const instance = await loadInstance(client);
+  if (!instance.data?.isActive) {
+    redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
 
-  const { userId, orgId } = await auth();
-  if (!userId) {
-    redirect(await getAuthEntryPath());
-  }
-  if (!orgId) {
-    redirect("/dashboard");
+  let loadError: string | undefined;
+  let channels = intersectEligibleTransferChannels([], []);
+  let sourceWallets = intersectVerifiedSourceWallets([], []);
+  try {
+    const [member, activeChannels, signableWallets, verifiedWallets] = await Promise.all([
+      fetchAuthenticatedPrivateChannelUser(client),
+      fetchPrivateChannels(client),
+      fetchSignableCustodyWallets(client),
+      fetchVerifiedWallets(client),
+    ]);
+    channels = intersectEligibleTransferChannels(member?.channels ?? [], activeChannels);
+    sourceWallets = intersectVerifiedSourceWallets(signableWallets, verifiedWallets);
+  } catch (error) {
+    loadError = extractSdpApiErrorMessage(error);
   }
 
-  const { channels, scopeKey, sourceWallets } = await loadTransferData(orgId);
+  const scopeKey = createTransferScopeKey(
+    instance.data.organizationId,
+    instance.data.projectId,
+    instance.data.id
+  );
 
   return (
     <div className="mx-auto w-full max-w-2xl">
       <Card>
         <CardHeader>
-          <CardTitle>Transfer</CardTitle>
-          <CardDescription>
-            Transfer USDC from your selected verified custody wallet to another verified member
-            wallet in the same logical channel. Wallet balances are shared across logical channels.
-          </CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.transfer.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.transfer.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <TransferForm channels={channels} scopeKey={scopeKey} sourceWallets={sourceWallets} />
+          {loadError ? (
+            <PrivateChannelsLoadError message={loadError} />
+          ) : (
+            <TransferForm channels={channels} scopeKey={scopeKey} sourceWallets={sourceWallets} />
+          )}
         </CardContent>
       </Card>
     </div>

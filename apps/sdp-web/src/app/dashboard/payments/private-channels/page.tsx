@@ -1,23 +1,21 @@
-import type { PrivateChannelInstanceEnvelope } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
-import { privateChannels } from "@/flags";
+import { redirect } from "next/navigation";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  PRIVATE_CHANNELS_OVERVIEW_PATH,
+  requirePrivateChannelsAccess,
+} from "./private-channels-access";
+import { loadInstance } from "./private-channels-page.data";
 
-// Overview is the landing when connected; Instance is the landing otherwise.
+// Overview is the landing when connected; Instance is the landing otherwise —
+// which is also the safe default for a transient lookup failure.
 export default async function PrivateChannelsPage() {
-  if (!(await privateChannels())) {
-    notFound();
-  }
+  await requirePrivateChannelsAccess();
 
-  let target = "/dashboard/payments/private-channels/instance";
-  try {
-    const client = await createSdpApiClient();
-    const res = await client.fetch<PrivateChannelInstanceEnvelope>("/v1/private-channels/instance");
-    if (res.instance?.isActive) {
-      target = "/dashboard/payments/private-channels/overview";
-    }
-  } catch {
-    // fall through — /instance is a safe default for a transient lookup failure
-  }
-  redirect(target);
+  const client = await createSdpApiClient();
+  const instance = await loadInstance(client);
+
+  redirect(
+    instance.data?.isActive ? PRIVATE_CHANNELS_OVERVIEW_PATH : PRIVATE_CHANNELS_INSTANCE_PATH
+  );
 }

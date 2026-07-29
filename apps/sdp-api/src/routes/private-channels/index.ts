@@ -87,7 +87,7 @@ privateChannels.get("/balance", requirePermissions("payments:read"), getPrivateC
 
 // --- /deposits ------------------------------------------------------------
 // Escrow deposits from a custody wallet into the instance (devnet), tracked
-// prepared -> submitted -> confirmed -> credited.
+// pending -> submitted -> confirmed.
 privateChannels.post(
   "/deposits",
   requirePermissions("payments:write"),
@@ -103,7 +103,7 @@ privateChannels.get(
 // --- /withdrawals ---------------------------------------------------------
 // Burn the custody wallet's channel-chain balance (relayed to the gateway); the
 // operator releases real USDC on devnet. Tracked pending -> submitted ->
-// burn_confirmed -> release_pending -> released.
+// confirmed -> settled.
 privateChannels.post(
   "/withdrawals",
   requirePermissions("payments:write"),

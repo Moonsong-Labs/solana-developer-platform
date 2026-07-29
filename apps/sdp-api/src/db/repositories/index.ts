@@ -181,8 +181,6 @@ export { createPostgresPrivateChannelRepository } from "./private-channel.reposi
 export type {
   CreateDepositInput,
   DepositProjectScope,
-  DepositRecipientScope,
-  ListDepositsByStatusInput,
   PrivateChannelDepositRepository,
   PrivateChannelDepositRepositoryContext,
   PrivateChannelDepositRow,
@@ -231,6 +229,14 @@ export {
 } from "./private-channel-transfer.repository";
 export { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
 export type {
+  ClaimSettlementInput,
+  PrivateChannelSettlementIntentKind,
+  PrivateChannelSettlementObservationRepository,
+  PrivateChannelSettlementObservationRepositoryContext,
+  PrivateChannelSettlementObservationRow,
+} from "./private-channel-settlement-observation.repository";
+export { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
+export type {
   AddMembershipInput,
   CreatePrivateChannelUserInput,
   PrivateChannelMembershipRow,
@@ -258,7 +264,6 @@ export {
 export { createPostgresPrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository.postgres";
 export type {
   CreateWithdrawalInput,
-  ListWithdrawalsByStatusInput,
   PrivateChannelWithdrawalRepository,
   PrivateChannelWithdrawalRepositoryContext,
   PrivateChannelWithdrawalRow,
@@ -289,6 +294,7 @@ export {
   createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
+  createPrivateChannelSettlementObservationRepository,
   createPrivateChannelTransferRepository,
   createPrivateChannelUserRepository,
   createPrivateChannelVerifiedWalletRepository,

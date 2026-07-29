@@ -319,10 +319,14 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
     });
 
     expect(first.id).not.toBe(retry.id);
-    expect(await repo.listTransfersByProject(SCOPE)).toEqual([
-      expect.objectContaining({ id: retry.id, status: "confirmed" }),
-      expect.objectContaining({ id: first.id, status: "failed" }),
-    ]);
+    const rows = await repo.listTransfersByProject(SCOPE);
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: retry.id, status: "confirmed" }),
+        expect.objectContaining({ id: first.id, status: "failed" }),
+      ])
+    );
   });
 
   it("groups eligible verified wallets by other channel member", async () => {

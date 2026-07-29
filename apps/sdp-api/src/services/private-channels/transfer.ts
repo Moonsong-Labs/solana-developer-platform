@@ -3,7 +3,7 @@ import { AmountError, parseDecimalAmount } from "@sdp/solana/amount";
 import type {
   PrivateChannelInstance,
   PrivateChannelTransfer,
-  PrivateChannelTransferStatus,
+  PrivateChannelMemberTransferStatus,
 } from "@sdp/types";
 import { PRIVATE_CHANNEL_EVENT_STATUSES, PRIVATE_CHANNEL_EVENT_TYPES } from "@sdp/types";
 import {
@@ -151,7 +151,7 @@ type PersistTransferInput = CreateChannelTransferInput & {
   sender: Address;
   recipientAddress: Address;
   mint: Address;
-  status: PrivateChannelTransferStatus;
+  status: PrivateChannelMemberTransferStatus;
   signature: Signature | null;
   failureReason: string | null;
 };

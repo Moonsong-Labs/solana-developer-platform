@@ -1,45 +1,43 @@
-import { auth } from "@clerk/nextjs/server";
-import type { PrivateChannelDto } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchPrivateChannelInstance, fetchPrivateChannels } from "@/lib/private-channels";
+import { getTranslations } from "@/i18n/server";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  requirePrivateChannelsAccess,
+} from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadChannels, loadInstance } from "../private-channels-page.data";
 import { ChannelsManager } from "./channels-manager";
 
-async function loadChannels(): Promise<PrivateChannelDto[]> {
-  const client = await createSdpApiClient();
-  const { instance } = await fetchPrivateChannelInstance(client);
-  if (!instance?.isActive) {
-    redirect("/dashboard/payments/private-channels/instance");
-  }
-  return fetchPrivateChannels(client);
-}
-
 export default async function PrivateChannelsChannelsPage() {
-  if (!(await privateChannels())) {
-    notFound();
+  await requirePrivateChannelsAccess();
+
+  const t = await getTranslations();
+
+  const client = await createSdpApiClient();
+  // Only redirect on a *known* inactive instance. A failed lookup used to throw
+  // out of the page; now it falls through so the load error renders in place.
+  const instance = await loadInstance(client);
+  if (instance.ok && !instance.data?.isActive) {
+    redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
 
-  const { userId, orgId } = await auth();
-  if (!userId) redirect(await getAuthEntryPath());
-  if (!orgId) redirect("/dashboard");
-
-  const channels = await loadChannels();
+  const channels = await loadChannels(client);
 
   return (
     <div className="mx-auto w-full max-w-3xl">
       <Card>
         <CardHeader>
-          <CardTitle>Channels</CardTitle>
-          <CardDescription>
-            Logical channels group activity within your connected instance. The default channel is
-            created automatically and cannot be deleted.
-          </CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.channels.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.channels.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <ChannelsManager initialChannels={channels} />
+          {channels.ok ? (
+            <ChannelsManager initialChannels={channels.data} />
+          ) : (
+            <PrivateChannelsLoadError message={channels.error} />
+          )}
         </CardContent>
       </Card>
     </div>

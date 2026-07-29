@@ -1,15 +1,11 @@
 "use client";
 
 import type { PrivateChannelWithdrawal } from "@sdp/types";
-import {
-  AlertTriangleIcon,
-  CheckCircle2Icon,
-  CircleIcon,
-  Loader2Icon,
-  XCircleIcon,
-} from "lucide-react";
+import { CheckCircle2Icon, CircleIcon, Loader2Icon, XCircleIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/i18n/provider";
 import { explorerTxUrl } from "@/lib/explorer";
 import { useSolanaCluster } from "@/lib/use-solana-cluster";
 import { cn } from "@/lib/utils";
@@ -18,41 +14,30 @@ import { fetchWithdrawalAction } from "./actions";
 const RANK: Record<PrivateChannelWithdrawal["status"], number> = {
   pending: 0,
   submitted: 1,
-  burn_confirmed: 2,
-  release_pending: 3,
-  released: 4,
+  confirmed: 2,
+  settled: 3,
   failed: -1,
-  manual_review: -1,
 };
 
 const STAGES = [
   {
     rank: 1,
-    title: "Burn sent to the channel",
-    description: "Broadcasting the burn to the channel chain.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageBurnSentTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageBurnSentDescription",
   },
   {
     rank: 2,
-    title: "Burn confirmed (balance debited)",
-    description: "The burn confirmed and your channel balance was debited.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageBurnConfirmedTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageBurnConfirmedDescription",
   },
   {
     rank: 3,
-    title: "Awaiting devnet release",
-    description: "The operator is releasing the matching USDC on devnet.",
-  },
-  {
-    rank: 4,
-    title: "Released on devnet",
-    description: "The operator released the USDC to the destination.",
+    titleKey: "DashboardPrivateChannels.withdraw.stageReleasedTitle",
+    descriptionKey: "DashboardPrivateChannels.withdraw.stageReleasedDescription",
   },
 ] as const;
 
-const TERMINAL: ReadonlySet<PrivateChannelWithdrawal["status"]> = new Set([
-  "released",
-  "failed",
-  "manual_review",
-]);
+const TERMINAL: ReadonlySet<PrivateChannelWithdrawal["status"]> = new Set(["settled", "failed"]);
 const POLL_INTERVAL_MS = 1500;
 
 export function WithdrawProgress({
@@ -64,6 +49,7 @@ export function WithdrawProgress({
 }) {
   const [withdrawal, setWithdrawal] = useState(initial);
   const cluster = useSolanaCluster();
+  const t = useTranslations();
 
   useEffect(() => {
     setWithdrawal(initial);
@@ -88,104 +74,82 @@ export function WithdrawProgress({
 
   const rank = RANK[withdrawal.status];
   const failed = withdrawal.status === "failed";
-  const flagged = withdrawal.status === "manual_review";
-  const released = withdrawal.status === "released";
-  const terminal = failed || flagged || released;
+  const settled = withdrawal.status === "settled";
+  const terminal = failed || settled;
 
   return (
     <div className="space-y-5">
       <div className="flex items-baseline justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Withdrawing</p>
-          <p className="font-semibold text-lg">{withdrawal.amount} USDC</p>
+          <p className="text-sm text-secondary">
+            {t("DashboardPrivateChannels.withdraw.progressLabel")}
+          </p>
+          <p className="font-semibold text-lg">
+            {t("DashboardPrivateChannels.withdraw.amountWithUnit", { amount: withdrawal.amount })}
+          </p>
         </div>
-        <StatusBadge status={withdrawal.status} />
+        <StatusBadge status={withdrawal.status} t={t} />
       </div>
 
       {failed && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
-          {withdrawal.failureReason ?? "The withdrawal failed."}
-        </div>
-      )}
-
-      {flagged && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-700 text-sm dark:text-amber-500">
-          Flagged for manual review.{" "}
-          {withdrawal.failureReason ?? "An operator will reconcile this withdrawal."}
+          {withdrawal.failureReason ?? t("DashboardPrivateChannels.withdraw.failed")}
         </div>
       )}
 
       <ol className="space-y-3">
         {STAGES.map((stage) => {
           const done = rank >= stage.rank;
-          const activeStage = !failed && !flagged && !done && rank + 1 === stage.rank;
+          const activeStage = !failed && !done && rank + 1 === stage.rank;
           return (
             <li key={stage.rank} className="flex items-start gap-3">
-              <StageIcon
-                done={done}
-                active={activeStage}
-                failed={failed && !done}
-                flagged={flagged && !done}
-              />
+              <StageIcon done={done} active={activeStage} failed={failed && !done} />
               <div className="space-y-0.5">
                 <p
                   className={cn(
                     "font-medium text-sm",
-                    done
-                      ? "text-foreground"
-                      : activeStage
-                        ? "text-foreground"
-                        : "text-muted-foreground"
+                    done || activeStage ? "text-primary" : "text-tertiary"
                   )}
                 >
-                  {stage.title}
+                  {t(stage.titleKey)}
                 </p>
-                <p className="text-muted-foreground text-xs">{stage.description}</p>
+                <p className="text-secondary text-xs">{t(stage.descriptionKey)}</p>
               </div>
             </li>
           );
         })}
       </ol>
 
-      {withdrawal.burnSignature && (
-        <p className="text-muted-foreground text-xs">
-          Burn signature: <span className="font-mono">{withdrawal.burnSignature}</span>
+      {withdrawal.signature && (
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.withdraw.burnSignature")}{" "}
+          <span className="font-mono text-xs">{withdrawal.signature}</span>
         </p>
       )}
 
-      {withdrawal.releaseSignature && (
+      {withdrawal.settlementRef && (
         <a
-          className="inline-block text-primary text-xs underline underline-offset-2"
-          href={explorerTxUrl(withdrawal.releaseSignature, cluster)}
+          className="inline-block text-primary text-xs underline underline-offset-2 hover:no-underline"
+          href={explorerTxUrl(withdrawal.settlementRef, cluster)}
           rel="noreferrer"
           target="_blank"
         >
-          View release on Solana Explorer
+          {t("DashboardPrivateChannels.withdraw.viewRelease")}
         </a>
       )}
 
       {terminal && (
         <Button onClick={onReset} variant="secondary">
-          New withdrawal
+          {t("DashboardPrivateChannels.withdraw.newWithdrawal")}
         </Button>
       )}
     </div>
   );
 }
 
-function StageIcon({
-  done,
-  active,
-  failed,
-  flagged,
-}: {
-  done: boolean;
-  active: boolean;
-  failed: boolean;
-  flagged: boolean;
-}) {
+function StageIcon({ done, active, failed }: { done: boolean; active: boolean; failed: boolean }) {
   if (done) {
-    return <CheckCircle2Icon className="mt-0.5 size-5 text-green-500" />;
+    return <CheckCircle2Icon className="mt-0.5 size-5 text-success" />;
   }
   if (active) {
     return <Loader2Icon className="mt-0.5 size-5 animate-spin text-primary" />;
@@ -193,33 +157,30 @@ function StageIcon({
   if (failed) {
     return <XCircleIcon className="mt-0.5 size-5 text-destructive" />;
   }
-  if (flagged) {
-    return <AlertTriangleIcon className="mt-0.5 size-5 text-amber-500" />;
-  }
-  return <CircleIcon className="mt-0.5 size-5 text-muted-foreground/40" />;
+  return <CircleIcon className="mt-0.5 size-5 text-tertiary" />;
 }
 
-function StatusBadge({ status }: { status: PrivateChannelWithdrawal["status"] }) {
+function StatusBadge({
+  status,
+  t,
+}: {
+  status: PrivateChannelWithdrawal["status"];
+  t: ReturnType<typeof useTranslations>;
+}) {
   const label: Record<PrivateChannelWithdrawal["status"], string> = {
-    pending: "Pending",
-    submitted: "Submitted",
-    burn_confirmed: "Burn confirmed",
-    release_pending: "Releasing",
-    released: "Released",
-    failed: "Failed",
-    manual_review: "Manual review",
+    pending: t("DashboardPrivateChannels.withdraw.statusPending"),
+    submitted: t("DashboardPrivateChannels.withdraw.statusSubmitted"),
+    confirmed: t("DashboardPrivateChannels.withdraw.statusBurnConfirmed"),
+    settled: t("DashboardPrivateChannels.withdraw.statusSettled"),
+    failed: t("DashboardPrivateChannels.withdraw.statusFailed"),
   };
-  const tone =
-    status === "released"
-      ? "bg-green-500/10 text-green-600"
-      : status === "failed"
-        ? "bg-destructive/10 text-destructive"
-        : status === "manual_review"
-          ? "bg-amber-500/10 text-amber-600"
-          : "bg-muted text-muted-foreground";
-  return (
-    <span className={cn("rounded-full px-2.5 py-1 font-medium text-xs", tone)}>
-      {label[status]}
-    </span>
-  );
+  const variant: BadgeVariant =
+    status === "settled"
+      ? "success"
+      : status === "confirmed"
+        ? "info"
+        : status === "failed"
+          ? "danger"
+          : "default";
+  return <Badge variant={variant}>{label[status]}</Badge>;
 }

@@ -2,13 +2,20 @@
 
 import type { CustodyWalletSummary, PrivateChannelWithdrawal } from "@sdp/types";
 import { Loader2Icon } from "lucide-react";
-import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
-import { createWithdrawalAction } from "./actions";
+import { useTranslations } from "@/i18n/provider";
+import { PRIVATE_CHANNELS_OVERVIEW_PATH } from "../private-channels-routes";
+import {
+  createWithdrawalAction,
+  fetchWalletBalancesAction,
+  type WalletBalanceView,
+} from "./actions";
 import { WithdrawProgress } from "./withdraw-progress";
 
 function walletLabel(wallet: CustodyWalletSummary): string {
@@ -23,6 +30,25 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   const [error, setError] = useState<string | null>(null);
   const [withdrawal, setWithdrawal] = useState<PrivateChannelWithdrawal | null>(null);
   const [isSubmitting, startTransition] = useTransition();
+  const t = useTranslations();
+  const [balances, setBalances] = useState<WalletBalanceView>({ channel: null, onChain: null });
+  const [refetchKey, setRefetchKey] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetchKey is the refetch trigger, not a value read in the effect.
+  useEffect(() => {
+    if (!walletId) {
+      setBalances({ channel: null, onChain: null });
+      return;
+    }
+    let active = true;
+    setBalances({ channel: null, onChain: null });
+    fetchWalletBalancesAction(walletId).then((result) => {
+      if (active) setBalances(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [walletId, refetchKey]);
 
   if (withdrawal) {
     return (
@@ -33,6 +59,7 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
           setAmount("");
           setDestination("");
           setError(null);
+          setRefetchKey((n) => n + 1);
         }}
       />
     );
@@ -40,9 +67,15 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
 
   if (wallets.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        You have no custody wallets yet. Create one under Wallets, deposit into the channel, then
-        come back to withdraw.
+      <p className="text-secondary text-sm">
+        {t("DashboardPrivateChannels.withdraw.noWalletsBefore")}
+        <Link
+          className="text-primary underline underline-offset-2 hover:no-underline"
+          href={PRIVATE_CHANNELS_OVERVIEW_PATH}
+        >
+          {t("DashboardPrivateChannels.withdraw.noWalletsLink")}
+        </Link>
+        {t("DashboardPrivateChannels.withdraw.noWalletsAfter")}
       </p>
     );
   }
@@ -57,7 +90,7 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
       });
       if (result.ok) {
         setWithdrawal(result.withdrawal);
-        toast.success("Withdrawal submitted");
+        toast.success(t("DashboardPrivateChannels.withdraw.submitToast"));
       } else {
         setError(result.message);
         if (result.kind === "server") {
@@ -76,7 +109,7 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
       }}
     >
       <div className="space-y-1.5">
-        <Label htmlFor="withdraw-wallet">Withdraw from</Label>
+        <Label htmlFor="withdraw-wallet">{t("DashboardPrivateChannels.withdraw.fromWallet")}</Label>
         <Select onValueChange={(value) => setWalletId(value ?? "")} value={walletId}>
           {wallets.map((wallet) => (
             <SelectItem key={wallet.walletId} value={wallet.walletId}>
@@ -84,41 +117,69 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
             </SelectItem>
           ))}
         </Select>
-        <p className="text-muted-foreground text-xs">
-          The burn is signed from this wallet. Its channel balance is debited.
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.withdraw.fromWalletHelp")}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="withdraw-amount">Amount (USDC)</Label>
+        <Label htmlFor="withdraw-amount">{t("DashboardPrivateChannels.common.amountUsdc")}</Label>
         <Input
           id="withdraw-amount"
           inputMode="decimal"
           onChange={(event) => setAmount(event.target.value)}
-          placeholder="1.5"
+          placeholder={t("DashboardPrivateChannels.common.amountPlaceholder")}
           value={amount}
         />
+        {(balances.channel !== null || balances.onChain !== null) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {balances.channel !== null && (
+              <span className="text-primary">
+                {t("DashboardPrivateChannels.common.channelBalance")}{" "}
+                <span className="font-mono font-medium">
+                  {t("DashboardPrivateChannels.withdraw.amountWithUnit", {
+                    amount: balances.channel,
+                  })}
+                </span>
+              </span>
+            )}
+            {balances.onChain !== null && (
+              <span className="text-primary">
+                {t("DashboardPrivateChannels.common.onChainBalance")}{" "}
+                <span className="font-mono font-medium">
+                  {t("DashboardPrivateChannels.withdraw.amountWithUnit", {
+                    amount: balances.onChain,
+                  })}
+                </span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="withdraw-destination">Release to (optional)</Label>
+        <Label htmlFor="withdraw-destination">
+          {t("DashboardPrivateChannels.withdraw.destination")}
+        </Label>
         <Input
           id="withdraw-destination"
           onChange={(event) => setDestination(event.target.value)}
-          placeholder="Defaults to the withdrawing wallet"
+          placeholder={t("DashboardPrivateChannels.withdraw.destinationPlaceholder")}
           value={destination}
         />
-        <p className="text-muted-foreground text-xs">
-          A devnet address or walletId to receive the released USDC. Leave blank to release to this
-          wallet.
+        <p className="text-secondary text-xs">
+          {t("DashboardPrivateChannels.withdraw.destinationHelp")}
         </p>
       </div>
 
       {error && <p className="text-destructive text-sm">{error}</p>}
 
-      <Button disabled={isSubmitting || !walletId || !amount.trim()} type="submit">
-        {isSubmitting && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-        Withdraw
+      <Button
+        disabled={isSubmitting || !walletId || !amount.trim()}
+        iconLeft={isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : undefined}
+        type="submit"
+      >
+        {t("DashboardPrivateChannels.withdraw.submit")}
       </Button>
     </form>
   );

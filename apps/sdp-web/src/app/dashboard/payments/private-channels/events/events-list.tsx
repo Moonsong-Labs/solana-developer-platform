@@ -1,30 +1,34 @@
 "use client";
 
-import {
-  PRIVATE_CHANNEL_EVENT_FAMILIES,
-  PRIVATE_CHANNEL_EVENT_STATUSES,
-  type PrivateChannelEventDto,
-  type PrivateChannelEventFamily,
-} from "@sdp/types";
+import type { PrivateChannelEventDto } from "@sdp/types";
 import { Loader2Icon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useTranslations } from "@/i18n/provider";
 import { loadProjectEventsAction } from "./actions";
+import {
+  EVENT_FAMILY_BADGE,
+  EVENT_STATUS_BADGE,
+  eventFamilyLabel,
+  eventStatusLabel,
+  eventTypeLabel,
+} from "./event-labels";
 
 interface Props {
   initialEvents: PrivateChannelEventDto[];
   initialHasMore: boolean;
   initialNextCursor: string | null;
 }
-
-const FAMILY_BADGE: Record<PrivateChannelEventFamily, BadgeVariant> = {
-  [PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE]: "info",
-  [PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR]: "danger",
-  [PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER]: "default",
-  [PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER]: "success",
-};
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);
@@ -51,6 +55,7 @@ export function EventsList({ initialEvents, initialHasMore, initialNextCursor }:
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [isLoadingMore, startLoadMore] = useTransition();
+  const t = useTranslations();
 
   function loadMore() {
     if (!nextCursor || isLoadingMore) return;
@@ -67,50 +72,75 @@ export function EventsList({ initialEvents, initialHasMore, initialNextCursor }:
   }
 
   if (events.length === 0) {
-    return (
-      <p className="text-sm text-text-medium">
-        No events yet. Connect an instance or create a channel to start the activity feed.
-      </p>
-    );
+    return <p className="text-secondary text-sm">{t("DashboardPrivateChannels.events.empty")}</p>;
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-        {events.map((event) => {
-          const preview = payloadPreview(event.payload);
-          return (
-            <li key={event.id} className="flex flex-col gap-1.5 px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={FAMILY_BADGE[event.family] ?? "default"}>{event.family}</Badge>
-                <span className="font-medium text-text-extra-high">{event.type}</span>
-                <Badge
-                  variant={
-                    event.status === PRIVATE_CHANNEL_EVENT_STATUSES.FAILED ? "danger" : "default"
-                  }
-                >
-                  {event.status}
-                </Badge>
-              </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-medium">
-                <span>{formatWhen(event.occurredAt)}</span>
-                {event.channelId ? <span>channel {event.channelId.slice(0, 12)}…</span> : null}
-              </div>
-              {preview ? (
-                <pre className="overflow-x-auto rounded bg-[rgba(28,28,29,0.04)] px-2 py-1 text-xs text-text-medium">
-                  {preview}
-                </pre>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+      <div className="overflow-hidden rounded-lg border border-border-default">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-1/2">
+                {t("DashboardPrivateChannels.events.columnEvent")}
+              </TableHead>
+              <TableHead className="w-28">
+                {t("DashboardPrivateChannels.events.columnCategory")}
+              </TableHead>
+              <TableHead className="w-24">
+                {t("DashboardPrivateChannels.events.columnStatus")}
+              </TableHead>
+              <TableHead className="w-44">
+                {t("DashboardPrivateChannels.events.columnWhen")}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {events.map((event) => {
+              const preview = payloadPreview(event.payload);
+              return (
+                <TableRow key={event.id}>
+                  <TableCell className="max-w-0">
+                    <span className="text-primary">{eventTypeLabel(t, event.type)}</span>
+                    {preview ? (
+                      <span
+                        className="mt-0.5 block truncate font-mono text-tertiary text-xs"
+                        title={preview}
+                      >
+                        {preview}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={EVENT_FAMILY_BADGE[event.family] ?? "default"}>
+                      {eventFamilyLabel(t, event.family)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={EVENT_STATUS_BADGE[event.status] ?? "default"}>
+                      {eventStatusLabel(t, event.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="max-w-0 text-secondary">
+                    <span className="block whitespace-nowrap">{formatWhen(event.occurredAt)}</span>
+                    {event.channelId ? (
+                      <span className="mt-0.5 block truncate font-mono text-tertiary text-xs">
+                        {event.channelId}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
 
       {hasMore ? (
         <div className="flex justify-center">
           <Button type="button" variant="secondary" onClick={loadMore} disabled={isLoadingMore}>
             {isLoadingMore ? <Loader2Icon className="animate-spin" /> : null}
-            Load more
+            {t("DashboardPrivateChannels.events.loadMore")}
           </Button>
         </div>
       ) : null}

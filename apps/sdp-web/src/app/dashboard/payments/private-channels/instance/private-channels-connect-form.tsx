@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
+import { useTranslations } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
 import {
   type ConnectPrivateChannelResult,
@@ -76,6 +77,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
     message: string;
   } | null>(null);
   const [showDelete, setShowDelete] = useState(false);
+  const t = useTranslations();
 
   const isLocked = instance?.isActive === true;
   const busy = isTesting || isConnecting || isDisconnecting || isDeleting;
@@ -101,7 +103,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
       setGatewayResult(null);
       setRpcResult(null);
       setAuthResult(null);
-      toast.success("Private channel connected.");
+      toast.success(t("DashboardPrivateChannels.instance.connectSuccess"));
       return;
     }
     if (result.kind === "validation") {
@@ -155,7 +157,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
       if (result.ok) {
         setInstance(result.instance);
         setValues(toValues(result.instance));
-        toast.success("Private channel disconnected. You can edit and reconnect.");
+        toast.success(t("DashboardPrivateChannels.instance.disconnectSuccess"));
       } else {
         toast.error(result.message);
       }
@@ -172,7 +174,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         setRpcResult(null);
         setAuthResult(null);
         setShowDelete(false);
-        toast.success("Private channel instance deleted.");
+        toast.success(t("DashboardPrivateChannels.instance.deleteSuccess"));
       } else {
         toast.error(result.message);
       }
@@ -183,41 +185,41 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
     <div className="grid gap-6">
       <UrlField
         id="gateway-url"
-        label="Gateway URL"
-        placeholder="http://gateway.example:8899"
+        label={t("DashboardPrivateChannels.instance.gatewayUrl")}
+        placeholder={t("DashboardPrivateChannels.instance.gatewayPlaceholder")}
         value={values.gatewayUrl}
         error={errors.gatewayUrl}
         disabled={isLocked}
         onChange={(v) => update("gatewayUrl", v)}
-        status={gatewayStatus(gatewayResult)}
+        status={gatewayStatus(t, gatewayResult)}
       />
 
       <UrlField
         id="chain-rpc-url"
-        label="Chain RPC URL"
-        placeholder="https://devnet.helius-rpc.com/?api-key=…"
+        label={t("DashboardPrivateChannels.instance.chainRpcUrl")}
+        placeholder={t("DashboardPrivateChannels.instance.chainRpcPlaceholder")}
         value={values.chainRpcUrl}
         error={errors.chainRpcUrl}
         disabled={isLocked}
         onChange={(v) => update("chainRpcUrl", v)}
-        status={rpcStatus(rpcResult)}
+        status={rpcStatus(t, rpcResult)}
       />
 
       <UrlField
         id="auth-url"
-        label="Auth URL"
-        placeholder="http://auth.example:8903"
+        label={t("DashboardPrivateChannels.instance.authUrl")}
+        placeholder={t("DashboardPrivateChannels.instance.authPlaceholder")}
         value={values.authUrl}
         error={errors.authUrl}
         disabled={isLocked}
         onChange={(v) => update("authUrl", v)}
-        status={authStatus(authResult)}
+        status={authStatus(t, authResult)}
       />
 
       <div className="grid gap-2 sm:grid-cols-2">
         <TextField
           id="escrow-program-id"
-          label="Escrow program ID"
+          label={t("DashboardPrivateChannels.instance.escrowProgramId")}
           value={values.escrowProgramId}
           error={errors.escrowProgramId}
           disabled={isLocked}
@@ -225,7 +227,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
         />
         <TextField
           id="withdraw-program-id"
-          label="Withdraw program ID"
+          label={t("DashboardPrivateChannels.instance.withdrawProgramId")}
           value={values.withdrawProgramId}
           error={errors.withdrawProgramId}
           disabled={isLocked}
@@ -235,7 +237,7 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
 
       <TextField
         id="escrow-instance-addr"
-        label="Escrow instance address"
+        label={t("DashboardPrivateChannels.instance.escrowInstanceAddr")}
         value={values.escrowInstanceAddr}
         error={errors.escrowInstanceAddr}
         disabled={isLocked}
@@ -244,7 +246,9 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button type="button" variant="secondary" onClick={runTest} disabled={busy || isLocked}>
-          {isTesting ? "Testing…" : "Test connection"}
+          {isTesting
+            ? t("DashboardPrivateChannels.instance.testing")
+            : t("DashboardPrivateChannels.instance.testConnection")}
         </Button>
         {isLocked ? (
           <>
@@ -254,15 +258,19 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
               onClick={() => setShowDelete(true)}
               disabled={busy}
             >
-              Delete
+              {t("DashboardPrivateChannels.instance.delete")}
             </Button>
             <Button type="button" onClick={runDisconnect} disabled={busy}>
-              {isDisconnecting ? "Disconnecting…" : "Disconnect"}
+              {isDisconnecting
+                ? t("DashboardPrivateChannels.instance.disconnecting")
+                : t("DashboardPrivateChannels.instance.disconnect")}
             </Button>
           </>
         ) : (
           <Button type="button" onClick={() => runConnect(false)} disabled={!isValid || busy}>
-            {isConnecting ? "Connecting…" : "Connect"}
+            {isConnecting
+              ? t("DashboardPrivateChannels.instance.connecting")
+              : t("DashboardPrivateChannels.instance.connect")}
           </Button>
         )}
       </div>
@@ -288,58 +296,70 @@ export function PrivateChannelsConnectForm({ initialInstance }: Props) {
   );
 }
 
+type Translate = ReturnType<typeof useTranslations>;
+
 function gatewayStatus(
+  t: Translate,
   gatewayResult: ConnectionProbeResult["gateway"] | null
 ): StatusIndicator | null {
   if (!gatewayResult) return null;
   return {
     label:
       gatewayResult.status === "ready"
-        ? "Ready"
+        ? t("DashboardPrivateChannels.instance.statusReady")
         : gatewayResult.status === "degraded"
-          ? "Degraded"
-          : "Unreachable",
+          ? t("DashboardPrivateChannels.instance.statusDegraded")
+          : t("DashboardPrivateChannels.instance.statusUnreachable"),
     dotClass: GATEWAY_DOT[gatewayResult.status],
     textClass: GATEWAY_TEXT[gatewayResult.status],
     detail:
       gatewayResult.status === "ready"
-        ? `${gatewayResult.latencyMs} ms`
+        ? t("DashboardPrivateChannels.instance.latency", { ms: gatewayResult.latencyMs })
         : gatewayResult.status === "degraded"
           ? gatewayResult.reason
           : gatewayResult.error,
   };
 }
 
-function rpcStatus(rpcResult: ConnectionProbeResult["rpc"] | null): StatusIndicator | null {
+function rpcStatus(
+  t: Translate,
+  rpcResult: ConnectionProbeResult["rpc"] | null
+): StatusIndicator | null {
   if (!rpcResult) return null;
   if (rpcResult.ok) {
     return {
-      label: "Ready",
+      label: t("DashboardPrivateChannels.instance.statusReady"),
       dotClass: GATEWAY_DOT.ready,
       textClass: GATEWAY_TEXT.ready,
-      detail: `${rpcResult.latencyMs} ms · v${rpcResult.version}`,
+      detail: t("DashboardPrivateChannels.instance.latencyWithVersion", {
+        ms: rpcResult.latencyMs,
+        version: rpcResult.version,
+      }),
     };
   }
   return {
-    label: "Failed",
+    label: t("DashboardPrivateChannels.instance.statusFailed"),
     dotClass: GATEWAY_DOT.unreachable,
     textClass: GATEWAY_TEXT.unreachable,
     detail: rpcResult.error,
   };
 }
 
-function authStatus(authResult: ConnectionProbeResult["auth"] | null): StatusIndicator | null {
+function authStatus(
+  t: Translate,
+  authResult: ConnectionProbeResult["auth"] | null
+): StatusIndicator | null {
   if (!authResult) return null;
   if (authResult.ok) {
     return {
-      label: "Ready",
+      label: t("DashboardPrivateChannels.instance.statusReady"),
       dotClass: GATEWAY_DOT.ready,
       textClass: GATEWAY_TEXT.ready,
-      detail: `${authResult.latencyMs} ms`,
+      detail: t("DashboardPrivateChannels.instance.latency", { ms: authResult.latencyMs }),
     };
   }
   return {
-    label: "Failed",
+    label: t("DashboardPrivateChannels.instance.statusFailed"),
     dotClass: GATEWAY_DOT.unreachable,
     textClass: GATEWAY_TEXT.unreachable,
     detail: authResult.error,
@@ -375,7 +395,7 @@ function UrlField(props: {
             />
             <span>{props.status.label}</span>
             {props.status.detail ? (
-              <span className="text-text-medium">· {props.status.detail}</span>
+              <span className="text-secondary">· {props.status.detail}</span>
             ) : null}
           </span>
         ) : null}
@@ -430,33 +450,33 @@ function ReactivateConfirmationDialog(props: {
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const t = useTranslations();
   const isOpen = props.prompt !== null;
   return (
     <Modal
       isOpen={isOpen}
-      ariaLabel="Reactivate existing instance"
+      ariaLabel={t("DashboardPrivateChannels.instance.reactivateAria")}
       onClose={props.working ? undefined : props.onCancel}
       size="sm"
     >
       <div className="space-y-5 p-6">
         <div className="space-y-1">
-          <h2 className="text-lg font-medium tracking-tight text-text-extra-high">
-            Reactivate existing instance
+          <h2 className="text-lg font-medium tracking-tight text-primary">
+            {t("DashboardPrivateChannels.instance.reactivateTitle")}
           </h2>
-          <p className="text-sm text-text-medium">
-            This gateway URL has been connected to this project before. Reactivating will overwrite
-            the stored config on the existing instance record. Any downstream data associated with
-            it will now belong to the new configuration. Continue at your own risk.
+          <p className="text-sm text-secondary">
+            {t("DashboardPrivateChannels.instance.reactivateDescription")}
           </p>
           {props.prompt ? (
-            <p className="pt-2 text-sm text-text-medium">
-              Gateway: <span className="font-medium">{props.prompt.existing.gatewayUrl}</span>
+            <p className="pt-2 text-sm text-secondary">
+              {t("DashboardPrivateChannels.instance.gatewayLabel")}{" "}
+              <span className="font-medium">{props.prompt.existing.gatewayUrl}</span>
             </p>
           ) : null}
         </div>
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={props.onCancel} disabled={props.working}>
-            Cancel
+            {t("DashboardPrivateChannels.common.cancel")}
           </Button>
           <Button
             type="button"
@@ -464,7 +484,9 @@ function ReactivateConfirmationDialog(props: {
             disabled={props.working}
             iconLeft={props.working ? <Loader2Icon className="animate-spin" /> : undefined}
           >
-            {props.working ? "Reactivating…" : "Reactivate"}
+            {props.working
+              ? t("DashboardPrivateChannels.instance.reactivating")
+              : t("DashboardPrivateChannels.instance.reactivate")}
           </Button>
         </div>
       </div>
@@ -479,31 +501,32 @@ function DeleteConfirmationDialog(props: {
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const t = useTranslations();
   return (
     <Modal
       isOpen={props.isOpen}
-      ariaLabel="Delete private channel instance"
+      ariaLabel={t("DashboardPrivateChannels.instance.deleteAria")}
       onClose={props.working ? undefined : props.onCancel}
       size="sm"
     >
       <div className="space-y-5 p-6">
         <div className="space-y-1">
-          <h2 className="text-lg font-medium tracking-tight text-text-extra-high">
-            Delete Private Channel instance
+          <h2 className="text-lg font-medium tracking-tight text-primary">
+            {t("DashboardPrivateChannels.instance.deleteTitle")}
           </h2>
-          <p className="text-sm text-text-medium">
-            This will permanently delete the instance record and all downstream data bound to it
-            (channels, deposits, transfers). This cannot be undone.
+          <p className="text-sm text-secondary">
+            {t("DashboardPrivateChannels.instance.deleteDescription")}
           </p>
           {props.gatewayUrl ? (
-            <p className="pt-2 text-sm text-text-medium">
-              Gateway: <span className="font-medium">{props.gatewayUrl}</span>
+            <p className="pt-2 text-sm text-secondary">
+              {t("DashboardPrivateChannels.instance.gatewayLabel")}{" "}
+              <span className="font-medium">{props.gatewayUrl}</span>
             </p>
           ) : null}
         </div>
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={props.onCancel} disabled={props.working}>
-            Cancel
+            {t("DashboardPrivateChannels.common.cancel")}
           </Button>
           <Button
             type="button"
@@ -512,7 +535,9 @@ function DeleteConfirmationDialog(props: {
             disabled={props.working}
             iconLeft={props.working ? <Loader2Icon className="animate-spin" /> : undefined}
           >
-            {props.working ? "Deleting…" : "Delete"}
+            {props.working
+              ? t("DashboardPrivateChannels.instance.deleting")
+              : t("DashboardPrivateChannels.instance.delete")}
           </Button>
         </div>
       </div>

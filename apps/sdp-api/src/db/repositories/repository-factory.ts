@@ -26,6 +26,8 @@ import type { PrivateChannelEventRepository } from "./private-channel-event.repo
 import { createPostgresPrivateChannelEventRepository } from "./private-channel-event.repository.postgres";
 import type { PrivateChannelInstanceRepository } from "./private-channel-instance.repository";
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
+import type { PrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository";
+import { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
 import type { PrivateChannelTransferRepository } from "./private-channel-transfer.repository";
 import { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
 import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
@@ -115,6 +117,12 @@ export function createPrivateChannelWithdrawalRepository(
   env: Env
 ): PrivateChannelWithdrawalRepository {
   return createPostgresPrivateChannelWithdrawalRepository(getDb(env));
+}
+
+export function createPrivateChannelSettlementObservationRepository(
+  env: Env
+): PrivateChannelSettlementObservationRepository {
+  return createPostgresPrivateChannelSettlementObservationRepository(getDb(env));
 }
 
 export function createProjectUserRepository(env: Env): ProjectUserRepository {

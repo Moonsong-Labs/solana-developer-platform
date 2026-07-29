@@ -1,7 +1,7 @@
 import type {
   PrivateChannelTransfer,
   PrivateChannelTransferRecipientDto,
-  PrivateChannelTransferStatus,
+  PrivateChannelMemberTransferStatus,
 } from "@sdp/types";
 import type { RepositoryDbClient } from "./base";
 
@@ -23,7 +23,7 @@ export interface PrivateChannelTransferRow {
   recipient: string;
   mint: string;
   amount: string;
-  status: PrivateChannelTransferStatus;
+  status: PrivateChannelMemberTransferStatus;
   signature: string | null;
   failure_reason: string | null;
   created_at: string;
@@ -46,7 +46,7 @@ export interface CreatePrivateChannelTransferInput extends PrivateChannelTransfe
   recipient: string;
   mint: string;
   amount: string;
-  status: PrivateChannelTransferStatus;
+  status: PrivateChannelMemberTransferStatus;
   signature: string | null;
   failureReason: string | null;
 }

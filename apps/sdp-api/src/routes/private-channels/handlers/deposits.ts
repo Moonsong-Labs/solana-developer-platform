@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { mapPrivateChannelInstanceRow } from "@/db/repositories";
 import { getAuth, requireProjectId } from "@/lib/auth";
-import { badRequest, notFound, walletNotFound } from "@/lib/errors";
+import { badRequest, notFound, unauthorized, walletNotFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { resolveScope, resolveWalletAddress } from "@/routes/payments/wallets";
 import {
@@ -48,6 +48,10 @@ export async function createPrivateChannelDeposit(c: AppContext) {
 
   try {
     const { auth, wallets } = await resolveScope(c);
+    const userId = auth.userId;
+    if (!userId) {
+      throw unauthorized("Private Channel deposits require a user session.");
+    }
     const projectId = requireProjectId(c);
     const instance = await loadActiveInstance(c, auth.organizationId, projectId);
 
@@ -70,13 +74,14 @@ export async function createPrivateChannelDeposit(c: AppContext) {
       instance,
       organizationId: auth.organizationId,
       projectId,
-      userId: auth.userId,
+      userId,
     });
 
     const deposit = await createChannelDeposit(c.env, {
       instance,
       organizationId: auth.organizationId,
       projectId,
+      userId,
       wallet,
       amount: parsed.data.amount,
       recipient,

@@ -1,49 +1,41 @@
-import { auth } from "@clerk/nextjs/server";
-import type { CustodyWalletSummary } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchPrivateChannelInstance, fetchSignableCustodyWallets } from "@/lib/private-channels";
+import { getTranslations } from "@/i18n/server";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  requirePrivateChannelsAccess,
+} from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadInstance, loadSignableWallets } from "../private-channels-page.data";
 import { DepositForm } from "./deposit-form";
 
-async function loadWallets(): Promise<CustodyWalletSummary[]> {
-  const client = await createSdpApiClient();
-  const { instance } = await fetchPrivateChannelInstance(client);
-  if (!instance?.isActive) {
-    redirect("/dashboard/payments/private-channels/instance");
-  }
-  return fetchSignableCustodyWallets(client);
-}
-
 export default async function PrivateChannelsDepositPage() {
-  if (!(await privateChannels())) {
-    notFound();
+  await requirePrivateChannelsAccess();
+
+  const t = await getTranslations();
+
+  const client = await createSdpApiClient();
+  const instance = await loadInstance(client);
+  if (instance.ok && !instance.data?.isActive) {
+    redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
 
-  const { userId, orgId } = await auth();
-  if (!userId) {
-    redirect(await getAuthEntryPath());
-  }
-  if (!orgId) {
-    redirect("/dashboard");
-  }
-
-  const wallets = await loadWallets();
+  const wallets = await loadSignableWallets(client);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
       <Card>
         <CardHeader>
-          <CardTitle>Deposit</CardTitle>
-          <CardDescription>
-            Move USDC from a custody wallet into the channel escrow on devnet. Watch it progress
-            from the escrow contract to your credited channel balance.
-          </CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.deposit.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.deposit.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <DepositForm wallets={wallets} />
+          {wallets.ok ? (
+            <DepositForm wallets={wallets.data} />
+          ) : (
+            <PrivateChannelsLoadError message={wallets.error} />
+          )}
         </CardContent>
       </Card>
     </div>
