@@ -1,49 +1,36 @@
-import { auth } from "@clerk/nextjs/server";
-import type { PrivateChannelEventListEnvelope } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
-import { fetchPrivateChannelEvents } from "@/lib/private-channels";
+import { getTranslations } from "@/i18n/server";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import { requirePrivateChannelsAccess } from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadEvents } from "../private-channels-page.data";
 import { EventsList } from "./events-list";
 
-async function loadEvents(): Promise<PrivateChannelEventListEnvelope> {
-  try {
-    const client = await createSdpApiClient();
-    return await fetchPrivateChannelEvents(client, { limit: 50 });
-  } catch {
-    return { events: [], hasMore: false, nextCursor: null };
-  }
-}
-
 export default async function PrivateChannelsEventsPage() {
-  if (!(await privateChannels())) {
-    notFound();
-  }
+  await requirePrivateChannelsAccess();
 
-  const { userId, orgId } = await auth();
-  if (!userId) redirect(await getAuthEntryPath());
-  if (!orgId) redirect("/dashboard");
+  const t = await getTranslations();
 
-  const { events, hasMore, nextCursor } = await loadEvents();
+  const client = await createSdpApiClient();
+  const events = await loadEvents(client);
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="mx-auto w-full max-w-5xl">
       <Card>
         <CardHeader>
-          <CardTitle>Events</CardTitle>
-          <CardDescription>
-            Project activity for Private Channels (lifecycle, errors, and future member/transfer
-            events). History is kept even after an instance is disconnected or deleted.
-          </CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.events.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.events.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <EventsList
-            initialEvents={events}
-            initialHasMore={hasMore}
-            initialNextCursor={nextCursor}
-          />
+          {events.ok ? (
+            <EventsList
+              initialEvents={events.data.events}
+              initialHasMore={events.data.hasMore}
+              initialNextCursor={events.data.nextCursor}
+            />
+          ) : (
+            <PrivateChannelsLoadError message={events.error} />
+          )}
         </CardContent>
       </Card>
     </div>

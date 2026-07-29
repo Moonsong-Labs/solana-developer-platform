@@ -3,6 +3,7 @@ import type {
   CustodyWalletSummary,
   InvitePrivateChannelUserRequest,
   PrivateChannelAssignableRole,
+  PrivateChannelBalance,
   PrivateChannelDeposit,
   PrivateChannelDto,
   PrivateChannelEventListEnvelope,
@@ -252,6 +253,50 @@ export function removeChannelMembership(
     `/v1/private-channels/channels/${encodeURIComponent(channelId)}/memberships/${encodeURIComponent(privateChannelUserId)}`,
     { method: "DELETE" }
   );
+}
+
+/**
+ * Read an owner's channel token balance for the project's active instance.
+ * `mint` defaults to the instance cluster's USDC on the server.
+ */
+export async function fetchPrivateChannelBalance(
+  client: SdpApiClient,
+  owner: string,
+  mint?: string
+): Promise<PrivateChannelBalance> {
+  const params = new URLSearchParams({ owner });
+  if (mint) params.set("mint", mint);
+  return client.fetch<PrivateChannelBalance>(`/v1/private-channels/balance?${params.toString()}`);
+}
+
+/**
+ * Signable custody wallets with on-chain SPL balances attached. Used by the
+ * deposit/withdraw forms to show the wallet's devnet USDC balance without a
+ * second round-trip.
+ */
+export async function fetchSignableWalletsWithBalances(
+  client: SdpApiClient
+): Promise<CustodyWalletSummary[]> {
+  const { wallets } = await client.fetch<{ wallets: CustodyWalletSummary[] }>(
+    "/v1/wallets?includeBalances=true"
+  );
+  return wallets;
+}
+
+/**
+ * Signable custody wallets that the caller has ALSO verified with SPC. Deposit
+ * and withdraw only accept these — an unverified wallet can't burn or receive
+ * channel credit.
+ */
+export async function fetchVerifiedSignableWallets(
+  client: SdpApiClient
+): Promise<CustodyWalletSummary[]> {
+  const [signable, verified] = await Promise.all([
+    fetchSignableCustodyWallets(client),
+    fetchVerifiedWallets(client),
+  ]);
+  const verifiedIds = new Set(verified.map((w) => w.walletId));
+  return signable.filter((w) => verifiedIds.has(w.walletId));
 }
 
 /** The caller's custody wallets that have completed SPC verification, newest first. */

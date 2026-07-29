@@ -1,52 +1,37 @@
 import { auth } from "@clerk/nextjs/server";
-import { hasPermission, type PrivateChannelInstance } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { hasPermission } from "@sdp/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
+import { getTranslations } from "@/i18n/server";
 import { resolveDashboardAccess } from "@/lib/dashboard-access";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import { requirePrivateChannelsAccess } from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadInstance } from "../private-channels-page.data";
 import { PrivateChannelsConnectForm } from "./private-channels-connect-form";
 
-async function fetchInitialInstance(): Promise<PrivateChannelInstance | null> {
-  try {
-    const client = await createSdpApiClient();
-    const response = await client.fetch<{ instance: PrivateChannelInstance | null }>(
-      "/v1/private-channels/instance"
-    );
-    return response.instance;
-  } catch {
-    // 403 (flag off in sdp-api), 401, and network errors all degrade to "no
-    // persisted row" so the form still renders with sandbox defaults.
-    return null;
-  }
-}
-
 export default async function PrivateChannelsPage() {
-  if (!(await privateChannels())) {
-    notFound();
-  }
+  await requirePrivateChannelsAccess();
 
-  const { userId, orgId, orgRole } = await auth();
-  if (!userId) {
-    redirect(await getAuthEntryPath());
-  }
-  if (!orgId) {
-    redirect("/dashboard");
-  }
+  const t = await getTranslations();
+  const { orgRole } = await auth();
 
-  const initialInstance = await fetchInitialInstance();
+  const client = await createSdpApiClient();
+  const instance = await loadInstance(client);
   const canManage = hasPermission(resolveDashboardAccess(orgRole).permissions, "projects:admin");
 
   return (
     <div className="mx-auto w-full max-w-3xl">
       <Card>
         <CardHeader>
-          <CardTitle>Connect Private Channel</CardTitle>
-          <CardDescription>Point SDP at a Solana Private Channels instance.</CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.instance.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.instance.description")}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <PrivateChannelsConnectForm initialInstance={initialInstance} canManage={canManage} />
+        <CardContent className="space-y-4">
+          {/* The form is still usable on a failed lookup (it falls back to the
+              sandbox defaults), so surface the error above it rather than
+              replacing it — otherwise a transient 500 blocks reconnecting. */}
+          {instance.ok ? null : <PrivateChannelsLoadError message={instance.error} />}
+          <PrivateChannelsConnectForm initialInstance={instance.data} canManage={canManage} />
         </CardContent>
       </Card>
     </div>

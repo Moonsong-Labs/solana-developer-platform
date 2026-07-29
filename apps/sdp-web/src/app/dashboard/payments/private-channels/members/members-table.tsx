@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useTranslations } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
 import {
   addToChannelAction,
@@ -60,6 +61,7 @@ export function MembersTable({
 }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PrivateChannelUserDto | null>(null);
+  const t = useTranslations();
 
   const invitedUserIds = useMemo(() => new Set(members.map((m) => m.userId)), [members]);
   const eligibleForInvite = useMemo(
@@ -70,29 +72,33 @@ export function MembersTable({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-text-medium">
-          {members.length} member{members.length === 1 ? "" : "s"} invited to this workspace.
+        <p className="text-sm text-secondary">
+          {members.length === 1
+            ? t("DashboardPrivateChannels.members.countOne", { count: members.length })
+            : t("DashboardPrivateChannels.members.countOther", { count: members.length })}
         </p>
         {canManageWorkspace ? (
           <Button onClick={() => setInviteOpen(true)} disabled={eligibleForInvite.length === 0}>
-            Invite member
+            {t("DashboardPrivateChannels.members.inviteMember")}
           </Button>
         ) : null}
       </div>
 
       {members.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border-light p-8 text-center text-sm text-text-medium">
-          No members yet. Invite an SDP project user to get started.
+        <p className="rounded-lg border border-dashed border-border-default p-8 text-center text-sm text-secondary">
+          {t("DashboardPrivateChannels.members.empty")}
         </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Verified wallets</TableHead>
-              <TableHead>Channels</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t("DashboardPrivateChannels.members.columnEmail")}</TableHead>
+              <TableHead>{t("DashboardPrivateChannels.members.columnName")}</TableHead>
+              <TableHead>{t("DashboardPrivateChannels.members.columnVerifiedWallets")}</TableHead>
+              <TableHead>{t("DashboardPrivateChannels.members.columnChannels")}</TableHead>
+              <TableHead className="text-right">
+                {t("DashboardPrivateChannels.members.columnActions")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -146,6 +152,7 @@ function MemberRow({
   );
   const manageable = new Set(manageableChannelIds);
   const owned = new Set(ownedChannelIds);
+  const t = useTranslations();
   const inChannelIds = new Set(member.channels.map((c) => c.id));
   const notInChannels = allChannels.filter((c) => !inChannelIds.has(c.id) && manageable.has(c.id));
 
@@ -172,9 +179,9 @@ function MemberRow({
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-sm break-all">{member.email}</TableCell>
+      <TableCell className="break-all text-sm">{member.email}</TableCell>
       <TableCell className="text-sm">
-        {member.name ?? <span className="text-text-medium">—</span>}
+        {member.name ?? <span className="text-secondary">—</span>}
       </TableCell>
       <TableCell>
         <WalletCountBadge count={member.verifiedWalletCount} />
@@ -184,9 +191,11 @@ function MemberRow({
           {member.channels.map((c) => (
             <ChannelChip
               key={c.id}
-              label={`${c.name}${c.isDefault ? " (default)" : ""}${
-                c.status === PRIVATE_CHANNEL_STATUSES.ARCHIVED ? " (archived)" : ""
-              }`}
+              label={
+                c.name +
+                (c.isDefault ? ` ${t("DashboardPrivateChannels.members.defaultSuffix")}` : "") +
+                (c.status === PRIVATE_CHANNEL_STATUSES.ARCHIVED ? " (archived)" : "")
+              }
               role={c.role}
               canAssignOwner={owned.has(c.id)}
               onRoleChange={
@@ -222,7 +231,7 @@ function MemberRow({
       <TableCell className="text-right">
         {onDelete ? (
           <Button type="button" variant="ghost" size="sm" onClick={onDelete} disabled={pending}>
-            Delete
+            {t("DashboardPrivateChannels.members.delete")}
           </Button>
         ) : null}
       </TableCell>
@@ -232,21 +241,22 @@ function MemberRow({
 
 function WalletCountBadge({ count }: { count: number }) {
   const hasWallets = count > 0;
+  const t = useTranslations();
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 text-sm",
-        hasWallets ? "text-status-success-text" : "text-text-medium"
+        hasWallets ? "text-status-success-text" : "text-secondary"
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
           "inline-block size-2 rounded-full",
-          hasWallets ? "bg-status-success-text" : "bg-border-light"
+          hasWallets ? "bg-status-success-text" : "bg-fill"
         )}
       />
-      {count} verified
+      {t("DashboardPrivateChannels.members.verifiedCount", { count })}
     </span>
   );
 }
@@ -264,20 +274,21 @@ function ChannelChip({
   onRoleChange?: (role: PrivateChannelMembershipRole) => void;
   onRemove?: () => void;
 }) {
+  const t = useTranslations();
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-border-extra-light px-2 py-0.5 text-xs text-text-extra-high">
+    <span className="inline-flex items-center gap-1 rounded-full bg-fill-subtle px-2 py-0.5 text-xs text-primary">
       {label}
       {onRoleChange ? (
         <RoleSelect value={role} onChange={onRoleChange} includeOwner={canAssignOwner} />
       ) : (
-        <span className="text-text-medium">{role}</span>
+        <span className="text-secondary">{role}</span>
       )}
       {onRemove ? (
         <button
           type="button"
           onClick={onRemove}
-          className="rounded-full p-0.5 text-text-medium hover:bg-border-light hover:text-status-error-text"
-          aria-label={`Remove from ${label}`}
+          className="rounded-full p-0.5 text-secondary hover:bg-fill hover:text-status-error-text"
+          aria-label={t("DashboardPrivateChannels.members.removeFromAria", { label })}
         >
           <XIcon className="size-3" />
         </button>
@@ -303,7 +314,7 @@ function RoleSelect({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as PrivateChannelMembershipRole)}
-      className="rounded border border-border-light bg-white px-1 py-0.5 text-xs"
+      className="rounded border border-border-default bg-surface px-1 py-0.5 text-xs"
     >
       <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.VIEWER}>viewer</option>
       <option value={PRIVATE_CHANNEL_MEMBERSHIP_ROLES.MEMBER}>member</option>
@@ -322,6 +333,7 @@ function AddToChannelMenu({
   disabled: boolean;
   onPick: (channelId: string) => void;
 }) {
+  const t = useTranslations();
   // Uses the design system's DropdownMenu (Radix) so the menu portals to the
   // document body and isn't clipped by the table's overflow container.
   return (
@@ -330,17 +342,21 @@ function AddToChannelMenu({
         <button
           type="button"
           disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border-light px-2 py-0.5 text-xs text-text-medium hover:bg-border-extra-light hover:text-text-extra-high disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border-default px-2 py-0.5 text-xs text-secondary hover:bg-fill-subtle hover:text-primary disabled:opacity-40"
         >
           <PlusIcon className="size-3" />
-          Add to channel
+          {t("DashboardPrivateChannels.members.addToChannel")}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[180px]">
         {channels.map((c) => (
           <DropdownMenuItem key={c.id} onSelect={() => onPick(c.id)}>
             {c.name}
-            {c.isDefault ? <span className="ml-1 text-text-medium">(default)</span> : null}
+            {c.isDefault ? (
+              <span className="ml-1 text-secondary">
+                {t("DashboardPrivateChannels.members.defaultSuffix")}
+              </span>
+            ) : null}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -359,16 +375,19 @@ function InviteDialog({
 }) {
   const [userId, setUserId] = useState("");
   const [pending, startTransition] = useTransition();
+  const t = useTranslations();
 
   const submit = () => {
     if (!userId) return;
     startTransition(async () => {
       const res = await inviteMemberAction(userId);
       if (res.ok) {
-        toast.success(`Invited ${res.value.user.email}.`);
+        toast.success(
+          t("DashboardPrivateChannels.members.inviteSuccess", { email: res.value.user.email })
+        );
         if (res.value.inviteUrl) {
           navigator.clipboard?.writeText(res.value.inviteUrl).catch(() => {});
-          toast.info("Invite URL copied to clipboard.");
+          toast.info(t("DashboardPrivateChannels.members.inviteUrlCopied"));
         }
         setUserId("");
         onClose();
@@ -381,29 +400,31 @@ function InviteDialog({
   return (
     <Modal
       isOpen={isOpen}
-      ariaLabel="Invite member"
+      ariaLabel={t("DashboardPrivateChannels.members.inviteAria")}
       onClose={pending ? undefined : onClose}
       size="sm"
     >
       <div className="space-y-5 p-6">
         <div className="space-y-1">
-          <h2 className="text-lg font-medium tracking-tight text-text-extra-high">Invite member</h2>
-          <p className="text-sm text-text-medium">
-            Pick an SDP project user to invite. An SPC credential will be created for them.
+          <h2 className="text-lg font-medium tracking-tight text-primary">
+            {t("DashboardPrivateChannels.members.inviteTitle")}
+          </h2>
+          <p className="text-sm text-secondary">
+            {t("DashboardPrivateChannels.members.inviteDescription")}
           </p>
         </div>
         <div className="grid gap-2">
-          <label htmlFor="invite-user" className="text-sm font-medium text-text-high">
-            Project user
+          <label htmlFor="invite-user" className="text-sm font-medium text-primary">
+            {t("DashboardPrivateChannels.members.projectUser")}
           </label>
           <select
             id="invite-user"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             disabled={pending}
-            className="w-full truncate rounded-md border border-border-light bg-white px-3 py-2 pr-8 text-sm text-text-extra-high"
+            className="w-full truncate rounded-md border border-border-default bg-surface px-3 py-2 pr-8 text-sm text-primary"
           >
-            <option value="">Select a user…</option>
+            <option value="">{t("DashboardPrivateChannels.members.selectUser")}</option>
             {candidates.map((pm) => (
               <option key={pm.userId} value={pm.userId} title={pm.user.name ?? pm.user.email}>
                 {pm.user.email}
@@ -413,13 +434,15 @@ function InviteDialog({
           {(() => {
             const picked = candidates.find((pm) => pm.userId === userId);
             return picked?.user.name ? (
-              <p className="truncate text-xs text-text-medium">Name: {picked.user.name}</p>
+              <p className="truncate text-xs text-secondary">
+                {t("DashboardPrivateChannels.members.pickedName", { name: picked.user.name })}
+              </p>
             ) : null;
           })()}
         </div>
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
-            Cancel
+            {t("DashboardPrivateChannels.common.cancel")}
           </Button>
           <Button
             type="button"
@@ -427,7 +450,9 @@ function InviteDialog({
             disabled={!userId || pending}
             iconLeft={pending ? <Loader2Icon className="animate-spin" /> : undefined}
           >
-            {pending ? "Inviting…" : "Invite"}
+            {pending
+              ? t("DashboardPrivateChannels.members.inviting")
+              : t("DashboardPrivateChannels.members.invite")}
           </Button>
         </div>
       </div>
@@ -443,6 +468,7 @@ function DeleteMemberDialog({
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const t = useTranslations();
   const isOpen = target !== null;
 
   const confirm = () => {
@@ -450,7 +476,7 @@ function DeleteMemberDialog({
     startTransition(async () => {
       const res = await deleteMemberAction(target.id);
       if (res.ok) {
-        toast.success("Member removed.");
+        toast.success(t("DashboardPrivateChannels.members.removeSuccess"));
         onClose();
       } else {
         toast.error(res.message);
@@ -461,22 +487,24 @@ function DeleteMemberDialog({
   return (
     <Modal
       isOpen={isOpen}
-      ariaLabel="Delete member"
+      ariaLabel={t("DashboardPrivateChannels.members.deleteAria")}
       onClose={pending ? undefined : onClose}
       size="sm"
     >
       <div className="space-y-5 p-6">
         <div className="space-y-1">
-          <h2 className="text-lg font-medium tracking-tight text-text-extra-high">Remove member</h2>
-          <p className="text-sm text-text-medium">
-            Removes <span className="font-medium">{target?.email}</span> from the workspace and all
-            channels they belong to. Their SPC credential is retained (SPC has no delete-user
-            endpoint) but is orphaned from SDP.
+          <h2 className="text-lg font-medium tracking-tight text-primary">
+            {t("DashboardPrivateChannels.members.removeTitle")}
+          </h2>
+          <p className="text-sm text-secondary">
+            {t("DashboardPrivateChannels.members.removeDescription", {
+              email: target?.email ?? "",
+            })}
           </p>
         </div>
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
-            Cancel
+            {t("DashboardPrivateChannels.common.cancel")}
           </Button>
           <Button
             type="button"
@@ -485,7 +513,9 @@ function DeleteMemberDialog({
             disabled={pending}
             iconLeft={pending ? <Loader2Icon className="animate-spin" /> : undefined}
           >
-            {pending ? "Removing…" : "Remove"}
+            {pending
+              ? t("DashboardPrivateChannels.members.removing")
+              : t("DashboardPrivateChannels.members.remove")}
           </Button>
         </div>
       </div>

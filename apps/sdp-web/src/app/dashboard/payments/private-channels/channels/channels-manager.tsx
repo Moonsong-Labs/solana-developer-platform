@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslations } from "@/i18n/provider";
 import { createChannelAction, deleteChannelAction } from "./actions";
 
 interface Props {
@@ -26,19 +27,22 @@ export function ChannelsManager({ initialChannels, canCreate, archivableChannelI
   const [description, setDescription] = useState("");
   const [isCreating, startCreate] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const t = useTranslations();
 
   const channels = initialChannels;
 
   function handleCreate() {
     const trimmed = name.trim();
     if (!trimmed) {
-      toast.error("Channel name is required.");
+      toast.error(t("DashboardPrivateChannels.channels.nameRequired"));
       return;
     }
     startCreate(async () => {
       const result = await createChannelAction({ name: trimmed, description });
       if (result.ok) {
-        toast.success(`Channel “${result.channel.name}” created.`);
+        toast.success(
+          t("DashboardPrivateChannels.channels.createSuccess", { name: result.channel.name })
+        );
         setName("");
         setDescription("");
       } else {
@@ -52,7 +56,7 @@ export function ChannelsManager({ initialChannels, canCreate, archivableChannelI
     startCreate(async () => {
       const result = await deleteChannelAction(channel.id);
       if (result.ok) {
-        toast.success(`Channel “${channel.name}” archived.`);
+        toast.success(t("DashboardPrivateChannels.channels.deleteSuccess", { name: channel.name }));
       } else {
         toast.error(result.message);
       }
@@ -63,13 +67,13 @@ export function ChannelsManager({ initialChannels, canCreate, archivableChannelI
   return (
     <div className="flex flex-col gap-6">
       {canCreate ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-border-default p-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="channel-name">New channel</Label>
+            <Label htmlFor="channel-name">{t("DashboardPrivateChannels.channels.newChannel")}</Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 id="channel-name"
-                placeholder="Channel name (e.g. Treasury)"
+                placeholder={t("DashboardPrivateChannels.channels.namePlaceholder")}
                 value={name}
                 maxLength={64}
                 disabled={isCreating}
@@ -79,7 +83,7 @@ export function ChannelsManager({ initialChannels, canCreate, archivableChannelI
                 }}
               />
               <Input
-                placeholder="Description (optional)"
+                placeholder={t("DashboardPrivateChannels.channels.descriptionPlaceholder")}
                 value={description}
                 disabled={isCreating}
                 onChange={(e) => setDescription(e.target.value)}
@@ -89,7 +93,7 @@ export function ChannelsManager({ initialChannels, canCreate, archivableChannelI
               />
               <Button onClick={handleCreate} disabled={isCreating || !name.trim()}>
                 {isCreating && !deletingId ? <Loader2Icon className="animate-spin" /> : null}
-                Add
+                {t("DashboardPrivateChannels.channels.add")}
               </Button>
             </div>
           </div>
@@ -97,31 +101,41 @@ export function ChannelsManager({ initialChannels, canCreate, archivableChannelI
       ) : null}
 
       {channels.length === 0 ? (
-        <p className="text-sm text-text-medium">No channels yet.</p>
+        <p className="text-sm text-secondary">{t("DashboardPrivateChannels.channels.empty")}</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border-default rounded-lg border border-border-default">
           {channels.map((channel) => (
             <li key={channel.id} className="flex items-center justify-between gap-4 px-4 py-3">
               <div className="flex min-w-0 flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{channel.name}</span>
-                  {channel.isDefault ? <Badge variant="info">Default</Badge> : null}
+                  {channel.isDefault ? (
+                    <Badge variant="info">
+                      {t("DashboardPrivateChannels.channels.defaultBadge")}
+                    </Badge>
+                  ) : null}
                 </div>
                 {channel.description ? (
-                  <span className="truncate text-sm text-text-medium">{channel.description}</span>
+                  <span className="truncate text-sm text-secondary">{channel.description}</span>
                 ) : null}
-                <span className="text-xs text-text-medium">
-                  Created {formatDate(channel.createdAt)}
+                <span className="text-xs text-secondary">
+                  {t("DashboardPrivateChannels.channels.created", {
+                    date: formatDate(channel.createdAt),
+                  })}
                 </span>
               </div>
               {archivableChannelIds.includes(channel.id) ? (
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Archive ${channel.name}`}
+                  aria-label={t("DashboardPrivateChannels.channels.deleteAria", {
+                    name: channel.name,
+                  })}
                   disabled={channel.isDefault || isCreating}
                   title={
-                    channel.isDefault ? "The default channel cannot be archived" : "Archive channel"
+                    channel.isDefault
+                      ? t("DashboardPrivateChannels.channels.deleteDefaultTitle")
+                      : t("DashboardPrivateChannels.channels.deleteTitle")
                   }
                   onClick={() => handleDelete(channel)}
                 >

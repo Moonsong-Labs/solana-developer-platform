@@ -1,13 +1,28 @@
+import type { PrivateChannelTransferContext } from "@sdp/types";
 import type { AppDb } from "@/db";
 import {
   type CreateWithdrawalInput,
   generatePrivateChannelWithdrawalId,
-  type ListWithdrawalsByStatusInput,
   type PrivateChannelWithdrawalRepository,
   type PrivateChannelWithdrawalRow,
   type UpdateWithdrawalInput,
   type WithdrawalProjectScope,
 } from "./private-channel-withdrawal.repository";
+
+function readContext(raw: unknown): PrivateChannelTransferContext {
+  if (raw && typeof raw === "object") {
+    return raw as PrivateChannelTransferContext;
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed as PrivateChannelTransferContext;
+    } catch {
+      // fall through
+    }
+  }
+  return {};
+}
 
 function mapRow(row: Record<string, unknown>): PrivateChannelWithdrawalRow {
   return {
@@ -20,15 +35,11 @@ function mapRow(row: Record<string, unknown>): PrivateChannelWithdrawalRow {
     destination: row.destination as string,
     mint: row.mint as string,
     amount: row.amount as string,
-    private_channel_user_id: (row.private_channel_user_id ?? null) as string | null,
-    gateway_url: (row.gateway_url ?? "") as string,
-    chain_rpc_url: (row.chain_rpc_url ?? "") as string,
-    escrow_program_id: (row.escrow_program_id ?? "") as string,
-    escrow_instance_addr: (row.escrow_instance_addr ?? "") as string,
     status: row.status as PrivateChannelWithdrawalRow["status"],
-    burn_signature: (row.burn_signature ?? null) as string | null,
-    release_signature: (row.release_signature ?? null) as string | null,
+    signature: (row.signature ?? null) as string | null,
+    settlement_ref: (row.settlement_ref ?? null) as string | null,
     failure_reason: (row.failure_reason ?? null) as string | null,
+    context: readContext(row.context),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -43,9 +54,8 @@ export function createPostgresPrivateChannelWithdrawalRepository(
         .prepare(
           `INSERT INTO private_channel_withdrawals (
                id, organization_id, project_id, instance_id, wallet_id,
-               owner, destination, mint, amount, private_channel_user_id,
-               gateway_url, chain_rpc_url, escrow_program_id, escrow_instance_addr
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               owner, destination, mint, amount, context
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
           RETURNING *`
         )
         .bind(
@@ -58,27 +68,21 @@ export function createPostgresPrivateChannelWithdrawalRepository(
           input.destination,
           input.mint,
           input.amount,
-          input.privateChannelUserId,
-          input.gatewayUrl,
-          input.chainRpcUrl,
-          input.escrowProgramId,
-          input.escrowInstanceAddr
+          JSON.stringify(input.context ?? {})
         )
         .first<Record<string, unknown>>();
       return row ? mapRow(row) : null;
     },
 
     async updateWithdrawal(input: UpdateWithdrawalInput) {
-      // COALESCE keeps the existing burn/release signature + failure_reason when the
-      // transition doesn't supply them. The optional `expectedStatus` adds a
-      // compare-and-swap guard so a concurrent worker can't regress/overwrite state
-      // (returns null when the row already moved on).
+      // COALESCE preserves fields the caller didn't touch. The (?::text IS NULL
+      // OR status = ?) pair is a compare-and-swap guard against concurrent pollers.
       const row = await db
         .prepare(
           `UPDATE private_channel_withdrawals
               SET status = ?,
-                  burn_signature = COALESCE(?, burn_signature),
-                  release_signature = COALESCE(?, release_signature),
+                  signature = COALESCE(?, signature),
+                  settlement_ref = COALESCE(?, settlement_ref),
                   failure_reason = COALESCE(?, failure_reason),
                   updated_at = sdp_iso_now()
             WHERE id = ?
@@ -87,8 +91,8 @@ export function createPostgresPrivateChannelWithdrawalRepository(
         )
         .bind(
           input.status,
-          input.burnSignature ?? null,
-          input.releaseSignature ?? null,
+          input.signature ?? null,
+          input.settlementRef ?? null,
           input.failureReason ?? null,
           input.id,
           input.expectedStatus ?? null,
@@ -121,22 +125,28 @@ export function createPostgresPrivateChannelWithdrawalRepository(
       return result.results.map(mapRow);
     },
 
-    async listWithdrawalsByStatus(input: ListWithdrawalsByStatusInput) {
-      if (input.statuses.length === 0) {
-        return [];
-      }
-      const placeholders = input.statuses.map(() => "?").join(", ");
+    async listNonTerminalByProject(scope: WithdrawalProjectScope) {
       const result = await db
         .prepare(
-          // Tie-broken because of the LIMIT: this is the reconciler's work queue, so
-          // rows sharing an updated_at at the cutoff would otherwise be included or
-          // dropped arbitrarily from tick to tick, and one could be starved.
           `SELECT * FROM private_channel_withdrawals
-             WHERE status IN (${placeholders})
+             WHERE organization_id = ? AND project_id = ?
+               AND status IN ('pending', 'submitted', 'confirmed')
+             ORDER BY updated_at ASC, id ASC`
+        )
+        .bind(scope.organizationId, scope.projectId)
+        .all<Record<string, unknown>>();
+      return result.results.map(mapRow);
+    },
+
+    async listNonTerminal(limit: number) {
+      const result = await db
+        .prepare(
+          `SELECT * FROM private_channel_withdrawals
+             WHERE status IN ('pending', 'submitted', 'confirmed')
              ORDER BY updated_at ASC, id ASC
              LIMIT ?`
         )
-        .bind(...input.statuses, input.limit)
+        .bind(limit)
         .all<Record<string, unknown>>();
       return result.results.map(mapRow);
     },
@@ -145,12 +155,22 @@ export function createPostgresPrivateChannelWithdrawalRepository(
       const row = await db
         .prepare(
           `SELECT COUNT(*)::int AS count FROM private_channel_withdrawals
-             WHERE instance_id = ?
-               AND status IN ('pending', 'submitted', 'burn_confirmed', 'release_pending')`
+             WHERE instance_id = ? AND status IN ('pending', 'submitted', 'confirmed')`
         )
         .bind(instanceId)
         .first<{ count: number }>();
       return row?.count ?? 0;
+    },
+
+    async patchContext(id: string, patch: PrivateChannelTransferContext) {
+      await db
+        .prepare(
+          `UPDATE private_channel_withdrawals
+              SET context = context || ?::jsonb
+            WHERE id = ?`
+        )
+        .bind(JSON.stringify(patch ?? {}), id)
+        .run();
     },
   };
 }

@@ -1,19 +1,9 @@
-import type { PrivateChannelInstanceEnvelope } from "@sdp/types";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { privateChannels } from "@/flags";
 import { createSdpApiClient } from "@/lib/sdp-api";
 import { PrivateChannelsHeaderTabs } from "./private-channels-header-tabs";
-
-async function isInstanceConnected(): Promise<boolean> {
-  try {
-    const client = await createSdpApiClient();
-    const res = await client.fetch<PrivateChannelInstanceEnvelope>("/v1/private-channels/instance");
-    return res.instance?.isActive === true;
-  } catch {
-    return false;
-  }
-}
+import { loadInstance } from "./private-channels-page.data";
 
 export default async function PrivateChannelsLayout({ children }: { children: ReactNode }) {
   // Gate before the instance lookup: every leaf page checks the flag too, so without
@@ -23,10 +13,12 @@ export default async function PrivateChannelsLayout({ children }: { children: Re
     notFound();
   }
 
-  const isConnected = await isInstanceConnected();
+  const client = await createSdpApiClient();
+  const instance = await loadInstance(client);
+
   return (
     <>
-      <PrivateChannelsHeaderTabs isConnected={isConnected} />
+      <PrivateChannelsHeaderTabs isConnected={instance.data?.isActive === true} />
       {children}
     </>
   );

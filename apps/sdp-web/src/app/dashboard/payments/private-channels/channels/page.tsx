@@ -3,54 +3,46 @@ import {
   hasPermission,
   PRIVATE_CHANNEL_MEMBERSHIP_ROLES,
   PRIVATE_CHANNEL_STATUSES,
-  type PrivateChannelDto,
-  type PrivateChannelUserDto,
 } from "@sdp/types";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { privateChannels } from "@/flags";
-import { getAuthEntryPath } from "@/lib/auth-entry";
+import { getTranslations } from "@/i18n/server";
 import { resolveDashboardAccess } from "@/lib/dashboard-access";
-import {
-  fetchMyPrivateChannelUser,
-  fetchPrivateChannelInstance,
-  fetchPrivateChannels,
-} from "@/lib/private-channels";
+import { fetchMyPrivateChannelUser } from "@/lib/private-channels";
 import { createSdpApiClient } from "@/lib/sdp-api";
+import {
+  PRIVATE_CHANNELS_INSTANCE_PATH,
+  requirePrivateChannelsAccess,
+} from "../private-channels-access";
+import { PrivateChannelsLoadError } from "../private-channels-load-error";
+import { loadChannels, loadInstance } from "../private-channels-page.data";
 import { ChannelsManager } from "./channels-manager";
 
-async function loadChannels(): Promise<{
-  channels: PrivateChannelDto[];
-  currentUser: PrivateChannelUserDto | null;
-}> {
-  const client = await createSdpApiClient();
-  const { instance } = await fetchPrivateChannelInstance(client);
-  if (!instance?.isActive) {
-    redirect("/dashboard/payments/private-channels/instance");
-  }
-  const [channels, currentUser] = await Promise.all([
-    fetchPrivateChannels(client),
-    fetchMyPrivateChannelUser(client),
-  ]);
-  return { channels, currentUser };
-}
-
 export default async function PrivateChannelsChannelsPage() {
-  if (!(await privateChannels())) {
-    notFound();
+  await requirePrivateChannelsAccess();
+
+  const t = await getTranslations();
+  const { orgRole } = await auth();
+
+  const client = await createSdpApiClient();
+  // Only redirect on a *known* inactive instance. A failed lookup used to throw
+  // out of the page; now it falls through so the load error renders in place.
+  const instance = await loadInstance(client);
+  if (instance.ok && !instance.data?.isActive) {
+    redirect(PRIVATE_CHANNELS_INSTANCE_PATH);
   }
 
-  const { userId, orgId, orgRole } = await auth();
-  if (!userId) redirect(await getAuthEntryPath());
-  if (!orgId) redirect("/dashboard");
+  const [channels, currentUser] = await Promise.all([
+    loadChannels(client),
+    fetchMyPrivateChannelUser(client).catch(() => null),
+  ]);
 
-  const { channels, currentUser } = await loadChannels();
   const canManageWorkspace = hasPermission(
     resolveDashboardAccess(orgRole).permissions,
     "projects:admin"
   );
   const archivableChannelIds = canManageWorkspace
-    ? channels.map((channel) => channel.id)
+    ? channels.data.map((channel) => channel.id)
     : (currentUser?.channels
         .filter(
           (channel) =>
@@ -63,18 +55,19 @@ export default async function PrivateChannelsChannelsPage() {
     <div className="mx-auto w-full max-w-3xl">
       <Card>
         <CardHeader>
-          <CardTitle>Channels</CardTitle>
-          <CardDescription>
-            Logical channels group activity within your connected instance. The default channel is
-            created automatically and cannot be archived.
-          </CardDescription>
+          <CardTitle>{t("DashboardPrivateChannels.channels.title")}</CardTitle>
+          <CardDescription>{t("DashboardPrivateChannels.channels.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <ChannelsManager
-            initialChannels={channels}
-            canCreate={canManageWorkspace}
-            archivableChannelIds={archivableChannelIds}
-          />
+          {channels.ok ? (
+            <ChannelsManager
+              initialChannels={channels.data}
+              canCreate={canManageWorkspace}
+              archivableChannelIds={archivableChannelIds}
+            />
+          ) : (
+            <PrivateChannelsLoadError message={channels.error} />
+          )}
         </CardContent>
       </Card>
     </div>
