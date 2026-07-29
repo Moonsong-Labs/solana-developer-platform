@@ -78,6 +78,7 @@
       "empty": "Aucun membre pour le moment. Invitez un utilisateur du projet SDP pour commencer.",
       "columnEmail": "E-mail",
       "columnName": "Nom",
+      "columnRole": "Rôle",
       "columnVerifiedWallets": "Wallets vérifiés",
       "columnChannels": "Canaux",
       "columnActions": "Actions",

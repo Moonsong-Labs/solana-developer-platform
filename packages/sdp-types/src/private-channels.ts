@@ -241,6 +241,11 @@ export interface PrivateChannelUserDto {
   userId: string;
   email: string;
   name: string | null;
+  /**
+   * Project role for this user (from `project_members.role`). Null when the
+   * user has no explicit project row and inherits access from their org role.
+   */
+  projectRole: string | null;
   /** How many wallets this member has verified with the connected instance. */
   verifiedWalletCount: number;
   invitedAt: string;

@@ -24,6 +24,7 @@ import {
   Settings2Icon,
   ShieldCheckIcon,
   UsersIcon,
+  VenetianMaskIcon,
   WalletIcon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -162,6 +163,7 @@ function getPaymentsActions(
           {
             label: t("Shared.dashboardShell.privateChannels"),
             href: DASHBOARD_PAYMENTS_SUBNAV_HREFS.privateChannels,
+            icon: VenetianMaskIcon,
           },
         ]
       : []),

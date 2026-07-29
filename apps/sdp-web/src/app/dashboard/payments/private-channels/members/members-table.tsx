@@ -5,7 +5,7 @@ import type {
   PrivateChannelDto,
   PrivateChannelUserDto,
 } from "@sdp/types";
-import { Loader2Icon, PlusIcon, XIcon } from "lucide-react";
+import { Loader2Icon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -74,7 +74,7 @@ export function MembersTable({ members, channels, eligibleProjectMembers }: Prop
           <TableHeader>
             <TableRow>
               <TableHead>{t("DashboardPrivateChannels.members.columnEmail")}</TableHead>
-              <TableHead>{t("DashboardPrivateChannels.members.columnName")}</TableHead>
+              <TableHead>{t("DashboardPrivateChannels.members.columnRole")}</TableHead>
               <TableHead>{t("DashboardPrivateChannels.members.columnVerifiedWallets")}</TableHead>
               <TableHead>{t("DashboardPrivateChannels.members.columnChannels")}</TableHead>
               <TableHead className="text-right">
@@ -138,7 +138,11 @@ function MemberRow({
     <TableRow>
       <TableCell className="break-all text-sm">{member.email}</TableCell>
       <TableCell className="text-sm">
-        {member.name ?? <span className="text-secondary">—</span>}
+        {member.projectRole ? (
+          <span className="capitalize">{member.projectRole}</span>
+        ) : (
+          <span className="text-secondary">—</span>
+        )}
       </TableCell>
       <TableCell>
         <WalletCountBadge count={member.verifiedWalletCount} />
@@ -161,8 +165,16 @@ function MemberRow({
         </div>
       </TableCell>
       <TableCell className="text-right">
-        <Button type="button" variant="ghost" size="sm" onClick={onDelete} disabled={pending}>
-          {t("DashboardPrivateChannels.members.delete")}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onDelete}
+          disabled={pending}
+          aria-label={t("DashboardPrivateChannels.members.delete")}
+          title={t("DashboardPrivateChannels.members.delete")}
+        >
+          <Trash2Icon />
         </Button>
       </TableCell>
     </TableRow>
