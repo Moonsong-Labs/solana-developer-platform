@@ -28,7 +28,7 @@ export function TransferProgress({
             {t("DashboardPrivateChannels.transfer.progressLabel")}
           </p>
           <p className="font-semibold text-lg">
-            {t("DashboardPrivateChannels.transfer.amountWithUnit", { amount: transfer.amount })}
+            {t("DashboardPrivateChannels.common.amountWithUnit", { amount: transfer.amount })}
           </p>
         </div>
         <StatusBadge status={transfer.status} />

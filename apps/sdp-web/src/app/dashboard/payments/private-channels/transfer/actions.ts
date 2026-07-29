@@ -7,7 +7,7 @@ import {
   fetchPrivateChannelTransferRecipients,
 } from "@/lib/private-channels";
 import { createSdpApiClient, extractSdpApiErrorMessage } from "@/lib/sdp-api";
-import { getTransferAmountError } from "./transfer-validation";
+import { getAmountError } from "../amount-validation";
 
 export interface CreateTransferInput {
   channelId: string;
@@ -54,7 +54,7 @@ export async function createTransferAction(
       messageKey: "DashboardPrivateChannels.transfer.selectRecipient",
     };
   }
-  const amountError = getTransferAmountError(input.amount);
+  const amountError = getAmountError(input.amount);
   if (amountError) {
     return { ok: false, kind: "validation", messageKey: amountError };
   }

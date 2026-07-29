@@ -85,7 +85,7 @@ export function DepositProgress({
             {t("DashboardPrivateChannels.deposit.progressLabel")}
           </p>
           <p className="font-semibold text-lg">
-            {t("DashboardPrivateChannels.deposit.amountWithUnit", { amount: deposit.amount })}
+            {t("DashboardPrivateChannels.common.amountWithUnit", { amount: deposit.amount })}
           </p>
         </div>
         <StatusBadge status={deposit.status} t={t} />

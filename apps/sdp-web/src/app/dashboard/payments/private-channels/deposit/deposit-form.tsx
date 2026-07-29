@@ -10,8 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
 import { useTranslations } from "@/i18n/provider";
+import { AmountField } from "../amount-field";
+import { getAmountError } from "../amount-validation";
 import { PRIVATE_CHANNELS_OVERVIEW_PATH } from "../private-channels-routes";
-import { createDepositAction, fetchWalletBalancesAction, type WalletBalanceView } from "./actions";
+import { fetchWalletBalancesAction, type WalletBalanceView } from "../wallet-balances";
+import { createDepositAction } from "./actions";
 import { DepositProgress } from "./deposit-progress";
 
 function walletLabel(wallet: CustodyWalletSummary): string {
@@ -22,6 +25,7 @@ function walletLabel(wallet: CustodyWalletSummary): string {
 export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   const [walletId, setWalletId] = useState<string>(wallets[0]?.walletId ?? "");
   const [amount, setAmount] = useState("");
+  const [showAmountError, setShowAmountError] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [deposit, setDeposit] = useState<PrivateChannelDeposit | null>(null);
@@ -53,6 +57,7 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
         onReset={() => {
           setDeposit(null);
           setAmount("");
+          setShowAmountError(false);
           setRecipient("");
           setError(null);
           setRefetchKey((n) => n + 1);
@@ -76,8 +81,16 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
     );
   }
 
+  const amountErrorKey = showAmountError ? getAmountError(amount) : null;
+  const amountError = amountErrorKey ? t(amountErrorKey) : null;
+
   const submit = () => {
+    setShowAmountError(true);
+    // An amount problem already renders under the field, so it is not repeated here.
     setError(null);
+    if (getAmountError(amount)) {
+      return;
+    }
     startTransition(async () => {
       const result = await createDepositAction({
         walletId,
@@ -87,11 +100,11 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
       if (result.ok) {
         setDeposit(result.deposit);
         toast.success(t("DashboardPrivateChannels.deposit.submitToast"));
-      } else {
+      } else if (result.kind === "server") {
         setError(result.message);
-        if (result.kind === "server") {
-          toast.error(result.message);
-        }
+        toast.error(result.message);
+      } else {
+        setError(t(result.messageKey));
       }
     });
   };
@@ -118,40 +131,15 @@ export function DepositForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="deposit-amount">{t("DashboardPrivateChannels.common.amountUsdc")}</Label>
-        <Input
-          id="deposit-amount"
-          inputMode="decimal"
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder={t("DashboardPrivateChannels.common.amountPlaceholder")}
-          value={amount}
-        />
-        {(balances.channel !== null || balances.onChain !== null) && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-            {balances.onChain !== null && (
-              <span className="text-primary">
-                {t("DashboardPrivateChannels.common.onChainBalance")}{" "}
-                <span className="font-mono font-medium">
-                  {t("DashboardPrivateChannels.deposit.amountWithUnit", {
-                    amount: balances.onChain,
-                  })}
-                </span>
-              </span>
-            )}
-            {balances.channel !== null && (
-              <span className="text-primary">
-                {t("DashboardPrivateChannels.common.channelBalance")}{" "}
-                <span className="font-mono font-medium">
-                  {t("DashboardPrivateChannels.deposit.amountWithUnit", {
-                    amount: balances.channel,
-                  })}
-                </span>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      <AmountField
+        balances={balances}
+        error={amountError}
+        id="deposit-amount"
+        spends="onChain"
+        onBlur={() => setShowAmountError(true)}
+        onChange={setAmount}
+        value={amount}
+      />
 
       <div className="space-y-1.5">
         <Label htmlFor="deposit-recipient">{t("DashboardPrivateChannels.deposit.recipient")}</Label>

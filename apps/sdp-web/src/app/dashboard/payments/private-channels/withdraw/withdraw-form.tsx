@@ -10,12 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
 import { useTranslations } from "@/i18n/provider";
+import { AmountField } from "../amount-field";
+import { getAmountError } from "../amount-validation";
 import { PRIVATE_CHANNELS_OVERVIEW_PATH } from "../private-channels-routes";
-import {
-  createWithdrawalAction,
-  fetchWalletBalancesAction,
-  type WalletBalanceView,
-} from "./actions";
+import { fetchWalletBalancesAction, type WalletBalanceView } from "../wallet-balances";
+import { createWithdrawalAction } from "./actions";
 import { WithdrawProgress } from "./withdraw-progress";
 
 function walletLabel(wallet: CustodyWalletSummary): string {
@@ -26,6 +25,7 @@ function walletLabel(wallet: CustodyWalletSummary): string {
 export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
   const [walletId, setWalletId] = useState<string>(wallets[0]?.walletId ?? "");
   const [amount, setAmount] = useState("");
+  const [showAmountError, setShowAmountError] = useState(false);
   const [destination, setDestination] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [withdrawal, setWithdrawal] = useState<PrivateChannelWithdrawal | null>(null);
@@ -57,6 +57,7 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
         onReset={() => {
           setWithdrawal(null);
           setAmount("");
+          setShowAmountError(false);
           setDestination("");
           setError(null);
           setRefetchKey((n) => n + 1);
@@ -80,8 +81,16 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
     );
   }
 
+  const amountErrorKey = showAmountError ? getAmountError(amount) : null;
+  const amountError = amountErrorKey ? t(amountErrorKey) : null;
+
   const submit = () => {
+    setShowAmountError(true);
+    // An amount problem already renders under the field, so it is not repeated here.
     setError(null);
+    if (getAmountError(amount)) {
+      return;
+    }
     startTransition(async () => {
       const result = await createWithdrawalAction({
         walletId,
@@ -91,11 +100,11 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
       if (result.ok) {
         setWithdrawal(result.withdrawal);
         toast.success(t("DashboardPrivateChannels.withdraw.submitToast"));
-      } else {
+      } else if (result.kind === "server") {
         setError(result.message);
-        if (result.kind === "server") {
-          toast.error(result.message);
-        }
+        toast.error(result.message);
+      } else {
+        setError(t(result.messageKey));
       }
     });
   };
@@ -122,40 +131,15 @@ export function WithdrawForm({ wallets }: { wallets: CustodyWalletSummary[] }) {
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="withdraw-amount">{t("DashboardPrivateChannels.common.amountUsdc")}</Label>
-        <Input
-          id="withdraw-amount"
-          inputMode="decimal"
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder={t("DashboardPrivateChannels.common.amountPlaceholder")}
-          value={amount}
-        />
-        {(balances.channel !== null || balances.onChain !== null) && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-            {balances.channel !== null && (
-              <span className="text-primary">
-                {t("DashboardPrivateChannels.common.channelBalance")}{" "}
-                <span className="font-mono font-medium">
-                  {t("DashboardPrivateChannels.withdraw.amountWithUnit", {
-                    amount: balances.channel,
-                  })}
-                </span>
-              </span>
-            )}
-            {balances.onChain !== null && (
-              <span className="text-primary">
-                {t("DashboardPrivateChannels.common.onChainBalance")}{" "}
-                <span className="font-mono font-medium">
-                  {t("DashboardPrivateChannels.withdraw.amountWithUnit", {
-                    amount: balances.onChain,
-                  })}
-                </span>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      <AmountField
+        balances={balances}
+        error={amountError}
+        id="withdraw-amount"
+        spends="channel"
+        onBlur={() => setShowAmountError(true)}
+        onChange={setAmount}
+        value={amount}
+      />
 
       <div className="space-y-1.5">
         <Label htmlFor="withdraw-destination">

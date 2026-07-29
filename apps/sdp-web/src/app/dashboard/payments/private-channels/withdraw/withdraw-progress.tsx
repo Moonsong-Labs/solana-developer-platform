@@ -85,7 +85,7 @@ export function WithdrawProgress({
             {t("DashboardPrivateChannels.withdraw.progressLabel")}
           </p>
           <p className="font-semibold text-lg">
-            {t("DashboardPrivateChannels.withdraw.amountWithUnit", { amount: withdrawal.amount })}
+            {t("DashboardPrivateChannels.common.amountWithUnit", { amount: withdrawal.amount })}
           </p>
         </div>
         <StatusBadge status={withdrawal.status} t={t} />

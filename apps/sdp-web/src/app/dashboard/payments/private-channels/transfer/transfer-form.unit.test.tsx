@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createTransferAction: vi.fn(),
   fetchTransferRecipientsAction: vi.fn(),
+  fetchWalletBalancesAction: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -21,6 +22,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./actions", () => ({
   createTransferAction: mocks.createTransferAction,
   fetchTransferRecipientsAction: mocks.fetchTransferRecipientsAction,
+}));
+vi.mock("../wallet-balances", () => ({
+  fetchWalletBalancesAction: mocks.fetchWalletBalancesAction,
 }));
 vi.mock("sonner", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
@@ -208,6 +212,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.fetchWalletBalancesAction.mockResolvedValue({ channel: "10", onChain: "5" });
 });
 
 describe("TransferForm", () => {

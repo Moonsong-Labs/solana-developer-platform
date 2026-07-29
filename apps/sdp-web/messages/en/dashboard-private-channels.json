@@ -16,7 +16,10 @@
       "amountUsdc": "Amount (USDC)",
       "amountPlaceholder": "1.5",
       "onChainBalance": "On-chain:",
-      "channelBalance": "Channel balance:"
+      "channelBalance": "Channel balance:",
+      "amountRequired": "Enter an amount of USDC.",
+      "amountInvalid": "Enter a USDC amount greater than zero with up to 6 decimal places.",
+      "amountWithUnit": "{amount} USDC"
     },
     "overview": {
       "title": "Overview",
@@ -115,7 +118,6 @@
       "submit": "Deposit",
       "submitToast": "Deposit submitted",
       "progressLabel": "Depositing",
-      "amountWithUnit": "{amount} USDC",
       "failed": "The deposit failed.",
       "viewTransaction": "View transaction on Solana Explorer",
       "newDeposit": "New deposit",
@@ -130,7 +132,8 @@
       "noWalletsLink": "Private Channels overview",
       "noWalletsAfter": " and fund it with devnet USDC, then come back to deposit.",
       "statusPending": "Preparing",
-      "statusSettled": "Settled"
+      "statusSettled": "Settled",
+      "selectWallet": "Select a wallet to deposit from."
     },
     "withdraw": {
       "title": "Withdraw",
@@ -143,7 +146,6 @@
       "submit": "Withdraw",
       "submitToast": "Withdrawal submitted",
       "progressLabel": "Withdrawing",
-      "amountWithUnit": "{amount} USDC",
       "failed": "The withdrawal failed.",
       "burnSignature": "Burn signature:",
       "viewRelease": "View release on Solana Explorer",
@@ -161,7 +163,8 @@
       "noWalletsBefore": "No verified wallets yet. Verify a custody wallet on the ",
       "noWalletsLink": "Private Channels overview",
       "noWalletsAfter": " and deposit into the channel, then come back to withdraw.",
-      "statusSettled": "Settled"
+      "statusSettled": "Settled",
+      "selectWallet": "Select a wallet to withdraw from."
     },
     "transfer": {
       "title": "Transfer",
@@ -177,11 +180,6 @@
       "recipientsRetry": "Retry recipients",
       "recipientsLoadFailed": "Verified recipient wallets could not be loaded.",
       "recipientsEmpty": "No other channel member has a verified wallet eligible to receive this transfer.",
-      "amount": "Amount (USDC)",
-      "amountPlaceholder": "1.5",
-      "amountHelp": "Enter a positive amount with up to 6 decimal places.",
-      "amountRequired": "Enter an amount of USDC.",
-      "amountInvalid": "Enter a USDC amount greater than zero with up to 6 decimal places.",
       "selectChannel": "Select a channel.",
       "selectSourceWallet": "Select a verified source wallet.",
       "selectRecipient": "Select a verified recipient wallet.",
@@ -192,7 +190,6 @@
       "confirmedToast": "Transfer confirmed",
       "submittedToast": "Transfer submitted, result pending",
       "failedToast": "The private-channel transfer failed.",
-      "amountWithUnit": "{amount} USDC",
       "progressLabel": "Transferred",
       "senderFallback": "Verified source wallet",
       "recipientFallback": "Verified recipient wallet",

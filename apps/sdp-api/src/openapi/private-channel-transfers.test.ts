@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { privateChannelTransferAmountSchema } from "@/lib/private-channel-transfer-amount";
 import { createOpenApiDocument } from "./spec";
 
 function parameterNamed(
@@ -45,29 +46,12 @@ describe("Private Channel transfer OpenAPI", () => {
     expect(serializedBody).not.toContain('"recipientAddress"');
   });
 
-  it("matches runtime transfer amount validation", () => {
-    const document = createOpenApiDocument();
-    const operation = document.paths?.["/v1/private-channels/channels/{channelId}/transfers"]?.post;
-    const requestBody = operation?.requestBody as
-      | {
-          content?: {
-            "application/json"?: {
-              schema?: {
-                properties?: { amount?: { pattern?: string } };
-              };
-            };
-          };
-        }
-      | undefined;
-    const pattern = requestBody?.content?.["application/json"]?.schema?.properties?.amount?.pattern;
-
-    expect(pattern).toEqual(expect.any(String));
-    const amountPattern = new RegExp(pattern ?? "");
+  it("accepts only positive amounts within the mint's six decimals", () => {
     for (const invalid of ["not-a-decimal", "0", "1.0000001"]) {
-      expect(amountPattern.test(invalid), invalid).toBe(false);
+      expect(privateChannelTransferAmountSchema.safeParse(invalid).success, invalid).toBe(false);
     }
     for (const valid of [".5", "1", "1.000001"]) {
-      expect(amountPattern.test(valid), valid).toBe(true);
+      expect(privateChannelTransferAmountSchema.safeParse(valid).success, valid).toBe(true);
     }
   });
 

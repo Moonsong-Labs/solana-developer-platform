@@ -16,7 +16,10 @@
       "amountUsdc": "Montant (USDC)",
       "amountPlaceholder": "1.5",
       "onChainBalance": "Sur la chaîne :",
-      "channelBalance": "Solde du canal :"
+      "channelBalance": "Solde du canal :",
+      "amountRequired": "Saisissez un montant en USDC.",
+      "amountInvalid": "Saisissez un montant en USDC supérieur à zéro avec jusqu'à 6 décimales.",
+      "amountWithUnit": "{amount} USDC"
     },
     "overview": {
       "title": "Aperçu",
@@ -115,7 +118,6 @@
       "submit": "Déposer",
       "submitToast": "Dépôt soumis",
       "progressLabel": "Dépôt en cours",
-      "amountWithUnit": "{amount} USDC",
       "failed": "Le dépôt a échoué.",
       "viewTransaction": "Voir la transaction sur Solana Explorer",
       "newDeposit": "Nouveau dépôt",
@@ -130,7 +132,8 @@
       "noWalletsLink": "aperçu des canaux privés",
       "noWalletsAfter": " et approvisionnez-le en USDC devnet, puis revenez pour déposer.",
       "statusPending": "Préparation",
-      "statusSettled": "Réglé"
+      "statusSettled": "Réglé",
+      "selectWallet": "Sélectionnez un wallet source pour le dépôt."
     },
     "withdraw": {
       "title": "Retrait",
@@ -143,7 +146,6 @@
       "submit": "Retirer",
       "submitToast": "Retrait soumis",
       "progressLabel": "Retrait en cours",
-      "amountWithUnit": "{amount} USDC",
       "failed": "Le retrait a échoué.",
       "burnSignature": "Signature du burn :",
       "viewRelease": "Voir la libération sur Solana Explorer",
@@ -161,7 +163,8 @@
       "noWalletsBefore": "Aucun wallet vérifié pour le moment. Vérifiez un wallet de conservation dans l’",
       "noWalletsLink": "aperçu des canaux privés",
       "noWalletsAfter": " et déposez dans le canal, puis revenez pour retirer.",
-      "statusSettled": "Réglé"
+      "statusSettled": "Réglé",
+      "selectWallet": "Sélectionnez un wallet source pour le retrait."
     },
     "transfer": {
       "title": "Transfert",
@@ -177,11 +180,6 @@
       "recipientsRetry": "Réessayer les destinataires",
       "recipientsLoadFailed": "Les wallets destinataires vérifiés n'ont pas pu être chargés.",
       "recipientsEmpty": "Aucun autre membre du canal ne possède de wallet vérifié pouvant recevoir ce transfert.",
-      "amount": "Montant (USDC)",
-      "amountPlaceholder": "1.5",
-      "amountHelp": "Saisissez un montant positif avec jusqu'à 6 décimales.",
-      "amountRequired": "Saisissez un montant en USDC.",
-      "amountInvalid": "Saisissez un montant en USDC supérieur à zéro avec jusqu'à 6 décimales.",
       "selectChannel": "Sélectionnez un canal.",
       "selectSourceWallet": "Sélectionnez un wallet source vérifié.",
       "selectRecipient": "Sélectionnez un wallet destinataire vérifié.",
@@ -192,7 +190,6 @@
       "confirmedToast": "Transfert confirmé",
       "submittedToast": "Transfert envoyé, résultat en attente",
       "failedToast": "Le transfert de canal privé a échoué.",
-      "amountWithUnit": "{amount} USDC",
       "progressLabel": "Transféré",
       "senderFallback": "Wallet source vérifié",
       "recipientFallback": "Wallet destinataire vérifié",

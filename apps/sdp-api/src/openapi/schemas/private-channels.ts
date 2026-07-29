@@ -5,7 +5,7 @@ import {
   PRIVATE_CHANNEL_EVENT_TYPES,
 } from "@sdp/types";
 import { privateChannelTransferAmountSchema } from "@/lib/private-channel-transfer-amount";
-import { solanaAddressSchema, z } from "./base";
+import { solanaAddressSchema, withOpenApi, z } from "./base";
 
 export const privateChannelInstanceSchema = z
   .object({
@@ -441,7 +441,7 @@ export const createPrivateChannelTransferBodySchema = z
         "Opaque id returned by the channel's transfer-recipients endpoint; arbitrary addresses are not accepted.",
       example: "pcvw_9f1c...",
     }),
-    amount: privateChannelTransferAmountSchema.openapi({
+    amount: withOpenApi(privateChannelTransferAmountSchema, {
       description: "Positive decimal USDC amount with at most six fractional digits.",
       example: "1.5",
     }),

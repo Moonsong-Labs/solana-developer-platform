@@ -93,7 +93,7 @@ describe("private-channel transfer actions", () => {
         recipientVerifiedWalletId: "pcvw_recipient",
         amount: "1.0000001",
       },
-      "DashboardPrivateChannels.transfer.amountInvalid",
+      "DashboardPrivateChannels.common.amountInvalid",
     ],
   ])("rejects invalid financial input %#", async (input, messageKey) => {
     await expect(createTransferAction(input)).resolves.toEqual({

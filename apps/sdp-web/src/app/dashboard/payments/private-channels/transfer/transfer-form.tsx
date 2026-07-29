@@ -10,13 +10,15 @@ import { Loader2Icon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectItem } from "@/components/ui/select";
+import type { MessageKey } from "@/i18n/messages";
 import { useTranslations } from "@/i18n/provider";
+import { AmountField } from "../amount-field";
+import { getAmountError } from "../amount-validation";
+import { fetchWalletBalancesAction, type WalletBalanceView } from "../wallet-balances";
 import { createTransferAction, fetchTransferRecipientsAction } from "./actions";
 import { TransferProgress } from "./transfer-progress";
-import { getTransferAmountError } from "./transfer-validation";
 
 interface RecipientOption {
   id: string;
@@ -76,6 +78,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
   const [showAmountError, setShowAmountError] = useState(false);
   const [recipientLoad, setRecipientLoad] = useState<RecipientLoadState>({ status: "idle" });
   const [recipientReload, setRecipientReload] = useState(0);
+  const [balances, setBalances] = useState<WalletBalanceView>({ channel: null, onChain: null });
   const [error, setError] = useState<string | null>(null);
   const [submittedTransfer, setSubmittedTransfer] = useState<SubmittedTransfer | null>(null);
   const [isSubmitting, startTransition] = useTransition();
@@ -139,6 +142,21 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     };
   }, [channelId, channels.length, recipientReload, sourceWallets.length, t]);
 
+  useEffect(() => {
+    if (!walletId) {
+      setBalances({ channel: null, onChain: null });
+      return;
+    }
+    let active = true;
+    setBalances({ channel: null, onChain: null });
+    fetchWalletBalancesAction(walletId).then((result) => {
+      if (active) setBalances(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [walletId]);
+
   if (channels.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -183,7 +201,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     );
   }
 
-  const amountErrorKey = showAmountError ? getTransferAmountError(amount) : null;
+  const amountErrorKey = showAmountError ? getAmountError(amount) : null;
   const amountError = amountErrorKey ? t(amountErrorKey) : null;
 
   const submit = () => {
@@ -192,16 +210,15 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     }
 
     setShowAmountError(true);
-    const validationKey = getTransferAmountError(amount);
-    if (validationKey || !channelId || !walletId || !recipientVerifiedWalletId) {
-      setError(
-        t(
-          validationKey ??
-            (recipientVerifiedWalletId
-              ? "DashboardPrivateChannels.transfer.incomplete"
-              : "DashboardPrivateChannels.transfer.selectRecipient")
-        )
-      );
+    let selectionKey: MessageKey | null = null;
+    if (!recipientVerifiedWalletId) {
+      selectionKey = "DashboardPrivateChannels.transfer.selectRecipient";
+    } else if (!channelId || !walletId) {
+      selectionKey = "DashboardPrivateChannels.transfer.incomplete";
+    }
+    if (selectionKey || getAmountError(amount)) {
+      // An amount problem already renders under the field, so it is not repeated here.
+      setError(selectionKey ? t(selectionKey) : null);
       return;
     }
 
@@ -254,7 +271,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
 
   return (
     <form
-      className="space-y-5"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
@@ -363,40 +380,22 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="transfer-amount">{t("DashboardPrivateChannels.transfer.amount")}</Label>
-        <Input
-          aria-describedby={amountError ? "transfer-amount-error" : "transfer-amount-help"}
-          aria-invalid={Boolean(amountError)}
-          autoComplete="off"
-          id="transfer-amount"
-          inputMode="decimal"
-          min="0.000001"
-          disabled={isSubmitting}
-          onBlur={() => {
-            if (!submitting.current) setShowAmountError(true);
-          }}
-          onChange={(event) => {
-            if (submitting.current) return;
-            if (event.target.value !== amount) {
-              setError(null);
-              setAmount(event.target.value);
-            }
-          }}
-          placeholder={t("DashboardPrivateChannels.transfer.amountPlaceholder")}
-          step="0.000001"
-          value={amount}
-        />
-        {amountError ? (
-          <p className="text-destructive text-xs" id="transfer-amount-error">
-            {amountError}
-          </p>
-        ) : (
-          <p className="text-muted-foreground text-xs" id="transfer-amount-help">
-            {t("DashboardPrivateChannels.transfer.amountHelp")}
-          </p>
-        )}
-      </div>
+      <AmountField
+        balances={balances}
+        disabled={isSubmitting}
+        error={amountError}
+        id="transfer-amount"
+        spends="channel"
+        onBlur={() => {
+          if (!submitting.current) setShowAmountError(true);
+        }}
+        onChange={(next) => {
+          if (submitting.current || next === amount) return;
+          setError(null);
+          setAmount(next);
+        }}
+        value={amount}
+      />
 
       {error && (
         <p className="text-destructive text-sm" role="alert">
@@ -408,9 +407,9 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
         disabled={
           isSubmitting || !channelId || !walletId || !recipientVerifiedWalletId || !amount.trim()
         }
+        iconLeft={isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : undefined}
         type="submit"
       >
-        {isSubmitting && <Loader2Icon aria-hidden="true" className="mr-2 size-4 animate-spin" />}
         {t("DashboardPrivateChannels.transfer.submit")}
       </Button>
     </form>
