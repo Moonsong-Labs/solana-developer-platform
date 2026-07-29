@@ -4,6 +4,7 @@
       "overview": "Overview",
       "channels": "Channels",
       "deposit": "Deposit",
+      "transfer": "Transfer",
       "withdraw": "Withdraw",
       "members": "Members",
       "events": "Events",
@@ -162,9 +163,13 @@
       "noWalletsAfter": " and deposit into the channel, then come back to withdraw.",
       "statusSettled": "Settled"
     },
+    "transfer": {
+      "title": "Transfer",
+      "description": "Transfer USDC from your selected verified custody wallet to another verified member wallet in the same logical channel. Wallet balances are shared across logical channels."
+    },
     "events": {
       "title": "Events",
-      "description": "Project activity for Private Channels (lifecycle, errors, and future member/transfer events). History is kept even after an instance is disconnected or deleted.",
+      "description": "Project activity for Private Channels, including lifecycle, member, transfer, and error events. History is kept even after an instance is disconnected or deleted.",
       "empty": "No events yet. Connect an instance or create a channel to start the activity feed.",
       "columnEvent": "Event",
       "columnCategory": "Category",
@@ -197,6 +202,7 @@
       "typeDepositSettled": "Deposit settled",
       "typeDepositFailed": "Deposit failed",
       "typeWithdrawalConfirmed": "Withdrawal burn confirmed",
+      "typeTransferConfirmed": "Member transfer confirmed",
       "typeWithdrawalSettled": "Withdrawal settled",
       "typeWithdrawalFailed": "Withdrawal failed",
       "typeDepositAwaitingSpcCredit": "Awaiting channel credit",

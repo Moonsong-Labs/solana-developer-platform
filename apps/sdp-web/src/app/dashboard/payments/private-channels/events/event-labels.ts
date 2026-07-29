@@ -51,6 +51,8 @@ const EVENT_TYPE_KEYS: Record<string, MessageKey> = {
     "DashboardPrivateChannels.events.typeWithdrawalSettled",
   [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_FAILED]:
     "DashboardPrivateChannels.events.typeWithdrawalFailed",
+  [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_TRANSFER_CONFIRMED]:
+    "DashboardPrivateChannels.events.typeTransferConfirmed",
   [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_DEPOSIT_AWAITING_SPC_CREDIT]:
     "DashboardPrivateChannels.events.typeDepositAwaitingSpcCredit",
   [PRIVATE_CHANNEL_EVENT_TYPES.TRANSFER_WITHDRAWAL_RELEASE_ATTEMPT_FAILED]:

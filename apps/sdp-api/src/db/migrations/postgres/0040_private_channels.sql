@@ -393,6 +393,60 @@ CREATE TABLE IF NOT EXISTS private_channel_settlement_observations (
 
 
 -- ==========================================================================
+-- private channel transfers
+
+-- Private Channels transfers move tokens between two verified member addresses
+-- on the channel chain. Amounts are decimal strings (never numeric/float).
+--
+-- These rows are FINANCIAL/AUDIT history. Instance, channel, member, custody
+-- wallet and verification identifiers are deliberately denormalized with NO FK,
+-- so disconnecting an instance, archiving/deleting a channel, revoking a member
+-- or deleting a wallet verification cannot erase transfer history. Only terminal
+-- SPC responses are stored: confirmed when sendTransaction returns successfully,
+-- failed when transaction preparation or submission returns an error.
+
+CREATE TABLE IF NOT EXISTS private_channel_transfers (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    sender_private_channel_user_id TEXT NOT NULL,
+    recipient_private_channel_user_id TEXT NOT NULL,
+    sender_wallet_id TEXT NOT NULL,
+    recipient_verified_wallet_id TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    mint TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    status TEXT NOT NULL,
+    signature TEXT,
+    failure_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT sdp_iso_now(),
+    updated_at TEXT NOT NULL DEFAULT sdp_iso_now(),
+
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+
+    CONSTRAINT private_channel_transfers_distinct_addresses_check
+        CHECK (sender <> recipient),
+    CONSTRAINT private_channel_transfers_status_check
+        CHECK (status IN ('confirmed', 'failed')),
+    CONSTRAINT private_channel_transfers_result_check
+        CHECK (
+            (status = 'confirmed' AND signature IS NOT NULL AND failure_reason IS NULL)
+            OR status = 'failed'
+        )
+);
+
+-- Project and channel history feeds, newest first.
+CREATE INDEX IF NOT EXISTS idx_private_channel_transfers_project_created
+    ON private_channel_transfers(project_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_private_channel_transfers_channel_created
+    ON private_channel_transfers(channel_id, created_at DESC, id DESC);
+
+
+-- ==========================================================================
 -- private channel verified wallets
 
 -- SPC verified wallets: a custody wallet (pubkey) a member has proven control

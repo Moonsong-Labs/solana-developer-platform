@@ -200,6 +200,53 @@ export interface PrivateChannelWithdrawal {
 }
 
 /**
+ * Terminal result for a custody-signed member-to-member channel transfer.
+ * Distinct from {@link PrivateChannelTransferStatus}, which is the shared
+ * deposit/withdrawal intent lifecycle.
+ */
+export type PrivateChannelMemberTransferStatus = "confirmed" | "failed";
+
+/**
+ * A custody-signed token transfer between two verified private-channel member
+ * addresses. `amount` is a decimal string (never numeric/float).
+ */
+export interface PrivateChannelTransfer {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  instanceId: string;
+  channelId: string;
+  /** SDP custody wallet used to sign the transfer. */
+  walletId: string;
+  sender: string;
+  recipient: string;
+  mint: string;
+  amount: string;
+  status: PrivateChannelMemberTransferStatus;
+  /** SPC transaction signature; null when preparation failed before signing. */
+  signature: string | null;
+  /** Set when `status === "failed"`. */
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Opaque verified-wallet option shown beneath one eligible recipient member. */
+export interface PrivateChannelTransferRecipientWalletDto {
+  id: string;
+  pubkey: string;
+}
+
+/** Eligible transfer recipient with all verified wallets for the active instance. */
+export interface PrivateChannelTransferRecipientDto {
+  privateChannelUserId: string;
+  userId: string;
+  email: string;
+  name: string | null;
+  wallets: PrivateChannelTransferRecipientWalletDto[];
+}
+
+/**
  * An owner's token balance on the channel, read through the gateway. Amounts are
  * strings to stay JSON- and precision-safe: `amount` is base units, `uiAmount` is
  * the human-readable value. A never-credited owner reads as a zero balance.
@@ -328,6 +375,7 @@ export const PRIVATE_CHANNEL_EVENT_TYPES = {
   TRANSFER_WITHDRAWAL_CONFIRMED: "transfer.withdrawal.confirmed",
   TRANSFER_WITHDRAWAL_SETTLED: "transfer.withdrawal.settled",
   TRANSFER_WITHDRAWAL_FAILED: "transfer.withdrawal.failed",
+  TRANSFER_TRANSFER_CONFIRMED: "transfer.transfer.confirmed",
   // Diagnostic — actionable operator signals. Never affect the intent state
   // machine; emitted opportunistically by the oracle during a poll and
   // debounced via context.lastStuckWarningAt.
