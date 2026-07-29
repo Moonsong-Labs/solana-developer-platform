@@ -9,7 +9,6 @@ import {
   connectPrivateChannelInstance,
   createChannel,
   createPrivateChannelDeposit,
-  createPrivateChannelTransfer,
   createPrivateChannelWithdrawal,
   deleteChannel,
   deletePrivateChannelInstance,
@@ -23,15 +22,12 @@ import {
   getPrivateChannelHealth,
   getPrivateChannelInstance,
   getPrivateChannelOverview,
-  getPrivateChannelTransferById,
   getPrivateChannelUser,
   getPrivateChannelWithdrawalById,
   invitePrivateChannelUser,
   listChannelEvents,
   listChannels,
   listPrivateChannelDeposits,
-  listPrivateChannelTransferRecipients,
-  listPrivateChannelTransfers,
   listPrivateChannelUsers,
   listPrivateChannelWithdrawals,
   listProjectEvents,
@@ -130,25 +126,6 @@ privateChannels.post("/channels", requirePermissions("payments:write"), createCh
 privateChannels.get("/channels/:id", requirePermissions("payments:read"), getChannel);
 privateChannels.get("/channels/:id/events", requirePermissions("payments:read"), listChannelEvents);
 privateChannels.delete("/channels/:id", requirePermissions("payments:write"), deleteChannel);
-privateChannels.get(
-  "/channels/:channelId/transfer-recipients",
-  requirePermissions("payments:read"),
-  listPrivateChannelTransferRecipients
-);
-privateChannels.post(
-  "/channels/:channelId/transfers",
-  requirePermissions("payments:write"),
-  createPrivateChannelTransfer
-);
-
-// --- /transfers -----------------------------------------------------------
-// Project-scoped transfer history survives channel/instance lifecycle changes.
-privateChannels.get("/transfers", requirePermissions("payments:read"), listPrivateChannelTransfers);
-privateChannels.get(
-  "/transfers/:id",
-  requirePermissions("payments:read"),
-  getPrivateChannelTransferById
-);
 
 // --- /wallets -------------------------------------------------------------
 // Wallet verification: the gate for money-movement. Verifying signs an SPC auth

@@ -4,9 +4,7 @@ import {
   createPrivateChannelEventRepository,
   createPrivateChannelInstanceRepository,
   createPrivateChannelRepository,
-  createPrivateChannelTransferRepository,
   createPrivateChannelUserRepository,
-  createPrivateChannelVerifiedWalletRepository,
   createPrivateChannelWithdrawalRepository,
   createProjectUserRepository,
 } from "@/db/repositories";
@@ -30,14 +28,6 @@ export function getPrivateChannelDepositRepository(c: AppContext) {
 
 export function getPrivateChannelWithdrawalRepository(c: AppContext) {
   return createPrivateChannelWithdrawalRepository(c.env);
-}
-
-export function getPrivateChannelTransferRepository(c: AppContext) {
-  return createPrivateChannelTransferRepository(c.env);
-}
-
-export function getPrivateChannelVerifiedWalletRepository(c: AppContext) {
-  return createPrivateChannelVerifiedWalletRepository(c.env);
 }
 
 export function getPrivateChannelEventRepository(c: AppContext) {

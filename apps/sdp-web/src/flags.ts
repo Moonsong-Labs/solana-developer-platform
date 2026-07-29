@@ -94,7 +94,7 @@ export const privateChannels = flag<boolean, DashboardFlagEntities>({
     privateChannelsEnabled: process.env.PRIVATE_CHANNELS_ENABLED,
   }),
   description:
-    "Show the Private Channels payments workspace (instance, channels, members, deposits, transfers, withdrawals).",
+    "Show the Private Channels payments workspace (instance, channels, members, deposits, withdrawals).",
   options: [
     { value: false, label: "Hidden" },
     { value: true, label: "Enabled" },

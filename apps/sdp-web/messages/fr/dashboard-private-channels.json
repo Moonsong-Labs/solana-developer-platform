@@ -4,7 +4,6 @@
       "overview": "Aperçu",
       "channels": "Canaux",
       "deposit": "Dépôt",
-      "transfer": "Transfert",
       "withdraw": "Retrait",
       "members": "Membres",
       "events": "Événements",
@@ -163,13 +162,9 @@
       "noWalletsAfter": " et déposez dans le canal, puis revenez pour retirer.",
       "statusSettled": "Réglé"
     },
-    "transfer": {
-      "title": "Transfert",
-      "description": "Transférez des USDC depuis votre wallet de conservation vérifié sélectionné vers le wallet vérifié d’un autre membre du même canal logique. Les soldes appartiennent au wallet et sont partagés entre les canaux logiques."
-    },
     "events": {
       "title": "Événements",
-      "description": "Activité du projet pour Private Channels, y compris les événements de cycle de vie, de membres, de transferts et d’erreurs. L'historique est conservé même après la déconnexion ou la suppression d'une instance.",
+      "description": "Activité du projet pour Private Channels (cycle de vie, erreurs et futurs événements de membres/transferts). L'historique est conservé même après la déconnexion ou la suppression d'une instance.",
       "empty": "Aucun événement pour le moment. Connectez une instance ou créez un canal pour démarrer le flux d'activité.",
       "columnEvent": "Événement",
       "columnCategory": "Catégorie",
@@ -202,7 +197,6 @@
       "typeDepositSettled": "Dépôt réglé",
       "typeDepositFailed": "Dépôt échoué",
       "typeWithdrawalConfirmed": "Burn du retrait confirmé",
-      "typeTransferConfirmed": "Transfert entre membres confirmé",
       "typeWithdrawalSettled": "Retrait réglé",
       "typeWithdrawalFailed": "Retrait échoué",
       "typeDepositAwaitingSpcCredit": "En attente du crédit du canal",

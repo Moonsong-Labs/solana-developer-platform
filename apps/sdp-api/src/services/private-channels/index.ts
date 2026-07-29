@@ -19,10 +19,6 @@ export {
   verifyInstanceConnection,
 } from "./service";
 export {
-  type CreateChannelTransferInput,
-  createChannelTransfer,
-} from "./transfer";
-export {
   deletePrivateChannelWallet,
   listPrivateChannelWallets,
   verifyPrivateChannelWallet,

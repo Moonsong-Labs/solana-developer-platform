@@ -4,7 +4,6 @@ import {
   PRIVATE_CHANNEL_EVENT_TYPE_VALUES,
   PRIVATE_CHANNEL_EVENT_TYPES,
 } from "@sdp/types";
-import { privateChannelTransferAmountSchema } from "@/lib/private-channel-transfer-amount";
 import { solanaAddressSchema, z } from "./base";
 
 export const privateChannelInstanceSchema = z
@@ -379,103 +378,6 @@ export const privateChannelWithdrawalIdParamSchema = z.object({
       param: { name: "id", in: "path" },
       description: "Withdrawal id.",
       example: "wd_9f1c...",
-    }),
-});
-
-export const privateChannelTransferSchema = z
-  .object({
-    id: z.string().openapi({ example: "pct_9f1c..." }),
-    organizationId: z.string(),
-    projectId: z.string(),
-    instanceId: z.string(),
-    channelId: z.string(),
-    walletId: z.string().openapi({ description: "Custody wallet used to sign the transfer." }),
-    sender: solanaAddressSchema,
-    recipient: solanaAddressSchema,
-    mint: solanaAddressSchema,
-    amount: z.string().openapi({ description: "Decimal amount.", example: "1.5" }),
-    status: z
-      .enum(["confirmed", "failed"])
-      .openapi({ description: "Terminal SPC transfer result.", example: "confirmed" }),
-    signature: z
-      .string()
-      .nullable()
-      .openapi({ description: "SPC signature; null if preparation failed before signing." }),
-    failureReason: z.string().nullable().openapi({ description: "Set when status is failed." }),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  })
-  .openapi({ description: "A transfer between verified wallets of channel members." });
-
-export const privateChannelTransferListSchema = z.object({
-  transfers: z.array(privateChannelTransferSchema),
-});
-
-const privateChannelTransferRecipientWalletSchema = z.object({
-  id: z.string().openapi({ description: "Opaque verified-wallet id." }),
-  pubkey: solanaAddressSchema,
-});
-
-const privateChannelTransferRecipientSchema = z.object({
-  privateChannelUserId: z.string(),
-  userId: z.string(),
-  email: z.string(),
-  name: z.string().nullable(),
-  wallets: z.array(privateChannelTransferRecipientWalletSchema),
-});
-
-export const privateChannelTransferRecipientListSchema = z.object({
-  recipients: z.array(privateChannelTransferRecipientSchema),
-});
-
-export const createPrivateChannelTransferBodySchema = z
-  .object({
-    walletId: z.string().min(1).openapi({
-      description: "Verified SDP custody wallet controlled by the acting member.",
-      example: "wallet_123",
-    }),
-    recipientVerifiedWalletId: z.string().min(1).openapi({
-      description:
-        "Opaque id returned by the channel's transfer-recipients endpoint; arbitrary addresses are not accepted.",
-      example: "pcvw_9f1c...",
-    }),
-    amount: privateChannelTransferAmountSchema.openapi({
-      description: "Positive decimal USDC amount with at most six fractional digits.",
-      example: "1.5",
-    }),
-  })
-  .openapi({ description: "Create a verified member-to-member channel transfer." });
-
-export const privateChannelTransferChannelIdParamSchema = z.object({
-  channelId: z
-    .string()
-    .min(1)
-    .openapi({
-      param: { name: "channelId", in: "path" },
-      description: "Active logical channel id.",
-      example: "pch_9f1c...",
-    }),
-});
-
-export const privateChannelTransferIdParamSchema = z.object({
-  id: z
-    .string()
-    .min(1)
-    .openapi({
-      param: { name: "id", in: "path" },
-      description: "Private-channel transfer id.",
-      example: "pct_9f1c...",
-    }),
-});
-
-export const privateChannelTransferListQuerySchema = z.object({
-  channelId: z
-    .string()
-    .min(1)
-    .optional()
-    .openapi({
-      param: { name: "channelId", in: "query" },
-      description: "Optionally filter project transfer history by logical channel id.",
     }),
 });
 
