@@ -246,35 +246,37 @@ export function EventsList({
 
   return (
     <div className="flex min-w-0 flex-col gap-4" aria-busy={isBusy}>
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <span className="text-sm font-medium text-primary">
-          {t("DashboardPrivateChannels.events.filterLabel")}
-        </span>
-        <Select
-          ariaLabel={t("DashboardPrivateChannels.events.filterLabel")}
-          className="w-full max-w-full sm:w-64"
-          disabled={isBusy}
-          onValueChange={changeFamily}
-          trailing={
-            isFiltering ? <Loader2Icon aria-hidden className="size-4 animate-spin" /> : null
-          }
-          value={selectedFamily}
-        >
-          <SelectItem value="all">{t("DashboardPrivateChannels.events.filterAll")}</SelectItem>
-          <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE}>
-            {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE)}
-          </SelectItem>
-          <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER}>
-            {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER)}
-          </SelectItem>
-          <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER}>
-            {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER)}
-          </SelectItem>
-          <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR}>
-            {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR)}
-          </SelectItem>
-        </Select>
-      </div>
+      {canViewRawPayload ? (
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <span className="text-sm font-medium text-primary">
+            {t("DashboardPrivateChannels.events.filterLabel")}
+          </span>
+          <Select
+            ariaLabel={t("DashboardPrivateChannels.events.filterLabel")}
+            className="w-full max-w-full sm:w-64"
+            disabled={isBusy}
+            onValueChange={changeFamily}
+            trailing={
+              isFiltering ? <Loader2Icon aria-hidden className="size-4 animate-spin" /> : null
+            }
+            value={selectedFamily}
+          >
+            <SelectItem value="all">{t("DashboardPrivateChannels.events.filterAll")}</SelectItem>
+            <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE}>
+              {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.LIFECYCLE)}
+            </SelectItem>
+            <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER}>
+              {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.MEMBER)}
+            </SelectItem>
+            <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER}>
+              {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER)}
+            </SelectItem>
+            <SelectItem value={PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR}>
+              {eventFamilyLabel(t, PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR)}
+            </SelectItem>
+          </Select>
+        </div>
+      ) : null}
 
       {events.length === 0 ? (
         <p className="text-secondary text-sm">

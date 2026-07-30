@@ -199,6 +199,12 @@ describe("EventsList", () => {
     );
   });
 
+  it("hides the family filter from non-admins", () => {
+    renderEvents({ canViewRawPayload: false });
+
+    expect(screen.queryByRole("combobox", { name: "Event category" })).toBeNull();
+  });
+
   it("replaces events for a family filter and preserves that family while paginating", async () => {
     const user = userEvent.setup();
     const firstTransfer = makeTransferEvent("pce_transfer_1");
@@ -221,7 +227,7 @@ describe("EventsList", () => {
         data: { events: [secondTransfer], hasMore: false, nextCursor: null },
       });
 
-    renderEvents();
+    renderEvents({ canViewRawPayload: true });
 
     const familyFilter = screen.getByRole("combobox", { name: "Event category" });
     await user.selectOptions(familyFilter, PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER);
@@ -264,7 +270,11 @@ describe("EventsList", () => {
     }>();
     mocks.loadProjectEventsAction.mockReturnValueOnce(request.promise);
 
-    renderEvents({ initialHasMore: true, initialNextCursor: "cursor_1" });
+    renderEvents({
+      initialHasMore: true,
+      initialNextCursor: "cursor_1",
+      canViewRawPayload: true,
+    });
     const loadMore = screen.getByRole("button", { name: "Load more" });
     const familyFilter = screen.getByRole("combobox", { name: "Event category" });
 
@@ -292,7 +302,7 @@ describe("EventsList", () => {
       message: "Internal API detail",
     });
 
-    renderEvents();
+    renderEvents({ canViewRawPayload: true });
     const familyFilter = screen.getByRole("combobox", { name: "Event category" });
     await user.selectOptions(familyFilter, PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR);
 
