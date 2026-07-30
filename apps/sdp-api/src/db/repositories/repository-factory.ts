@@ -28,6 +28,8 @@ import type { PrivateChannelInstanceRepository } from "./private-channel-instanc
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 import type { PrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository";
 import { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
+import type { PrivateChannelTransferRepository } from "./private-channel-transfer.repository";
+import { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
 import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
 import { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
 import type { PrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository";
@@ -87,6 +89,10 @@ export function createPrivateChannelInstanceRepository(env: Env): PrivateChannel
 
 export function createPrivateChannelRepository(env: Env): PrivateChannelRepository {
   return createPostgresPrivateChannelRepository(getDb(env));
+}
+
+export function createPrivateChannelTransferRepository(env: Env): PrivateChannelTransferRepository {
+  return createPostgresPrivateChannelTransferRepository(getDb(env));
 }
 
 export function createPrivateChannelDepositRepository(env: Env): PrivateChannelDepositRepository {

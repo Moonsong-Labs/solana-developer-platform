@@ -29,6 +29,12 @@ const TABS = [
     requiresActive: true,
   },
   {
+    id: "transfer",
+    labelKey: "DashboardPrivateChannels.tabs.transfer",
+    href: "/dashboard/payments/private-channels/transfer",
+    requiresActive: true,
+  },
+  {
     id: "withdraw",
     labelKey: "DashboardPrivateChannels.tabs.withdraw",
     href: "/dashboard/payments/private-channels/withdraw",

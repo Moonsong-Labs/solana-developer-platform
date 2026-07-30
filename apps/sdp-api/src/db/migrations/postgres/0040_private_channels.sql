@@ -393,6 +393,73 @@ CREATE TABLE IF NOT EXISTS private_channel_settlement_observations (
 
 
 -- ==========================================================================
+-- private channel transfers
+
+-- Private Channels transfers move tokens between two verified member addresses
+-- on the channel chain. Amounts are decimal strings (never numeric/float).
+--
+-- These rows are FINANCIAL/AUDIT history. Instance, channel, member, custody
+-- wallet and verification identifiers carry NO FK, so disconnecting an instance,
+-- archiving/deleting a channel, revoking a member or deleting a wallet
+-- verification cannot erase transfer history. Only the owning org/project
+-- cascade, since nothing in the row is meaningful once those are gone.
+--
+-- Lifecycle: a row is inserted as `pending` BEFORE anything is broadcast, then
+-- `submitted` once SPC accepts the transaction at ingress, then `confirmed` once
+-- a signature-status read shows it executed cleanly. `failed` covers preparation
+-- errors, ingress rejection and execution errors. `confirmed` is terminal: SPC
+-- runs one sequencer with no fork choice, so a single status read is final and
+-- there is no `settled` (nothing leaves the channel).
+--
+-- A row still in `pending` means the request died mid-flight. A row still in
+-- `submitted` means the confirm read never returned a verdict — a transport
+-- error, or a dedup drop (stale blockhash / duplicate) that SPC discards without
+-- telling the caller. Nothing sweeps either; both are operator signals.
+
+CREATE TABLE IF NOT EXISTS private_channel_transfers (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    sender_private_channel_user_id TEXT NOT NULL,
+    recipient_private_channel_user_id TEXT NOT NULL,
+    sender_wallet_id TEXT NOT NULL,
+    recipient_verified_wallet_id TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    mint TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    status TEXT NOT NULL,
+    signature TEXT,
+    failure_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT sdp_iso_now(),
+    updated_at TEXT NOT NULL DEFAULT sdp_iso_now(),
+
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+
+    CONSTRAINT private_channel_transfers_distinct_addresses_check
+        CHECK (sender <> recipient),
+    CONSTRAINT private_channel_transfers_status_check
+        CHECK (status IN ('pending', 'submitted', 'confirmed', 'failed')),
+    CONSTRAINT private_channel_transfers_result_check
+        CHECK (
+            (status = 'pending' AND signature IS NULL AND failure_reason IS NULL)
+            OR (status = 'submitted' AND signature IS NOT NULL AND failure_reason IS NULL)
+            OR (status = 'confirmed' AND signature IS NOT NULL AND failure_reason IS NULL)
+            OR (status = 'failed' AND failure_reason IS NOT NULL)
+        )
+);
+
+-- Project and channel history feeds, newest first.
+CREATE INDEX IF NOT EXISTS idx_private_channel_transfers_project_created
+    ON private_channel_transfers(project_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_private_channel_transfers_channel_created
+    ON private_channel_transfers(channel_id, created_at DESC, id DESC);
+
+
+-- ==========================================================================
 -- private channel verified wallets
 
 -- SPC verified wallets: a custody wallet (pubkey) a member has proven control

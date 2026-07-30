@@ -1,6 +1,7 @@
 import { privateChannelInstanceInputSchema } from "@sdp/private-channels";
 import { PRIVATE_CHANNEL_EVENT_FAMILY_VALUES } from "@sdp/types";
 import { z } from "zod";
+import { privateChannelTransferAmountSchema } from "@/lib/private-channel-transfer-amount";
 
 // `confirmReactivate` is a client acknowledgement that we're about to overwrite
 // config on an existing (inactive) row that downstream data may be bound to.
@@ -73,6 +74,28 @@ export const createWithdrawalBodySchema = z.object({
 /** Path param for `GET /withdrawals/:id`. */
 export const withdrawalIdParamSchema = z.object({
   id: z.string().min(1),
+});
+
+/** Path param shared by channel-scoped transfer routes. */
+export const transferChannelIdParamSchema = z.object({
+  channelId: z.string().min(1),
+});
+
+/** Body for `POST /channels/:channelId/transfers`. */
+export const createTransferBodySchema = z.object({
+  walletId: z.string().min(1),
+  recipientVerifiedWalletId: z.string().min(1),
+  amount: privateChannelTransferAmountSchema,
+});
+
+/** Path param for `GET /transfers/:id`. */
+export const transferIdParamSchema = z.object({
+  id: z.string().min(1),
+});
+
+/** Optional project-history filter for `GET /transfers`. */
+export const transferListQuerySchema = z.object({
+  channelId: z.string().min(1).optional(),
 });
 
 /** Query params for `GET /channels/:id/events` and `GET /events`. */

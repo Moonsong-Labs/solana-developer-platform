@@ -24,6 +24,12 @@ export {
 } from "./handlers/members";
 export { getPrivateChannelOverview } from "./handlers/overview";
 export { probePrivateChannelConnection } from "./handlers/probe";
+export {
+  createPrivateChannelTransfer,
+  getPrivateChannelTransferById,
+  listPrivateChannelTransferRecipients,
+  listPrivateChannelTransfers,
+} from "./handlers/transfers";
 export { deleteVerifiedWallet, listVerifiedWallets, verifyWallet } from "./handlers/wallets";
 export {
   createPrivateChannelWithdrawal,
