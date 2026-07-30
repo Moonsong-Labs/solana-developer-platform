@@ -31,6 +31,7 @@ export async function emitDepositEvent(
     family: PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER,
     type,
     status,
+    wallets: [deposit.depositor, deposit.recipient],
     payload: {
       depositId: deposit.id,
       amount: deposit.amount,

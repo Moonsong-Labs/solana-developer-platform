@@ -20,6 +20,7 @@ export interface PrivateChannelEventRow {
   type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload: Record<string, unknown>;
+  wallets: string[];
   occurred_at: string;
   created_at: string;
 }
@@ -35,6 +36,7 @@ export interface PrivateChannelEventWriteInput {
   type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload: Record<string, unknown>;
+  wallets: string[];
   occurredAt: string;
   createdAt: string;
 }
@@ -44,6 +46,8 @@ export interface ListPrivateChannelEventsParams {
   instanceId: string;
   family?: PrivateChannelEventFamily;
   type?: string;
+  status?: PrivateChannelEventStatus;
+  wallets?: string[];
   /** Capped at 100 by callers. */
   limit: number;
   /** Cursor: occurred_at of the last row from the previous page. */
@@ -57,6 +61,8 @@ export interface ListProjectPrivateChannelEventsParams {
   projectId: string;
   family?: PrivateChannelEventFamily;
   type?: string;
+  status?: PrivateChannelEventStatus;
+  wallets?: string[];
   /** Capped at 100 by callers. */
   limit: number;
   /** Cursor: occurred_at of the last row from the previous page. */

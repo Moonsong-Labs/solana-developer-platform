@@ -65,7 +65,11 @@ export function emitMember(
   c: AppContext,
   scope: PrivateChannelEventScope,
   type: PrivateChannelEventType,
-  extra?: { channelId?: string | null; payload?: Record<string, unknown> }
+  extra?: {
+    channelId?: string | null;
+    payload?: Record<string, unknown>;
+    wallets?: string[];
+  }
 ): Promise<void> {
   return getPrivateChannelEventService(c).emit({
     organizationId: scope.organizationId,
@@ -77,6 +81,7 @@ export function emitMember(
     type,
     status: PRIVATE_CHANNEL_EVENT_STATUSES.INFO,
     payload: extra?.payload ?? {},
+    wallets: extra?.wallets,
   });
 }
 

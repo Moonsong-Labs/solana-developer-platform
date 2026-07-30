@@ -31,6 +31,7 @@ export async function emitWithdrawalEvent(
     family: PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER,
     type,
     status,
+    wallets: [withdrawal.owner, withdrawal.destination],
     payload: {
       withdrawalId: withdrawal.id,
       amount: withdrawal.amount,

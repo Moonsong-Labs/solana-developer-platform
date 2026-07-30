@@ -201,6 +201,53 @@ describe("Private Channels — event routes", () => {
     expect(body.data.events[0]?.type).toBe(PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED);
     expect(body.data.events[0]?.channelId).toBe(created.data.id);
     expect(body.data.events[0]?.payload).toEqual({ name: "Treasury" });
+    expect(body.data.events[0]?.wallets).toEqual([]);
+  });
+
+  it("filters events by exact status and rejects unknown statuses", async () => {
+    await connectInstance();
+    const channelId = await defaultChannelId();
+    const instance = await getDb(env)
+      .prepare(
+        "SELECT id, organization_id, project_id FROM private_channel_instances WHERE is_active = true LIMIT 1"
+      )
+      .first<{ id: string; organization_id: string; project_id: string }>();
+    expect(instance).toBeTruthy();
+
+    await getDb(env)
+      .prepare(
+        `INSERT INTO private_channel_events
+           (id, organization_id, project_id, instance_id, channel_id, family, type, status, payload, wallets, occurred_at)
+         VALUES ('pce_failed_status', ?, ?, ?, ?, ?, ?, ?, '{}'::jsonb, ?::text[], '2026-07-30T12:00:00.000Z')`
+      )
+      .bind(
+        instance?.organization_id,
+        instance?.project_id,
+        instance?.id,
+        channelId,
+        PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR,
+        PRIVATE_CHANNEL_EVENT_TYPES.ERROR_SPC_UNREACHABLE,
+        PRIVATE_CHANNEL_EVENT_STATUSES.FAILED,
+        ["status-wallet"]
+      )
+      .run();
+
+    const filtered = await app.request(
+      `/v1/private-channels/channels/${channelId}/events?status=${PRIVATE_CHANNEL_EVENT_STATUSES.FAILED}`,
+      { headers: authHeaders() },
+      env
+    );
+    expect(filtered.status).toBe(200);
+    const body = (await filtered.json()) as { data: PrivateChannelEventListEnvelope };
+    expect(body.data.events.map((event) => event.id)).toEqual(["pce_failed_status"]);
+    expect(body.data.events[0]?.wallets).toEqual(["status-wallet"]);
+
+    const invalid = await app.request(
+      `/v1/private-channels/channels/${channelId}/events?status=unknown`,
+      { headers: authHeaders() },
+      env
+    );
+    expect(invalid.status).toBe(400);
   });
 
   it("paginates with before cursor", async () => {
@@ -327,6 +374,102 @@ describe("Private Channels — event routes", () => {
       message: "boom",
       gatewayUrl: SANDBOX_DEFAULTS.gatewayUrl,
     });
+  });
+
+  it("wallet verification events persist the verified pubkey for visibility", async () => {
+    const pubkey = "So11111111111111111111111111111111111111112";
+    const verifyMock = vi.spyOn(pcServices, "verifyPrivateChannelWallet").mockResolvedValueOnce({
+      row: {
+        id: "pcvw_event_test",
+        wallet_id: "wallet_event_test",
+        pubkey,
+        verified_at: "2026-07-30T12:00:00.000Z",
+      },
+      instance: {
+        id: "pci_wallet_event_test",
+        organization_id: TEST_ORG.id,
+        project_id: TEST_PROJECT.id,
+      },
+    } as never);
+
+    let res: Response;
+    try {
+      res = await app.request(
+        "/v1/private-channels/wallets/wallet_event_test/verify",
+        { method: "POST", headers: authHeaders() },
+        env
+      );
+    } finally {
+      verifyMock.mockRestore();
+    }
+
+    expect(res.status).toBe(200);
+    const event = await getDb(env)
+      .prepare("SELECT wallets FROM private_channel_events WHERE type = ?")
+      .bind(PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_WALLET_VERIFIED)
+      .first<{ wallets: string[] }>();
+    expect(event?.wallets).toEqual([pubkey]);
+  });
+
+  it("wallet revocation events persist the revoked pubkey for visibility", async () => {
+    const pubkey = "So11111111111111111111111111111111111111113";
+    const deleteMock = vi.spyOn(pcServices, "deletePrivateChannelWallet").mockResolvedValueOnce({
+      instance: {
+        id: "pci_wallet_event_test",
+        organization_id: TEST_ORG.id,
+        project_id: TEST_PROJECT.id,
+      },
+      deleted: true,
+    } as never);
+
+    let res: Response;
+    try {
+      res = await app.request(
+        `/v1/private-channels/wallets/${pubkey}`,
+        { method: "DELETE", headers: authHeaders() },
+        env
+      );
+    } finally {
+      deleteMock.mockRestore();
+    }
+
+    expect(res.status).toBe(200);
+    const event = await getDb(env)
+      .prepare("SELECT wallets FROM private_channel_events WHERE type = ?")
+      .bind(PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_WALLET_VERIFICATION_REVOKED)
+      .first<{ wallets: string[] }>();
+    expect(event?.wallets).toEqual([pubkey]);
+  });
+
+  it("does not emit a wallet revocation event when no verification was deleted", async () => {
+    const pubkey = "So11111111111111111111111111111111111111114";
+    const deleteMock = vi.spyOn(pcServices, "deletePrivateChannelWallet").mockResolvedValueOnce({
+      instance: {
+        id: "pci_wallet_event_test",
+        organization_id: TEST_ORG.id,
+        project_id: TEST_PROJECT.id,
+      },
+      deleted: false,
+    } as never);
+
+    let res: Response;
+    try {
+      res = await app.request(
+        `/v1/private-channels/wallets/${pubkey}`,
+        { method: "DELETE", headers: authHeaders() },
+        env
+      );
+    } finally {
+      deleteMock.mockRestore();
+    }
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ data: { deleted: false } });
+    const event = await getDb(env)
+      .prepare("SELECT id FROM private_channel_events WHERE type = ?")
+      .bind(PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_WALLET_VERIFICATION_REVOKED)
+      .first<{ id: string }>();
+    expect(event).toBeNull();
   });
 
   it("lists project-scoped events across channels", async () => {

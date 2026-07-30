@@ -427,6 +427,7 @@ export interface PrivateChannelEventDto {
   type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload: Record<string, unknown>;
+  wallets: string[];
   occurredAt: string;
   createdAt: string;
 }

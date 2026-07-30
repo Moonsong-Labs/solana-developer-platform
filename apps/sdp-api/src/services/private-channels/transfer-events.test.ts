@@ -54,6 +54,7 @@ describe("emitTransferEvent", () => {
       family: "transfer",
       type: "transfer.transfer.submitted",
       status: "pending",
+      wallets: [TRANSFER.sender, TRANSFER.recipient],
       payload: {
         transferId: "pct_event_test",
         sender: TRANSFER.sender,

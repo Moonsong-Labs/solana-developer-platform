@@ -1,13 +1,17 @@
-import type {
-  PrivateChannelTransfer,
-  PrivateChannelTransferRecipientDto,
-  PrivateChannelUserDto,
+import {
+  PRIVATE_CHANNEL_EVENT_FAMILIES,
+  PRIVATE_CHANNEL_EVENT_STATUSES,
+  type PrivateChannelEventListEnvelope,
+  type PrivateChannelTransfer,
+  type PrivateChannelTransferRecipientDto,
+  type PrivateChannelUserDto,
 } from "@sdp/types";
 import { describe, expect, it, vi } from "vitest";
 import type { SdpApiClient } from "@/lib/sdp-api";
 import {
   createPrivateChannelTransfer,
   fetchAuthenticatedPrivateChannelUser,
+  fetchPrivateChannelEvents,
   fetchPrivateChannelTransferRecipients,
 } from "./private-channels";
 
@@ -62,6 +66,12 @@ const transfer: PrivateChannelTransfer = {
   updatedAt: "2026-07-28T00:00:00.000Z",
 };
 
+const eventEnvelope: PrivateChannelEventListEnvelope = {
+  events: [],
+  hasMore: false,
+  nextCursor: null,
+};
+
 describe("private-channel transfer API helpers", () => {
   it("returns the authenticated member and their eligible channels", async () => {
     const client = createClient({ user: member });
@@ -107,6 +117,26 @@ describe("private-channel transfer API helpers", () => {
           amount: "1.25",
         }),
       }
+    );
+  });
+});
+
+describe("private-channel event API helpers", () => {
+  it("appends typed family, status, and cursor filters", async () => {
+    const client = createClient(eventEnvelope);
+
+    await expect(
+      fetchPrivateChannelEvents(client, {
+        family: PRIVATE_CHANNEL_EVENT_FAMILIES.ERROR,
+        status: PRIVATE_CHANNEL_EVENT_STATUSES.FAILED,
+        type: "error.spc_unreachable",
+        limit: 25,
+        before: "cursor/with space",
+      })
+    ).resolves.toEqual(eventEnvelope);
+
+    expect(client.fetch).toHaveBeenCalledWith(
+      "/v1/private-channels/events?family=error&type=error.spc_unreachable&status=failed&limit=25&before=cursor%2Fwith+space"
     );
   });
 });
