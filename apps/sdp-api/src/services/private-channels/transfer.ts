@@ -28,6 +28,7 @@ import {
   type PrivateChannelTransferRow,
 } from "@/db/repositories";
 import { AppError, badRequest } from "@/lib/errors";
+import { getLogger } from "@/runtime/logger";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
 import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
@@ -169,19 +170,25 @@ async function settleTransfer(
     if (row) {
       return row;
     }
-    console.error("private-channel-transfer settle found no pending row", {
-      transferId: pending.id,
-      status: outcome.status,
-    });
+    getLogger().error(
+      {
+        transferId: pending.id,
+        status: outcome.status,
+      },
+      "private-channel-transfer settle found no pending row"
+    );
   } catch (error) {
     // The transfer's real outcome is already known; losing the status write only
     // costs accuracy in history, so surface it and leave the row `pending` for an
     // operator rather than failing a request whose funds may have moved.
-    console.error("private-channel-transfer settle failed", {
-      transferId: pending.id,
-      status: outcome.status,
-      error: error instanceof Error ? error.message : error,
-    });
+    getLogger().error(
+      {
+        transferId: pending.id,
+        status: outcome.status,
+        error: error instanceof Error ? error.message : error,
+      },
+      "private-channel-transfer settle failed"
+    );
   }
   return pending;
 }

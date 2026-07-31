@@ -46,6 +46,7 @@ import {
   type PrivateChannelDepositRow,
 } from "@/db/repositories";
 import { AppError, badRequest } from "@/lib/errors";
+import { getLogger } from "@/runtime/logger";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
@@ -206,10 +207,7 @@ export async function createChannelDeposit(
     });
   } catch (error) {
     const failureReason = describeTxError(error, "Deposit submission failed.");
-    console.error("createChannelDeposit: broadcast failed", {
-      depositId: created.id,
-      error,
-    });
+    getLogger().error({ depositId: created.id, error }, "createChannelDeposit: broadcast failed");
     const failed = await repo.updateDeposit({
       id: created.id,
       status: "failed",

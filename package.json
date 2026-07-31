@@ -16,7 +16,7 @@
     "overrides": {
       "@token-acl/abl-sdk": "npm:@solana/token-acl-gate-sdk@0.2.0",
       "fast-uri": "^3.1.4",
-      "postcss": "^8.5.10"
+      "postcss": "^8.5.22"
     },
     "patchedDependencies": {
       "@solana/mosaic-sdk@0.1.1": "patches/@solana__mosaic-sdk@0.1.1.patch",

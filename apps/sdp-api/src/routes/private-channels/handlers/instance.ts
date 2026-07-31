@@ -9,6 +9,7 @@ import { mapPrivateChannelInstanceRow, type PrivateChannelInstanceRow } from "@/
 import { getAuth, requireProjectId } from "@/lib/auth";
 import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
+import { getLogger } from "@/runtime/logger";
 import { inviteMember, verifyInstanceConnection } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import {
@@ -74,8 +75,7 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
     // AppError responses are returned silently by app.onError; log diagnostics here.
     // Redacted: chainRpcUrl carries the operator's provider API key as a query
     // parameter (see SANDBOX_DEFAULTS), so the raw URLs must not reach the log.
-    console.warn(
-      "connectPrivateChannelInstance: connection probe failed",
+    getLogger().warn(
       redactCredentialSecrets({
         organizationId: auth.organizationId,
         projectId,
@@ -85,7 +85,8 @@ export const connectPrivateChannelInstance = async (c: AppContext) => {
         gateway: probe.gateway,
         rpc: probe.rpc,
         auth: probe.auth,
-      })
+      }),
+      "connectPrivateChannelInstance: connection probe failed"
     );
     throw badRequest("Connection check failed", {
       gateway: probe.gateway,
