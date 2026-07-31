@@ -198,8 +198,7 @@
     "collapsePaymentsMenu": "Réduire le menu Paiements",
     "backToWallet": "Retour au Wallet",
     "walletControls": "Contrôles du Wallet",
-    "backToApprovals": "Retour aux approbations",
-    "privateChannels": "Canaux privés"
+    "backToApprovals": "Retour aux approbations"
   },
   "validation": {
     "allowlistValueRequired": "La valeur Allowlist est requise",
