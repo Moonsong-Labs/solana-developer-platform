@@ -82,6 +82,7 @@
       "empty": "No members yet. Invite an SDP project user to get started.",
       "columnEmail": "Email",
       "columnName": "Name",
+      "columnRole": "Role",
       "columnVerifiedWallets": "Verified wallets",
       "columnChannels": "Channels",
       "columnActions": "Actions",

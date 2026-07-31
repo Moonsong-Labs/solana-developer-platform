@@ -305,6 +305,8 @@ export interface PrivateChannelUserDto {
   userId: string;
   email: string;
   name: string | null;
+  /** Per-project role for this PC user (always set: invites require project membership). */
+  projectRole: string;
   /** How many wallets this member has verified with the connected instance. */
   verifiedWalletCount: number;
   invitedAt: string;
