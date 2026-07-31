@@ -47,6 +47,7 @@ import {
   type PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
 import { AppError, badRequest } from "@/lib/errors";
+import { getLogger } from "@/runtime/logger";
 import * as solanaServices from "@/services/solana";
 import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import type { Env } from "@/types/env";
@@ -202,10 +203,10 @@ export async function createChannelWithdrawal(
     });
   } catch (error) {
     const failureReason = describeTxError(error, "Withdrawal submission failed.");
-    console.error("createChannelWithdrawal: broadcast failed", {
-      withdrawalId: created.id,
-      error,
-    });
+    getLogger().error(
+      { withdrawalId: created.id, error },
+      "createChannelWithdrawal: broadcast failed"
+    );
     const failed = await repo.updateWithdrawal({
       id: created.id,
       status: "failed",

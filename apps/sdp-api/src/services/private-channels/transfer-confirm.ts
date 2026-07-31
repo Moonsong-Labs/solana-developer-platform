@@ -38,6 +38,7 @@ import type {
   PrivateChannelTransferRepository,
   PrivateChannelTransferRow,
 } from "@/db/repositories";
+import { getLogger } from "@/runtime/logger";
 import type { Env } from "@/types/env";
 import { type SpcAuthContext, withGatewayRpc } from "./auth/gateway-auth";
 import { describeTransactionErr } from "./tx-error";
@@ -96,11 +97,14 @@ export async function confirmAndPersistTransfer(
       expectedStatus: "submitted",
     });
   } catch (error) {
-    console.error("private-channel-transfer confirm produced no verdict", {
-      transferId: input.transferId,
-      signature: input.signature,
-      error: error instanceof Error ? error.message : error,
-    });
+    getLogger().error(
+      {
+        transferId: input.transferId,
+        signature: input.signature,
+        error: error instanceof Error ? error.message : error,
+      },
+      "private-channel-transfer confirm produced no verdict"
+    );
     return null;
   }
 }

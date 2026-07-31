@@ -19,6 +19,7 @@ import type { SpcAuthClient } from "@sdp/private-channels/auth";
 import type { PrivateChannelUserRow } from "@/db/repositories";
 import { createSpcCredentialCipher } from "@/lib/spc-credential-crypto";
 import type { KVStore } from "@/runtime/kv";
+import { getLogger } from "@/runtime/logger";
 import type { CustodyCipher } from "@/services/custody-cipher/cipher-router";
 import type { Env } from "@/types/env";
 
@@ -109,9 +110,9 @@ async function readCachedToken(
     // a bad key name or missing IAM binding fails outright. Treat as a miss and
     // re-login rather than error out, but say so: silently degrading to a permanent
     // cache miss looks identical to a cold cache.
-    console.warn(
-      "spc-session: cached token unusable, falling back to a fresh login",
-      redactCredentialSecrets({ organizationId, error })
+    getLogger().warn(
+      redactCredentialSecrets({ organizationId, error }),
+      "spc-session: cached token unusable, falling back to a fresh login"
     );
     return null;
   }
@@ -144,9 +145,9 @@ async function cacheFreshToken(
     // Caching is an optimization; a KV/encrypt failure must not fail the request. It
     // does mean every subsequent call re-logs in, so it is worth a line — on the KMS
     // path an encrypt failure is a misconfigured key, not a transient blip.
-    console.warn(
-      "spc-session: could not cache the SPC token; subsequent calls will re-login",
-      redactCredentialSecrets({ organizationId, error })
+    getLogger().warn(
+      redactCredentialSecrets({ organizationId, error }),
+      "spc-session: could not cache the SPC token; subsequent calls will re-login"
     );
   }
 }

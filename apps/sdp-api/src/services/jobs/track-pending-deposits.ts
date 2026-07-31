@@ -29,6 +29,7 @@ import {
   type PrivateChannelDepositRow,
   type PrivateChannelInstanceRow,
 } from "@/db/repositories";
+import { getLogger } from "@/runtime/logger";
 import { emitDepositEvent } from "@/services/private-channels/deposit-events";
 import type { Env } from "@/types/env";
 
@@ -82,11 +83,14 @@ export async function trackPendingDeposits(env: Env): Promise<void> {
 }
 
 function logReconcileError(depositId: string, status: string, err: unknown): void {
-  console.error("trackPendingDeposits: failed to reconcile deposit", {
-    depositId,
-    status,
-    error: err instanceof Error ? err.message : String(err),
-  });
+  getLogger().error(
+    {
+      depositId,
+      status,
+      error: err instanceof Error ? err.message : String(err),
+    },
+    "trackPendingDeposits: failed to reconcile deposit"
+  );
 }
 
 /** Fail a signature-less deposit that has been stuck past the threshold. */
