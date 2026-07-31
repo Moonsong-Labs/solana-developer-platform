@@ -1,4 +1,5 @@
 import { getDb } from "@/db";
+import { createPiiCipher, type PiiCipher } from "@/services/pii-cipher/pii-cipher";
 import type { Env } from "@/types/env";
 import type { AssetProfilesRepository } from "./asset-profile.repository";
 import { createPostgresAssetProfilesRepository } from "./asset-profile.repository.postgres";
@@ -28,6 +29,8 @@ import type { PrivateChannelInstanceRepository } from "./private-channel-instanc
 import { createPostgresPrivateChannelInstanceRepository } from "./private-channel-instance.repository.postgres";
 import type { PrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository";
 import { createPostgresPrivateChannelSettlementObservationRepository } from "./private-channel-settlement-observation.repository.postgres";
+import type { PrivateChannelTransferRepository } from "./private-channel-transfer.repository";
+import { createPostgresPrivateChannelTransferRepository } from "./private-channel-transfer.repository.postgres";
 import type { PrivateChannelUserRepository } from "./private-channel-user.repository";
 import { createPostgresPrivateChannelUserRepository } from "./private-channel-user.repository.postgres";
 import type { PrivateChannelVerifiedWalletRepository } from "./private-channel-verified-wallet.repository";
@@ -62,11 +65,16 @@ export function createPaymentTransferBatchesRepository(env: Env): PaymentTransfe
 }
 
 export function createCounterpartiesRepository(env: Env): CounterpartiesRepository {
-  return createPostgresCounterpartiesRepository(getDb(env));
+  const testCipher = (env as Env & { counterpartyPiiCipher?: PiiCipher }).counterpartyPiiCipher;
+  return createPostgresCounterpartiesRepository(getDb(env), testCipher ?? createPiiCipher(env));
 }
 
 export function createCounterpartyAccountsRepository(env: Env): CounterpartyAccountsRepository {
-  return createPostgresCounterpartyAccountsRepository(getDb(env));
+  const testCipher = (env as Env & { counterpartyPiiCipher?: PiiCipher }).counterpartyPiiCipher;
+  return createPostgresCounterpartyAccountsRepository(
+    getDb(env),
+    testCipher ?? createPiiCipher(env)
+  );
 }
 
 export function createTokenRepository(env: Env): TokenRepository {
@@ -87,6 +95,10 @@ export function createPrivateChannelInstanceRepository(env: Env): PrivateChannel
 
 export function createPrivateChannelRepository(env: Env): PrivateChannelRepository {
   return createPostgresPrivateChannelRepository(getDb(env));
+}
+
+export function createPrivateChannelTransferRepository(env: Env): PrivateChannelTransferRepository {
+  return createPostgresPrivateChannelTransferRepository(getDb(env));
 }
 
 export function createPrivateChannelDepositRepository(env: Env): PrivateChannelDepositRepository {

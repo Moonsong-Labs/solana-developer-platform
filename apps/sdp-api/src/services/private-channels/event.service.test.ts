@@ -4,6 +4,7 @@ import {
   PRIVATE_CHANNEL_EVENT_TYPES,
 } from "@sdp/types";
 import { describe, expect, it, vi } from "vitest";
+import { rootLogger } from "@/runtime/logger";
 import type { PrivateChannelEventRecord, PrivateChannelEventSink } from "./event.service";
 import { PrivateChannelEventService } from "./event.service";
 
@@ -63,7 +64,7 @@ describe("PrivateChannelEventService", () => {
         ran.push("ok");
       },
     };
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(rootLogger, "error").mockImplementation(() => undefined);
 
     const service = new PrivateChannelEventService([throwing, ok]);
     await expect(service.emit(baseInput())).resolves.toBeUndefined();

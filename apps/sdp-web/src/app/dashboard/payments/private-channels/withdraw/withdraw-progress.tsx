@@ -85,7 +85,7 @@ export function WithdrawProgress({
             {t("DashboardPrivateChannels.withdraw.progressLabel")}
           </p>
           <p className="font-semibold text-lg">
-            {t("DashboardPrivateChannels.withdraw.amountWithUnit", { amount: withdrawal.amount })}
+            {t("DashboardPrivateChannels.common.amountWithUnit", { amount: withdrawal.amount })}
           </p>
         </div>
         <StatusBadge status={withdrawal.status} t={t} />
@@ -123,13 +123,13 @@ export function WithdrawProgress({
       {withdrawal.signature && (
         <p className="text-secondary text-xs">
           {t("DashboardPrivateChannels.withdraw.burnSignature")}{" "}
-          <span className="font-mono text-xs">{withdrawal.signature}</span>
+          <span className="break-all text-primary">{withdrawal.signature}</span>
         </p>
       )}
 
       {withdrawal.settlementRef && (
         <a
-          className="inline-block text-primary text-xs underline underline-offset-2 hover:no-underline"
+          className="block w-fit text-primary text-xs underline underline-offset-2 hover:no-underline"
           href={explorerTxUrl(withdrawal.settlementRef, cluster)}
           rel="noreferrer"
           target="_blank"

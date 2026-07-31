@@ -68,7 +68,6 @@ ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_SDP_API_BASE_URL=__SDP_RT_NEXT_PUBLIC_SDP_API_BASE_URL__
 ARG NEXT_PUBLIC_SDP_DOCS_URL=__SDP_RT_NEXT_PUBLIC_SDP_DOCS_URL__
 ARG NEXT_PUBLIC_SOLANA_NETWORK=__SDP_RT_NEXT_PUBLIC_SOLANA_NETWORK__
-ARG NEXT_PUBLIC_SDP_ENVIRONMENT=__SDP_RT_NEXT_PUBLIC_SDP_ENVIRONMENT__
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG NEXT_PUBLIC_ENABLE_NETWORK_DEBUG
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=__SDP_RT_NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY__
@@ -81,7 +80,6 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_SDP_API_BASE_URL=$NEXT_PUBLIC_SDP_API_BASE_URL \
     NEXT_PUBLIC_SDP_DOCS_URL=$NEXT_PUBLIC_SDP_DOCS_URL \
     NEXT_PUBLIC_SOLANA_NETWORK=$NEXT_PUBLIC_SOLANA_NETWORK \
-    NEXT_PUBLIC_SDP_ENVIRONMENT=$NEXT_PUBLIC_SDP_ENVIRONMENT \
     NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
     NEXT_PUBLIC_ENABLE_NETWORK_DEBUG=$NEXT_PUBLIC_ENABLE_NETWORK_DEBUG \
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
@@ -135,9 +133,14 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1
 
-# Apply OS-level security patches not yet in the pinned base image.
+# Update npm for patched node-tar (CVE-2026-59873) and apply OS-level fixes
+# not yet in the pinned base image.
 # This layer is cached — rebuild with --no-cache to pick up new fixes.
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+RUN npm install --global npm@12.0.2 \
+ && npm cache clean --force \
+ && apt-get update \
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/*
 
 # Run as an unprivileged user. UID/GID 1001 matches the convention used by
 # the upstream Next.js Docker example to make k8s securityContext predictable.

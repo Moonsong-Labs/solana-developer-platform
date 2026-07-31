@@ -2,6 +2,8 @@
 // wired for this surface; for now, log the invite URL so admins can copy it
 // out of the API's stdout (or the returned response body).
 
+import { getLogger } from "@/runtime/logger";
+
 export interface SendInviteEmailInput {
   to: string;
   inviteUrl: string;
@@ -9,5 +11,5 @@ export interface SendInviteEmailInput {
 }
 
 export async function sendInviteEmail(input: SendInviteEmailInput): Promise<void> {
-  console.info("[spc-invite-email] TODO: wire real provider", input);
+  getLogger().info({ input }, "[spc-invite-email] TODO: wire real provider");
 }

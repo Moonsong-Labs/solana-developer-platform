@@ -43,6 +43,7 @@ import {
   type PrivateChannelWithdrawalRepository,
   type PrivateChannelWithdrawalRow,
 } from "@/db/repositories";
+import { getLogger } from "@/runtime/logger";
 import { inferCluster, knownMintDecimals } from "@/services/private-channels/mint";
 import { emitWithdrawalEvent } from "@/services/private-channels/withdraw-events";
 import type { Env } from "@/types/env";
@@ -124,11 +125,14 @@ export async function trackPendingWithdrawals(env: Env): Promise<void> {
     try {
       await reconcileReleaseGroup(env, repo, observationRepo, group, now);
     } catch (err) {
-      console.error("trackPendingWithdrawals: failed to reconcile release group", {
-        instanceId: group.instance.id,
-        mint: group.mint,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      getLogger().error(
+        {
+          instanceId: group.instance.id,
+          mint: group.mint,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "trackPendingWithdrawals: failed to reconcile release group"
+      );
     }
   }
 }
@@ -147,11 +151,14 @@ function releaseGroupKey(
 }
 
 function logReconcileError(withdrawalId: string, status: string, err: unknown): void {
-  console.error("trackPendingWithdrawals: failed to reconcile withdrawal", {
-    withdrawalId,
-    status,
-    error: err instanceof Error ? err.message : String(err),
-  });
+  getLogger().error(
+    {
+      withdrawalId,
+      status,
+      error: err instanceof Error ? err.message : String(err),
+    },
+    "trackPendingWithdrawals: failed to reconcile withdrawal"
+  );
 }
 
 /** Fail a burn-signature-less withdrawal that has been stuck past the threshold. */

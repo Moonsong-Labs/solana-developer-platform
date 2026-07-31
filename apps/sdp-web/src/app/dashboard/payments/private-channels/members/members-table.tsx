@@ -138,11 +138,7 @@ function MemberRow({
     <TableRow>
       <TableCell className="break-all text-sm">{member.email}</TableCell>
       <TableCell className="text-sm">
-        {member.projectRole ? (
-          <span className="capitalize">{member.projectRole}</span>
-        ) : (
-          <span className="text-secondary">—</span>
-        )}
+        <span className="capitalize">{member.projectRole}</span>
       </TableCell>
       <TableCell>
         <WalletCountBadge count={member.verifiedWalletCount} />

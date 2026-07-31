@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { Webhook } from "svix";
 
 type ClerkUser = {
@@ -12,24 +9,6 @@ type ClerkUser = {
 };
 type ClerkOrg = { id: string; name: string; slug: string | null };
 type ClerkMembership = { organization: ClerkOrg; role: string };
-
-function loadLocalEnvFile(filePath: string): Record<string, string> {
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-  const values: Record<string, string> = {};
-  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-    const [key, ...rest] = trimmed.split("=");
-    if (key) {
-      values[key] = rest.join("=");
-    }
-  }
-  return values;
-}
 
 function readArg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -89,17 +68,6 @@ function sign(secret: string, msgId: string, payload: string) {
 }
 
 async function main() {
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-  const appDir = path.resolve(scriptDir, "..");
-  const devVars = loadLocalEnvFile(path.join(appDir, ".dev.vars"));
-  // process.env wins in general (Doppler-injected secrets), but for CLERK_WEBHOOK_SECRET
-  // wrangler dev reads .dev.vars directly into the Worker's `c.env`, so we must sign
-  // with the same value the API verifies against.
-  const runtimeEnv: Record<string, string | undefined> = { ...devVars, ...process.env };
-  if (devVars.CLERK_WEBHOOK_SECRET) {
-    runtimeEnv.CLERK_WEBHOOK_SECRET = devVars.CLERK_WEBHOOK_SECRET;
-  }
-
   const email = readArg("--email")?.trim();
   const targetUrl = readArg("--url")?.trim() ?? "http://127.0.0.1:8787/webhooks/clerk/link-orgs";
 
@@ -107,8 +75,8 @@ async function main() {
     throw new Error("Missing --email. Example: --email you@example.com");
   }
 
-  const clerkSecret = runtimeEnv.CLERK_SECRET_KEY?.trim();
-  const webhookSecret = runtimeEnv.CLERK_WEBHOOK_SECRET?.trim();
+  const clerkSecret = process.env.CLERK_SECRET_KEY?.trim();
+  const webhookSecret = process.env.CLERK_WEBHOOK_SECRET?.trim();
   if (!clerkSecret) {
     throw new Error("CLERK_SECRET_KEY is required (run under Doppler).");
   }

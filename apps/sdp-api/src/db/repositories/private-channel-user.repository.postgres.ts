@@ -35,7 +35,7 @@ function mapUserWithIdentityRow(row: Record<string, unknown>): PrivateChannelUse
     user_email: row.user_email as string,
     user_name: (row.user_name ?? null) as string | null,
     verified_wallet_count: Number(row.verified_wallet_count ?? 0),
-    project_role: (row.project_role ?? null) as string | null,
+    project_role: row.project_role as string,
   };
 }
 
@@ -69,12 +69,10 @@ const USER_SELECT = `
   ) AS verified_wallet_count
 `;
 
-// project_members carries the per-project role; LEFT JOIN so PC users who
-// haven't been added to the project's members table still show up (they inherit
-// their org-level permissions but have no explicit project role).
+// Invites require project membership, so INNER JOIN is safe.
 const USER_JOINS = `
   INNER JOIN users u ON u.id = pcu.user_id
-  LEFT  JOIN project_members pm ON pm.project_id = pcu.project_id AND pm.user_id = pcu.user_id
+  INNER JOIN project_members pm ON pm.project_id = pcu.project_id AND pm.user_id = pcu.user_id
 `;
 
 export function createPostgresPrivateChannelUserRepository(

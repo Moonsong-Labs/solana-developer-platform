@@ -86,7 +86,6 @@ describe("PrivateChannelDepositRepository (postgres)", () => {
     expect(row?.amount).toBe("1.5");
     // Context is opaque JSONB round-tripped as-is; the oracle never reads it.
     expect(row?.context).toMatchObject({
-      spcInstanceId: TEST_INSTANCE_ID,
       gatewayUrl: "https://gw.example",
       chainRpcUrl: "https://devnet.example",
       escrowProgramId: "EscrowProg1111111111111111111111111111111",

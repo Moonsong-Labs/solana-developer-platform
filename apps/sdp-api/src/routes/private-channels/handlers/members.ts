@@ -11,6 +11,7 @@ import { getAuth, requireProjectId } from "@/lib/auth";
 import { AppError, badRequest, notFound } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { sendInviteEmail } from "@/lib/spc-invite-email";
+import { getLogger } from "@/runtime/logger";
 import { inviteMember, mapPrivateChannelError } from "@/services/private-channels";
 import type { AppContext } from "../context";
 import {
@@ -187,11 +188,14 @@ export const deletePrivateChannelUser = async (c: AppContext) => {
 
   // SPC has no delete-user endpoint; the SPC credential is intentionally
   // orphaned. Log so operators can spot excess accumulation if needed.
-  console.info("[members] deleted private_channel_users row; SPC credential remains orphaned", {
-    id,
-    organizationId: auth.organizationId,
-    projectId,
-  });
+  getLogger().info(
+    {
+      id,
+      organizationId: auth.organizationId,
+      projectId,
+    },
+    "[members] deleted private_channel_users row; SPC credential remains orphaned"
+  );
 
   return success(c, { deleted: true });
 };

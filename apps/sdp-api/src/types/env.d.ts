@@ -17,9 +17,10 @@ export interface Env {
   // Environment variables
   ENVIRONMENT: "development" | "production";
   API_VERSION: string;
-  // Injected automatically by Cloud Run services. Local processes and jobs omit them.
+  // Injected automatically by Cloud Run services and jobs.
   K_SERVICE?: string;
   K_REVISION?: string;
+  CLOUD_RUN_JOB?: string;
 
   // Public-facing origin of this API (e.g. "https://api.example.com"). When set,
   // it overrides the request-derived origin used to build the SDP-hosted token
@@ -55,6 +56,10 @@ export interface Env {
   CUSTODY_KMS_METADATA_TOKEN_URL?: string;
   SPC_CREDENTIAL_ENCRYPTION_KEY?: string; // For encrypting invited SPC user passwords
   SPC_CREDENTIAL_KMS_KEY_NAME?: string; // Optional Cloud KMS key for SPC credential envelopes
+  COUNTERPARTY_PII_KMS_KEY_NAME?: string;
+  COUNTERPARTY_PII_KMS_API_BASE_URL?: string;
+  COUNTERPARTY_PII_KMS_METADATA_TOKEN_URL?: string;
+  COUNTERPARTY_PII_ENCRYPTION_KEY?: string;
   SENTRY_DSN?: string;
   SENTRY_TRACES_SAMPLE_RATE?: string;
 
@@ -82,6 +87,9 @@ export interface Env {
   SOLANA_RPC_TRITON_API_KEY?: string;
   SOLANA_RPC_HELIUS_URL?: string;
   SOLANA_RPC_HELIUS_API_KEY?: string;
+  /** Defaults to Jupiter's rate-limited lite endpoint; set both to use the keyed tier. */
+  JUPITER_PRICE_API_URL?: string;
+  JUPITER_PRICE_API_KEY?: string;
   SOLANA_RPC_ALCHEMY_URL?: string;
   SOLANA_RPC_ALCHEMY_API_KEY?: string;
   SOLANA_RPC_QUICKNODE_URL?: string;
@@ -197,7 +205,7 @@ export interface Env {
   PAYMENTS_RECURRING_COLLECTION_RETRY_AFTER_MINUTES?: string;
 
   // Self-hosted Asset Profiles production opt-in; managed rollout uses Vercel.
-  ASSET_PROFILES_ENABLED?: string;
+  SDP_FLAG_ASSET_PROFILES?: string;
 
   // Private Channels (SPC) feature gate — API routes + deposit/withdrawal cron.
   PRIVATE_CHANNELS_ENABLED?: string;
