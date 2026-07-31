@@ -83,6 +83,7 @@
       "columnEmail": "Email",
       "columnName": "Name",
       "columnRole": "Role",
+      "roleRevokedTooltip": "Project membership revoked — remove this member",
       "columnVerifiedWallets": "Verified wallets",
       "columnChannels": "Channels",
       "columnActions": "Actions",

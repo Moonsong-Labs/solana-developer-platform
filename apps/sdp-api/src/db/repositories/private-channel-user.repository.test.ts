@@ -155,9 +155,9 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
     expect(listed.verified_wallet_count).toBe(0);
   });
 
-  // project_role sources from project_members via INNER JOIN, so a PCU without
-  // a matching project row is intentionally invisible — the invite path
-  // requires project membership.
+  // project_role sources from project_members via LEFT JOIN so orphaned PCU
+  // rows (user removed from project) stay visible for cleanup; invite-time
+  // enforcement lives in the invite handler.
   it("surfaces the caller's project_members role", async () => {
     const db = getDb(env);
     await db
@@ -171,13 +171,13 @@ describe("PrivateChannelUserRepository (postgres) — verified_wallet_count", ()
     expect(fetched?.project_role).toBe("admin");
   });
 
-  it("hides a PCU without a matching project_members row", async () => {
+  it("keeps the PCU visible with null role when project_members is removed", async () => {
     const db = getDb(env);
     await db.prepare("DELETE FROM project_members WHERE id = ?").bind(PROJECT_MEMBER_ID).run();
 
-    const listed = await repo.listByProject(scope);
-    expect(listed).toHaveLength(0);
+    const [listed] = await repo.listByProject(scope);
+    expect(listed.project_role).toBeNull();
     const fetched = await repo.getByProjectAndUser(scope, TEST_USER.id);
-    expect(fetched).toBeNull();
+    expect(fetched?.project_role).toBeNull();
   });
 });
