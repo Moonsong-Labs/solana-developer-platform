@@ -103,3 +103,16 @@ export const assetProfiles = flag<boolean, DashboardFlagEntities>({
     { value: true, label: "Asset Profiles" },
   ],
 });
+
+export const privateChannels = flag<boolean, DashboardFlagEntities>({
+  key: "private-channels",
+  adapter: vercelAdapter(),
+  identify: identifyDashboardEntities,
+  defaultValue: flagDefault("PRIVATE_CHANNELS_ENABLED", false),
+  description:
+    "Show the Private Channels payments workspace (instance, channels, members, deposits, transfers, withdrawals).",
+  options: [
+    { value: false, label: "Hidden" },
+    { value: true, label: "Enabled" },
+  ],
+});

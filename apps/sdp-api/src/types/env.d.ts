@@ -54,6 +54,8 @@ export interface Env {
   CUSTODY_KMS_KEY_NAME?: string;
   CUSTODY_KMS_API_BASE_URL?: string;
   CUSTODY_KMS_METADATA_TOKEN_URL?: string;
+  SPC_CREDENTIAL_ENCRYPTION_KEY?: string; // For encrypting invited SPC user passwords
+  SPC_CREDENTIAL_KMS_KEY_NAME?: string; // Optional Cloud KMS key for SPC credential envelopes
   COUNTERPARTY_PII_KMS_KEY_NAME?: string;
   COUNTERPARTY_PII_KMS_API_BASE_URL?: string;
   COUNTERPARTY_PII_KMS_METADATA_TOKEN_URL?: string;
@@ -204,6 +206,9 @@ export interface Env {
 
   // Self-hosted Asset Profiles production opt-in; managed rollout uses Vercel.
   SDP_FLAG_ASSET_PROFILES?: string;
+
+  // Private Channels (SPC) feature gate — API routes + deposit/withdrawal cron.
+  PRIVATE_CHANNELS_ENABLED?: string;
 
   // Compliance providers
   RANGE_API_KEY?: string;

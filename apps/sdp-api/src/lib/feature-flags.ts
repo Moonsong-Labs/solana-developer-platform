@@ -26,6 +26,10 @@ export function isAssetProfilesEnabled(
   return env.ENVIRONMENT === "development" || isTruthyFlag(env.SDP_FLAG_ASSET_PROFILES);
 }
 
+export function isPrivateChannelsEnabled(env: Pick<Env, "PRIVATE_CHANNELS_ENABLED">): boolean {
+  return isTruthyFlag(env.PRIVATE_CHANNELS_ENABLED);
+}
+
 export function isPrivyByokProvisioningEnabled(
   env: Pick<Env, "PRIVY_BYOK_PROVISIONING_ENABLED">
 ): boolean {
