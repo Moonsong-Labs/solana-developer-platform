@@ -411,7 +411,7 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
     expect(await repo.listTransfersByProject({ ...SCOPE, limit: 2 })).toHaveLength(2);
   });
 
-  it("groups eligible verified wallets by other channel member", async () => {
+  it("lists every verified wallet on the channel, one per wallet and the caller's own first", async () => {
     const recipients = await repo.listEligibleRecipients({
       ...SCOPE,
       instanceId: TEST_INSTANCE_ID,
@@ -421,19 +421,46 @@ describe("PrivateChannelTransferRepository (postgres)", () => {
 
     expect(recipients).toEqual([
       {
+        id: "pcvw_pct_sender",
+        pubkey: SENDER,
+        privateChannelUserId: SENDER_PC_USER_ID,
+        userId: TEST_USER.id,
+        email: TEST_USER.email,
+        name: "Sender User",
+        isSelf: true,
+      },
+      {
+        id: RECIPIENT_WALLET_A_ID,
+        pubkey: RECIPIENT,
         privateChannelUserId: RECIPIENT_PC_USER_ID,
         userId: RECIPIENT_USER_ID,
         email: "recipient@example.com",
         name: "Recipient User",
-        wallets: [
-          { id: RECIPIENT_WALLET_A_ID, pubkey: RECIPIENT },
-          {
-            id: RECIPIENT_WALLET_B_ID,
-            pubkey: "RecipientTwo11111111111111111111111111111111",
-          },
-        ],
+        isSelf: false,
+      },
+      {
+        id: RECIPIENT_WALLET_B_ID,
+        pubkey: "RecipientTwo11111111111111111111111111111111",
+        privateChannelUserId: RECIPIENT_PC_USER_ID,
+        userId: RECIPIENT_USER_ID,
+        email: "recipient@example.com",
+        name: "Recipient User",
+        isSelf: false,
       },
     ]);
+  });
+
+  it("excludes verified wallets of members who are not in the channel", async () => {
+    const recipients = await repo.listEligibleRecipients({
+      ...SCOPE,
+      instanceId: TEST_INSTANCE_ID,
+      channelId: CHANNEL_A_ID,
+      initiatingPrivateChannelUserId: SENDER_PC_USER_ID,
+    });
+
+    expect(
+      recipients.some((recipient) => recipient.privateChannelUserId === NON_MEMBER_PC_USER_ID)
+    ).toBe(false);
   });
 
   it("returns no recipients outside an active channel and active instance", async () => {

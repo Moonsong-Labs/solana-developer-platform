@@ -39,11 +39,13 @@ const transfer: PrivateChannelTransfer = {
 
 const recipients: PrivateChannelTransferRecipientDto[] = [
   {
+    id: "pcvw_recipient",
+    pubkey: transfer.recipient,
     privateChannelUserId: "pcu_recipient",
     userId: "user_recipient",
     email: "recipient@example.com",
     name: "Recipient",
-    wallets: [{ id: "pcvw_recipient", pubkey: transfer.recipient }],
+    isSelf: false,
   },
 ];
 

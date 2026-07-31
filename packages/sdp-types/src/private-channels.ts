@@ -248,19 +248,22 @@ export interface PrivateChannelTransfer {
   updatedAt: string;
 }
 
-/** Opaque verified-wallet option shown beneath one eligible recipient member. */
-export interface PrivateChannelTransferRecipientWalletDto {
+/**
+ * One verified wallet a member may send to on a channel. Transfers move value
+ * between wallets rather than between people, so this is a flat per-wallet list:
+ * it includes the requesting member's own other wallets, and the same person
+ * appears once per verified wallet they hold.
+ */
+export interface PrivateChannelTransferRecipientDto {
+  /** Verified wallet id; submitted back as `recipientVerifiedWalletId`. */
   id: string;
   pubkey: string;
-}
-
-/** Eligible transfer recipient with all verified wallets for the active instance. */
-export interface PrivateChannelTransferRecipientDto {
   privateChannelUserId: string;
   userId: string;
   email: string;
   name: string | null;
-  wallets: PrivateChannelTransferRecipientWalletDto[];
+  /** True when the wallet belongs to the requesting member. */
+  isSelf: boolean;
 }
 
 /**

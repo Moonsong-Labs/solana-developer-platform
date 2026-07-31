@@ -413,18 +413,22 @@ export const privateChannelTransferListSchema = z.object({
   transfers: z.array(privateChannelTransferSchema),
 });
 
-const privateChannelTransferRecipientWalletSchema = z.object({
-  id: z.string().openapi({ description: "Opaque verified-wallet id." }),
-  pubkey: solanaAddressSchema,
-});
-
-const privateChannelTransferRecipientSchema = z.object({
-  privateChannelUserId: z.string(),
-  userId: z.string(),
-  email: z.string(),
-  name: z.string().nullable(),
-  wallets: z.array(privateChannelTransferRecipientWalletSchema),
-});
+const privateChannelTransferRecipientSchema = z
+  .object({
+    id: z.string().openapi({ description: "Opaque verified-wallet id." }),
+    pubkey: solanaAddressSchema,
+    privateChannelUserId: z.string(),
+    userId: z.string(),
+    email: z.string(),
+    name: z.string().nullable(),
+    isSelf: z.boolean().openapi({
+      description: "True when the wallet belongs to the requesting member.",
+    }),
+  })
+  .openapi({
+    description:
+      "One verified wallet that may receive a transfer. A member holding several verified wallets appears once per wallet.",
+  });
 
 export const privateChannelTransferRecipientListSchema = z.object({
   recipients: z.array(privateChannelTransferRecipientSchema),

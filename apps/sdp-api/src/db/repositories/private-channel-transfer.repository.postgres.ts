@@ -42,6 +42,7 @@ interface EligibleRecipientRow {
   name: string | null;
   verified_wallet_id: string;
   pubkey: string;
+  is_self: boolean;
 }
 
 export function createPostgresPrivateChannelTransferRepository(
@@ -144,7 +145,8 @@ export function createPostgresPrivateChannelTransferRepository(
                u.email,
                u.name,
                vw.id AS verified_wallet_id,
-               vw.pubkey
+               vw.pubkey,
+               (pcu.id = ?) AS is_self
              FROM private_channel_memberships m
              INNER JOIN private_channels c
                      ON c.id = m.channel_id
@@ -170,10 +172,10 @@ export function createPostgresPrivateChannelTransferRepository(
               AND i.is_active = TRUE
               AND pcu.organization_id = ?
               AND pcu.project_id = ?
-              AND pcu.id <> ?
-            ORDER BY LOWER(u.email) ASC, pcu.id ASC, vw.pubkey ASC, vw.id ASC`
+            ORDER BY (pcu.id = ?) DESC, LOWER(u.email) ASC, pcu.id ASC, vw.pubkey ASC, vw.id ASC`
         )
         .bind(
+          input.initiatingPrivateChannelUserId,
           input.organizationId,
           input.projectId,
           input.instanceId,
@@ -187,22 +189,17 @@ export function createPostgresPrivateChannelTransferRepository(
         )
         .all<EligibleRecipientRow>();
 
-      const recipients = new Map<string, PrivateChannelTransferRecipientDto>();
-      for (const row of result.results) {
-        const recipient = recipients.get(row.private_channel_user_id);
-        if (recipient) {
-          recipient.wallets.push({ id: row.verified_wallet_id, pubkey: row.pubkey });
-          continue;
-        }
-        recipients.set(row.private_channel_user_id, {
+      return result.results.map(
+        (row): PrivateChannelTransferRecipientDto => ({
+          id: row.verified_wallet_id,
+          pubkey: row.pubkey,
           privateChannelUserId: row.private_channel_user_id,
           userId: row.user_id,
           email: row.email,
           name: row.name,
-          wallets: [{ id: row.verified_wallet_id, pubkey: row.pubkey }],
-        });
-      }
-      return [...recipients.values()];
+          isSelf: row.is_self === true,
+        })
+      );
     },
   };
 }

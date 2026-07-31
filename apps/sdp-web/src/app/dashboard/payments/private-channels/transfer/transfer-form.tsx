@@ -51,18 +51,26 @@ function walletLabel(wallet: CustodyWalletSummary): string {
   return wallet.label ? `${wallet.label} (${short})` : short;
 }
 
-function flattenRecipientOptions(
-  recipients: PrivateChannelTransferRecipientDto[]
+/**
+ * Recipients are wallets, not people, so a member holding several verified
+ * wallets yields several options. The source wallet is dropped because a
+ * transfer to itself is rejected by the API.
+ */
+function toRecipientOptions(
+  recipients: PrivateChannelTransferRecipientDto[],
+  sourcePubkey: string | undefined,
+  selfLabel: string
 ): RecipientOption[] {
-  return recipients.flatMap((recipient) => {
-    const member = recipient.name?.trim()
-      ? `${recipient.name.trim()} (${recipient.email})`
-      : recipient.email;
-    return recipient.wallets.map((wallet) => ({
-      id: wallet.id,
-      label: `${member} · ${shortenPubkey(wallet.pubkey)}`,
-    }));
-  });
+  return recipients
+    .filter((recipient) => recipient.pubkey !== sourcePubkey)
+    .map((recipient) => {
+      const owner = recipient.isSelf
+        ? selfLabel
+        : recipient.name?.trim()
+          ? `${recipient.name.trim()} (${recipient.email})`
+          : recipient.email;
+      return { id: recipient.id, label: `${owner} · ${shortenPubkey(recipient.pubkey)}` };
+    });
 }
 
 export function TransferForm({ scopeKey, ...props }: TransferFormProps) {
@@ -92,10 +100,18 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
    */
   const submitting = useRef(false);
 
+  const selectedSource = sourceWallets.find((wallet) => wallet.walletId === walletId);
+  const sourcePubkey = selectedSource?.publicKey;
   const recipientOptions = useMemo(
     () =>
-      recipientLoad.status === "ready" ? flattenRecipientOptions(recipientLoad.recipients) : [],
-    [recipientLoad]
+      recipientLoad.status === "ready"
+        ? toRecipientOptions(
+            recipientLoad.recipients,
+            sourcePubkey,
+            t("DashboardPrivateChannels.transfer.recipientSelf")
+          )
+        : [],
+    [recipientLoad, sourcePubkey, t]
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recipientReload intentionally triggers a fresh server-action request.
@@ -142,6 +158,19 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     };
   }, [channelId, channels.length, recipientReload, sourceWallets.length, t]);
 
+  /**
+   * Switching the source wallet to the one already chosen as recipient drops that
+   * option, so a selection that is no longer offered must not survive as state.
+   */
+  useEffect(() => {
+    if (
+      recipientVerifiedWalletId &&
+      !recipientOptions.some((option) => option.id === recipientVerifiedWalletId)
+    ) {
+      setRecipientVerifiedWalletId("");
+    }
+  }, [recipientOptions, recipientVerifiedWalletId]);
+
   useEffect(() => {
     if (!walletId) {
       setBalances({ channel: null, onChain: null });
@@ -171,7 +200,6 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     );
   }
 
-  const selectedSource = sourceWallets.find((wallet) => wallet.walletId === walletId);
   const selectedRecipient = recipientOptions.find(
     (recipient) => recipient.id === recipientVerifiedWalletId
   );
@@ -327,6 +355,23 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
         </p>
       </div>
 
+      <AmountField
+        balances={balances}
+        disabled={isSubmitting}
+        error={amountError}
+        id="transfer-amount"
+        spends="channel"
+        onBlur={() => {
+          if (!submitting.current) setShowAmountError(true);
+        }}
+        onChange={(next) => {
+          if (submitting.current || next === amount) return;
+          setError(null);
+          setAmount(next);
+        }}
+        value={amount}
+      />
+
       <div className="space-y-1.5">
         <Label>{t("DashboardPrivateChannels.transfer.recipientWallet")}</Label>
         {recipientLoad.status === "loading" && (
@@ -376,23 +421,6 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
           </Select>
         )}
       </div>
-
-      <AmountField
-        balances={balances}
-        disabled={isSubmitting}
-        error={amountError}
-        id="transfer-amount"
-        spends="channel"
-        onBlur={() => {
-          if (!submitting.current) setShowAmountError(true);
-        }}
-        onChange={(next) => {
-          if (submitting.current || next === amount) return;
-          setError(null);
-          setAmount(next);
-        }}
-        value={amount}
-      />
 
       {error && (
         <p className="text-destructive text-sm" role="alert">

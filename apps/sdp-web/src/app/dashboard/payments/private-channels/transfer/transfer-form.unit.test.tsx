@@ -138,24 +138,34 @@ const sourceWallets: CustodyWalletSummary[] = [
 
 const alphaRecipients: PrivateChannelTransferRecipientDto[] = [
   {
+    id: "pcvw_alice",
+    pubkey: "Alice11111111111111111111111111111111111",
     privateChannelUserId: "pcu_alice",
     userId: "user_alice",
     email: "alice@example.com",
     name: "Alice",
-    wallets: [
-      { id: "pcvw_alice", pubkey: "Alice11111111111111111111111111111111111" },
-      { id: "pcvw_alice_savings", pubkey: "Alice22222222222222222222222222222222222" },
-    ],
+    isSelf: false,
+  },
+  {
+    id: "pcvw_alice_savings",
+    pubkey: "Alice22222222222222222222222222222222222",
+    privateChannelUserId: "pcu_alice",
+    userId: "user_alice",
+    email: "alice@example.com",
+    name: "Alice",
+    isSelf: false,
   },
 ];
 
 const betaRecipients: PrivateChannelTransferRecipientDto[] = [
   {
+    id: "pcvw_bob",
+    pubkey: "Bob111111111111111111111111111111111111",
     privateChannelUserId: "pcu_bob",
     userId: "user_bob",
     email: "bob@example.com",
     name: null,
-    wallets: [{ id: "pcvw_bob", pubkey: "Bob111111111111111111111111111111111111" }],
+    isSelf: false,
   },
 ];
 
@@ -168,7 +178,7 @@ function makeTransfer(overrides: Partial<PrivateChannelTransfer> = {}): PrivateC
     channelId: "channel_alpha",
     walletId: "wallet_sender",
     sender: sourceWallets[0]?.publicKey ?? "",
-    recipient: alphaRecipients[0]?.wallets[0]?.pubkey ?? "",
+    recipient: alphaRecipients[0]?.pubkey ?? "",
     mint: "Usdc111111111111111111111111111111111111",
     amount: "1.25",
     status: "submitted",
@@ -248,8 +258,67 @@ describe("TransferForm", () => {
     });
 
     expect(
-      await screen.findByText(/no other channel member has a verified wallet eligible to receive/i)
+      await screen.findByText(/no verified wallet on this channel can receive this transfer/i)
     ).toBeTruthy();
+  });
+
+  it("offers the member's own other verified wallets, labelled as their own", async () => {
+    mocks.fetchTransferRecipientsAction.mockResolvedValue({
+      ok: true,
+      recipients: [
+        {
+          id: "pcvw_self_operations",
+          pubkey: sourceWallets[1]?.publicKey ?? "",
+          privateChannelUserId: "pcu_self",
+          userId: "user_self",
+          email: "self@example.com",
+          name: "Self",
+          isSelf: true,
+        },
+        ...alphaRecipients,
+      ] satisfies PrivateChannelTransferRecipientDto[],
+    });
+
+    renderForm({
+      channels,
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets,
+    });
+
+    expect(await screen.findByRole("option", { name: /^You · Oper…2222$/ })).toBeTruthy();
+  });
+
+  it("drops the selected source wallet from the recipient list and clears a stale selection", async () => {
+    const ownOperationsWallet: PrivateChannelTransferRecipientDto = {
+      id: "pcvw_self_operations",
+      pubkey: sourceWallets[1]?.publicKey ?? "",
+      privateChannelUserId: "pcu_self",
+      userId: "user_self",
+      email: "self@example.com",
+      name: "Self",
+      isSelf: true,
+    };
+    mocks.fetchTransferRecipientsAction.mockResolvedValue({
+      ok: true,
+      recipients: [ownOperationsWallet, ...alphaRecipients],
+    });
+    const user = userEvent.setup();
+    renderForm({
+      channels,
+      scopeKey: "org_test:project_test:pci_test",
+      sourceWallets,
+    });
+
+    const recipientSelect = (await screen.findByLabelText("Recipient wallet")) as HTMLSelectElement;
+    await user.selectOptions(recipientSelect, "pcvw_self_operations");
+    expect(recipientSelect.value).toBe("pcvw_self_operations");
+
+    await user.selectOptions(screen.getByLabelText("From verified wallet"), "wallet_operations");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("option", { name: /^You · Oper…2222$/ })).toBeNull();
+    });
+    expect((screen.getByLabelText("Recipient wallet") as HTMLSelectElement).value).toBe("");
   });
 
   it("resets the old recipient while loading a newly selected channel", async () => {
@@ -406,11 +475,13 @@ describe("TransferForm", () => {
     ];
     const gammaRecipients: PrivateChannelTransferRecipientDto[] = [
       {
+        id: "pcvw_carol",
+        pubkey: "Carol33333333333333333333333333333333333",
         privateChannelUserId: "pcu_carol",
         userId: "user_carol",
         email: "carol@example.com",
         name: "Carol",
-        wallets: [{ id: "pcvw_carol", pubkey: "Carol33333333333333333333333333333333333" }],
+        isSelf: false,
       },
     ];
     mocks.fetchTransferRecipientsAction.mockImplementation(async (channelId: string) => ({
@@ -426,7 +497,7 @@ describe("TransferForm", () => {
           channelId: "channel_gamma",
           walletId: "wallet_gamma",
           sender: nextSourceWallets[0]?.publicKey ?? "",
-          recipient: gammaRecipients[0]?.wallets[0]?.pubkey ?? "",
+          recipient: gammaRecipients[0]?.pubkey ?? "",
           amount: "2",
         }),
       });
