@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { getPrivateChannelsDefault } from "@/lib/feature-flag-defaults";
 import { getPlaywrightAdminSession } from "../support/auth-session";
 import {
   ensureLinkedOrg,
@@ -8,15 +7,13 @@ import {
 } from "../support/local-dashboard-bootstrap";
 import { getBootstrapApiBaseUrl } from "../support/local-issuance-bootstrap";
 
-// The dashboard gates on the `private-channels` Vercel flag, whose default is
-// derived from this server-side env var (see src/lib/feature-flag-defaults.ts).
-// Local Playwright runs have no Vercel flag provider, so the default decides.
-// Call the real resolver rather than re-implementing it: it accepts 1/true/yes/on,
-// so a hand-rolled `=== "true"` would skip the wrong branch for e.g. "1" and assert
-// the nav link is absent against a dashboard that renders it.
-const privateChannelsEnabled = getPrivateChannelsDefault({
-  privateChannelsEnabled: process.env.PRIVATE_CHANNELS_ENABLED,
-});
+// The dashboard gates on the `private-channels` Vercel flag, whose default falls
+// back to PRIVATE_CHANNELS_ENABLED. Local Playwright runs have no Vercel provider,
+// so the env var alone decides. Mirror the flagDefault() truthiness vocabulary
+// from src/flags.ts so "1"/"yes"/"on" behave the same as "true".
+const privateChannelsEnabled = ["1", "true", "yes", "on"].includes(
+  process.env.PRIVATE_CHANNELS_ENABLED?.trim().toLowerCase() ?? ""
+);
 
 test.describe
   .serial("dashboard private channels feature flag", () => {

@@ -12,7 +12,6 @@ import frDashboardCustody from "../../messages/fr/dashboard-custody.json";
 import frDashboardIssuance from "../../messages/fr/dashboard-issuance.json";
 import frDashboardPayments from "../../messages/fr/dashboard-payments.json";
 import frDashboardPolicies from "../../messages/fr/dashboard-policies.json";
-import frDashboardPrivateChannels from "../../messages/fr/dashboard-private-channels.json";
 import frShared from "../../messages/fr/shared.json";
 import fr from "../../messages/fr.json";
 
@@ -67,7 +66,6 @@ const frCatalog = {
   ...frDashboardIssuance,
   ...frDashboardPayments,
   ...frDashboardPolicies,
-  ...frDashboardPrivateChannels,
   Shared: frShared,
 } satisfies LocalizedMessages<Messages>;
 
