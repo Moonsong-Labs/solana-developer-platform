@@ -16,6 +16,7 @@ import {
 } from "@/db/repositories";
 import type { ApiKeyContext } from "@/lib/auth";
 import { AppError, conflict, internalError } from "@/lib/errors";
+import { assertTenantClaim, createTenantScope, type TenantScope } from "@/lib/tenant-scope";
 import { getLogger } from "@/runtime/logger";
 import {
   CustodyConfigStore,
@@ -90,6 +91,7 @@ export class WalletPolicyEnforcementService {
             await markApprovalRequestAndWalletOperationFailed(
               this.repository,
               operation.organizationId,
+              operation.projectId,
               approvalRequestId
             );
           } catch (cleanupError) {
@@ -120,7 +122,7 @@ export class WalletPolicyEnforcementService {
   ) {
     const approvalRequest = await this.repository.updateApprovalRequestStatus({
       organizationId,
-      projectId,
+      projectId: projectId ?? null,
       approvalRequestId,
       status: "approved",
       operationStatus: "executing",
@@ -138,7 +140,7 @@ export class WalletPolicyEnforcementService {
   ) {
     const approvalRequest = await this.repository.updateApprovalRequestStatus({
       organizationId,
-      projectId,
+      projectId: projectId ?? null,
       approvalRequestId,
       status: "canceled",
       operationStatus: "canceled",
@@ -156,7 +158,7 @@ export class WalletPolicyEnforcementService {
   ) {
     const approvalRequest = await this.repository.updateApprovalRequestStatus({
       organizationId,
-      projectId,
+      projectId: projectId ?? null,
       approvalRequestId,
       status: "rejected",
       operationStatus: "canceled",
@@ -172,7 +174,13 @@ export async function recordLegacyWalletPolicyDenial(
   enforcement: WalletOperationPolicyEnforcement,
   error: unknown
 ): Promise<void> {
-  const repository = createPolicyRepository(env);
+  const repository = createPolicyRepository(
+    env,
+    createTenantScope({
+      organizationId: enforcement.operation.organizationId,
+      projectId: enforcement.operation.projectId,
+    })
+  );
   const reason =
     error instanceof Error && error.message
       ? error.message
@@ -225,10 +233,12 @@ async function markWalletOperationFailed(
 async function markApprovalRequestAndWalletOperationFailed(
   repository: PolicyRepository,
   organizationId: string,
+  projectId: string | null,
   approvalRequestId: string
 ): Promise<void> {
   await repository.updateApprovalRequestStatus({
     organizationId,
+    projectId,
     approvalRequestId,
     status: "failed",
     operationStatus: "failed",
@@ -259,9 +269,11 @@ function errorMessage(error: unknown): string {
 
 export async function enforceWalletOperationPolicy(
   env: Env,
+  scope: TenantScope,
   input: CreateWalletOperationInput
 ): Promise<WalletOperationPolicyEnforcement> {
-  const service = new WalletPolicyEnforcementService(createPolicyRepository(env));
+  assertTenantClaim(scope, input, "enforceWalletOperationPolicy");
+  const service = new WalletPolicyEnforcementService(createPolicyRepository(env, scope));
   return service.enforce(input);
 }
 
