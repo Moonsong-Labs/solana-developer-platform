@@ -402,6 +402,27 @@ describe("TransferForm", () => {
     expect(mocks.toastError).toHaveBeenCalledWith("Insufficient shared wallet balance.");
   });
 
+  it("refreshes the sender balance when starting a new transfer after confirmation", async () => {
+    mocks.fetchWalletBalancesAction
+      .mockResolvedValueOnce({ channel: "10", onChain: "5" })
+      .mockResolvedValueOnce({ channel: "8.75", onChain: "5" });
+    mocks.createTransferAction.mockResolvedValue({
+      ok: true,
+      transfer: makeTransfer({ status: "confirmed" }),
+    });
+    const user = await renderReadyForm();
+    await waitFor(() =>
+      expect(mocks.fetchWalletBalancesAction).toHaveBeenCalledWith("wallet_sender")
+    );
+
+    await user.click(screen.getByRole("button", { name: "Transfer USDC" }));
+    await screen.findByText("Progress: confirmed");
+    await user.click(screen.getByRole("button", { name: "New transfer" }));
+
+    await waitFor(() => expect(mocks.fetchWalletBalancesAction).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("8.75 USDC")).toBeTruthy();
+  });
+
   it("prevents duplicate submissions while the first request is pending", async () => {
     const response = deferred<{ ok: true; transfer: PrivateChannelTransfer }>();
     mocks.createTransferAction.mockReturnValue(response.promise);

@@ -96,6 +96,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
   const [recipientLoad, setRecipientLoad] = useState<RecipientLoadState>({ status: "idle" });
   const [recipientReload, setRecipientReload] = useState(0);
   const [balances, setBalances] = useState<WalletBalanceView>({ channel: null, onChain: null });
+  const [balanceRefetchKey, setBalanceRefetchKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submittedTransfer, setSubmittedTransfer] = useState<SubmittedTransfer | null>(null);
   const [isSubmitting, startTransition] = useTransition();
@@ -181,6 +182,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     }
   }, [recipientOptions, recipientVerifiedWalletId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: balanceRefetchKey intentionally triggers a fresh balance read.
   useEffect(() => {
     if (!walletId) {
       setBalances({ channel: null, onChain: null });
@@ -194,7 +196,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     return () => {
       active = false;
     };
-  }, [walletId]);
+  }, [walletId, balanceRefetchKey]);
 
   if (channels.length === 0) {
     return (
@@ -223,6 +225,7 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
     setAmount("");
     setShowAmountError(false);
     setError(null);
+    setBalanceRefetchKey((value) => value + 1);
     setRecipientReload((value) => value + 1);
   };
 
