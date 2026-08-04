@@ -6,7 +6,7 @@ import type {
   PrivateChannelTransfer,
   PrivateChannelTransferRecipientDto,
 } from "@sdp/types";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -262,7 +262,7 @@ describe("TransferForm", () => {
     ).toBeTruthy();
   });
 
-  it("offers the member's own other verified wallets, labelled as their own", async () => {
+  it("uses the custody wallet name for the member's own recipient wallets", async () => {
     mocks.fetchTransferRecipientsAction.mockResolvedValue({
       ok: true,
       recipients: [
@@ -285,7 +285,10 @@ describe("TransferForm", () => {
       sourceWallets,
     });
 
-    expect(await screen.findByRole("option", { name: /^You · Oper…2222$/ })).toBeTruthy();
+    const recipientSelect = await screen.findByLabelText("Recipient wallet");
+    expect(
+      within(recipientSelect).getByRole("option", { name: /^Operations \(Oper…2222\)$/ })
+    ).toBeTruthy();
   });
 
   it("drops the selected source wallet from the recipient list and clears a stale selection", async () => {
@@ -310,13 +313,18 @@ describe("TransferForm", () => {
     });
 
     const recipientSelect = (await screen.findByLabelText("Recipient wallet")) as HTMLSelectElement;
+    expect(
+      within(recipientSelect).getByRole("option", { name: /^Operations \(Oper…2222\)$/ })
+    ).toBeTruthy();
     await user.selectOptions(recipientSelect, "pcvw_self_operations");
     expect(recipientSelect.value).toBe("pcvw_self_operations");
 
     await user.selectOptions(screen.getByLabelText("From verified wallet"), "wallet_operations");
 
     await waitFor(() => {
-      expect(screen.queryByRole("option", { name: /^You · Oper…2222$/ })).toBeNull();
+      expect(
+        within(recipientSelect).queryByRole("option", { name: /^Operations \(Oper…2222\)$/ })
+      ).toBeNull();
     });
     expect((screen.getByLabelText("Recipient wallet") as HTMLSelectElement).value).toBe("");
   });

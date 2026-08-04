@@ -58,12 +58,21 @@ function walletLabel(wallet: CustodyWalletSummary): string {
  */
 function toRecipientOptions(
   recipients: PrivateChannelTransferRecipientDto[],
+  sourceWallets: CustodyWalletSummary[],
   sourcePubkey: string | undefined,
   selfLabel: string
 ): RecipientOption[] {
+  const ownWalletLabels = new Map(
+    sourceWallets.map((wallet) => [wallet.publicKey, walletLabel(wallet)])
+  );
+
   return recipients
     .filter((recipient) => recipient.pubkey !== sourcePubkey)
     .map((recipient) => {
+      const ownWalletLabel = recipient.isSelf ? ownWalletLabels.get(recipient.pubkey) : undefined;
+      if (ownWalletLabel) {
+        return { id: recipient.id, label: ownWalletLabel };
+      }
       const owner = recipient.isSelf
         ? selfLabel
         : recipient.name?.trim()
@@ -107,11 +116,12 @@ function TransferFormState({ channels, sourceWallets }: Omit<TransferFormProps, 
       recipientLoad.status === "ready"
         ? toRecipientOptions(
             recipientLoad.recipients,
+            sourceWallets,
             sourcePubkey,
             t("DashboardPrivateChannels.transfer.recipientSelf")
           )
         : [],
-    [recipientLoad, sourcePubkey, t]
+    [recipientLoad, sourcePubkey, sourceWallets, t]
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recipientReload intentionally triggers a fresh server-action request.
