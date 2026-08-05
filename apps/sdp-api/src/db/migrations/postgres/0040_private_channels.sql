@@ -193,7 +193,6 @@ CREATE TABLE IF NOT EXISTS private_channel_events (
     type TEXT NOT NULL,
     status TEXT NOT NULL,
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-    wallets TEXT[] NOT NULL DEFAULT '{}',
     occurred_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT sdp_iso_now()
 );
@@ -211,9 +210,6 @@ CREATE INDEX IF NOT EXISTS idx_private_channel_events_instance_occurred
 -- carries the same trailing id to keep the sort fully index-ordered.
 CREATE INDEX IF NOT EXISTS idx_private_channel_events_project_occurred
     ON private_channel_events (project_id, occurred_at DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS idx_private_channel_events_wallets
-    ON private_channel_events USING GIN (wallets);
 
 
 -- ==========================================================================
