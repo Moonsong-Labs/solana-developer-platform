@@ -12,7 +12,6 @@ import {
   type PrivateChannelEventRepository,
   type PrivateChannelEventWriteInput,
 } from "@/db/repositories";
-import { getLogger } from "@/runtime/logger";
 import type { Env } from "@/types/env";
 import { createDbEventSink } from "./sinks/db-sink";
 import { createLogEventSink } from "./sinks/log-sink";
@@ -27,6 +26,7 @@ export interface PrivateChannelEventInput {
   type: PrivateChannelEventType;
   status: PrivateChannelEventStatus;
   payload?: Record<string, unknown>;
+  wallets?: string[];
   /** Defaults to now. */
   occurredAt?: string;
 }
@@ -56,6 +56,9 @@ function normalizeError(error: unknown): Record<string, unknown> {
 function toRecord(input: PrivateChannelEventInput): PrivateChannelEventRecord {
   const now = isoNow();
   const payload = redactCredentialSecrets(input.payload ?? {}) as Record<string, unknown>;
+  const wallets = [
+    ...new Set((input.wallets ?? []).map((wallet) => wallet.trim()).filter(Boolean)),
+  ];
   return {
     id: generatePrivateChannelEventId(),
     organizationId: input.organizationId,
@@ -67,6 +70,7 @@ function toRecord(input: PrivateChannelEventInput): PrivateChannelEventRecord {
     type: input.type,
     status: input.status,
     payload,
+    wallets,
     occurredAt: input.occurredAt ?? now,
     createdAt: now,
   };
@@ -84,15 +88,12 @@ export class PrivateChannelEventService {
       const result = results[i];
       if (result?.status === "rejected") {
         const sink = this.sinks[i];
-        getLogger().error(
-          {
-            sink: sink?.name ?? `sink[${i}]`,
-            eventId: event.id,
-            type: event.type,
-            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-          },
-          "private-channel-event sink failed"
-        );
+        console.error("private-channel-event sink failed", {
+          sink: sink?.name ?? `sink[${i}]`,
+          eventId: event.id,
+          type: event.type,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        });
       }
     }
   }

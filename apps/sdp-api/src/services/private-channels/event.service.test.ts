@@ -4,7 +4,6 @@ import {
   PRIVATE_CHANNEL_EVENT_TYPES,
 } from "@sdp/types";
 import { describe, expect, it, vi } from "vitest";
-import { rootLogger } from "@/runtime/logger";
 import type { PrivateChannelEventRecord, PrivateChannelEventSink } from "./event.service";
 import { PrivateChannelEventService } from "./event.service";
 
@@ -24,9 +23,11 @@ function baseInput(overrides: Record<string, unknown> = {}) {
 describe("PrivateChannelEventService", () => {
   it("builds a full record and fans out to all sinks", async () => {
     const seen: string[] = [];
+    const captured: { event: PrivateChannelEventRecord | null } = { event: null };
     const sinkA: PrivateChannelEventSink = {
       name: "a",
       handle(event) {
+        captured.event = event;
         seen.push(`a:${event.id}:${event.type}`);
         expect(event.id).toMatch(/^pce_/);
         expect(event.channelId).toBeNull();
@@ -47,6 +48,29 @@ describe("PrivateChannelEventService", () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]?.startsWith("a:pce_")).toBe(true);
     expect(seen[1]?.startsWith("b:pce_")).toBe(true);
+    expect(captured.event?.wallets).toEqual([]);
+  });
+
+  it("normalizes wallet visibility without adding it to the payload", async () => {
+    const captured: { event: PrivateChannelEventRecord | null } = { event: null };
+    const service = new PrivateChannelEventService([
+      {
+        name: "capture",
+        handle(event) {
+          captured.event = event;
+        },
+      },
+    ]);
+
+    await service.emit(
+      baseInput({
+        wallets: [" wallet-a ", "", "wallet-a", "  wallet-b", "wallet-b  ", "   "],
+      })
+    );
+
+    expect(captured.event?.wallets).toEqual(["wallet-a", "wallet-b"]);
+    expect(captured.event?.payload).toEqual({ name: "Treasury" });
+    expect(captured.event?.payload).not.toHaveProperty("wallets");
   });
 
   it("isolates a throwing sink so emit still resolves and peers run", async () => {
@@ -64,7 +88,7 @@ describe("PrivateChannelEventService", () => {
         ran.push("ok");
       },
     };
-    const errorSpy = vi.spyOn(rootLogger, "error").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const service = new PrivateChannelEventService([throwing, ok]);
     await expect(service.emit(baseInput())).resolves.toBeUndefined();

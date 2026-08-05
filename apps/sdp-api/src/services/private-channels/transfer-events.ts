@@ -25,6 +25,7 @@ export async function emitTransferEvent(
       family: PRIVATE_CHANNEL_EVENT_FAMILIES.TRANSFER,
       type,
       status,
+      wallets: [transfer.sender, transfer.recipient],
       payload: {
         transferId: transfer.id,
         sender: transfer.sender,

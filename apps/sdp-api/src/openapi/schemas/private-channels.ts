@@ -514,6 +514,7 @@ export const privateChannelEventSchema = z
     type: privateChannelEventTypeSchema,
     status: privateChannelEventStatusSchema,
     payload: z.record(z.string(), z.unknown()),
+    wallets: z.array(solanaAddressSchema),
     occurredAt: z.string(),
     createdAt: z.string(),
   })
@@ -541,6 +542,10 @@ export const privateChannelEventsQuerySchema = z.object({
       param: { name: "type", in: "query" },
       description: `Exact event type match (e.g. ${PRIVATE_CHANNEL_EVENT_TYPES.LIFECYCLE_CHANNEL_CREATED}).`,
     }),
+  status: privateChannelEventStatusSchema.optional().openapi({
+    param: { name: "status", in: "query" },
+    description: "Filter by exact event status.",
+  }),
   limit: z.coerce
     .number()
     .int()

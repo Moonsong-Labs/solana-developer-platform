@@ -73,7 +73,10 @@ export async function verifyWallet(c: AppContext) {
         instanceId: instance.id,
       },
       PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_WALLET_VERIFIED,
-      { payload: { walletId: row.wallet_id, pubkey: row.pubkey } }
+      {
+        payload: { walletId: row.wallet_id, pubkey: row.pubkey },
+        wallets: [row.pubkey],
+      }
     );
     return success(c, { wallet: toVerifiedWalletDto(row) });
   } catch (error) {
@@ -98,16 +101,18 @@ export async function deleteVerifiedWallet(c: AppContext) {
 
   try {
     const { instance, deleted } = await deletePrivateChannelWallet(c.env, auth, projectId, pubkey);
-    await emitMember(
-      c,
-      {
-        organizationId: instance.organization_id,
-        projectId: instance.project_id,
-        instanceId: instance.id,
-      },
-      PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_WALLET_VERIFICATION_REVOKED,
-      { payload: { pubkey } }
-    );
+    if (deleted) {
+      await emitMember(
+        c,
+        {
+          organizationId: instance.organization_id,
+          projectId: instance.project_id,
+          instanceId: instance.id,
+        },
+        PRIVATE_CHANNEL_EVENT_TYPES.MEMBER_WALLET_VERIFICATION_REVOKED,
+        { payload: { pubkey }, wallets: [pubkey] }
+      );
+    }
     return success(c, { deleted });
   } catch (error) {
     await recordSpcUnreachable(c, error);

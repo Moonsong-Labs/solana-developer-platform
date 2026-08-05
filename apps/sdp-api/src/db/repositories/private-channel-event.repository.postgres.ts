@@ -26,6 +26,7 @@ function mapPrivateChannelEventRow(row: Record<string, unknown>): PrivateChannel
     type: row.type as PrivateChannelEventType,
     status: row.status as PrivateChannelEventStatus,
     payload: asPostgresJsonObject(row.payload),
+    wallets: (row.wallets as string[] | null) ?? [],
     occurred_at: row.occurred_at as string,
     created_at: row.created_at as string,
   };
@@ -43,6 +44,7 @@ function bindWriteArgs(input: PrivateChannelEventWriteInput) {
     input.type,
     input.status,
     JSON.stringify(input.payload),
+    input.wallets,
     input.occurredAt,
     input.createdAt,
   ] as const;
@@ -57,8 +59,8 @@ export function createPostgresPrivateChannelEventRepository(
         .prepare(
           `INSERT INTO private_channel_events (
              id, organization_id, project_id, instance_id, channel_id, sdp_user_id,
-             family, type, status, payload, occurred_at, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
+             family, type, status, payload, wallets, occurred_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::text[], ?, ?)
            RETURNING *`
         )
         .bind(...bindWriteArgs(input))
@@ -74,7 +76,7 @@ export function createPostgresPrivateChannelEventRepository(
       const fetchLimit = limit + 1;
 
       const clauses = ["instance_id = ?", "(channel_id = ? OR channel_id IS NULL)"];
-      const binds: (string | number)[] = [params.instanceId, params.channelId];
+      const binds: (string | number | string[])[] = [params.instanceId, params.channelId];
 
       if (params.family) {
         clauses.push("family = ?");
@@ -83,6 +85,14 @@ export function createPostgresPrivateChannelEventRepository(
       if (params.type) {
         clauses.push("type = ?");
         binds.push(params.type);
+      }
+      if (params.status) {
+        clauses.push("status = ?");
+        binds.push(params.status);
+      }
+      if (params.wallets) {
+        clauses.push("wallets && ?::text[]");
+        binds.push(params.wallets);
       }
       // Composite cursor: (occurred_at, id) is a total order, so ties on
       // occurred_at can't skip or duplicate rows across pages.
@@ -113,7 +123,7 @@ export function createPostgresPrivateChannelEventRepository(
       const fetchLimit = limit + 1;
 
       const clauses = ["organization_id = ?", "project_id = ?"];
-      const binds: (string | number)[] = [params.organizationId, params.projectId];
+      const binds: (string | number | string[])[] = [params.organizationId, params.projectId];
 
       if (params.family) {
         clauses.push("family = ?");
@@ -122,6 +132,14 @@ export function createPostgresPrivateChannelEventRepository(
       if (params.type) {
         clauses.push("type = ?");
         binds.push(params.type);
+      }
+      if (params.status) {
+        clauses.push("status = ?");
+        binds.push(params.status);
+      }
+      if (params.wallets) {
+        clauses.push("wallets && ?::text[]");
+        binds.push(params.wallets);
       }
       if (params.beforeOccurredAt && params.beforeId) {
         clauses.push("(occurred_at < ? OR (occurred_at = ? AND id < ?))");
