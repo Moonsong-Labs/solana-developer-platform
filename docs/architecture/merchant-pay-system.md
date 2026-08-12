@@ -335,8 +335,9 @@ Response:
 Creation rules:
 
 - `walletId` must resolve to an accessible custody wallet in the project.
-- `token` must be SOL or a project/cluster-allowlisted SDP-supported SPL mint.
-  Supported token programs and extensions are validated explicitly.
+- `token` must be SOL or appear in the project's
+  `merchantPayAllowedMints` list for its configured cluster. Supported token
+  programs and extensions are validated explicitly.
 - `amount` must be positive and exactly representable at the token's decimals.
 - `merchantOrderId` is required, bounded, and unique within the project.
 - `metadata` must be a bounded JSON object with limits on encoded bytes, depth,
@@ -344,6 +345,12 @@ Creation rules:
   the public contract forbids secrets or unnecessary personal data.
 - `returnUrl` must be HTTPS and have an exact origin match in the project's
   Merchant Pay return-origin allowlist. Sandbox may explicitly allow localhost.
+- Sponsored fee/rent reservations must fit the project's canonical integer
+  `merchantPayDailySponsorshipLamports` quota before the signer is invoked.
+- New hosted create/prepare requires both the deployment-owned
+  `MERCHANT_PAY_ENABLED` switch and project-admin-owned
+  `merchantPayEnabled` setting. Both default off; disabling either never
+  blocks reads, submission of an already prepared attempt, or reconciliation.
 - `expiresAt` must be in the future and within the configured maximum lifetime.
 - The idempotency fingerprint includes every behavior-affecting request field.
   Reusing a key with a different fingerprint returns `409`.
@@ -439,14 +446,19 @@ Preparation:
 1. Reconcile any already-submitted hosted attempt.
 2. Reject paid, canceled, expired, or currently submitting payments.
 3. Validate the payer address.
-4. Resolve a recent blockhash.
-5. Build the SOL or SPL transfer to the persisted destination and append the
+4. Generate the attempt ID.
+5. Resolve the fee-payer public address through an address-only adapter method
+   that cannot load or construct a signing-capable key.
+6. Resolve a recent blockhash.
+7. Build the SOL or SPL transfer to the persisted destination and append the
    persisted Solana Pay reference account.
-6. Resolve and set the configured sponsored fee-payer address without asking
-   it to sign.
-7. Persist canonical message bytes and hash, unsigned transaction template,
+8. Persist canonical message bytes and hash, unsigned transaction template,
    payer, fee payer, blockhash, last valid block height, and attempt expiry.
-8. Return the transaction to the browser.
+9. Return the transaction to the browser.
+
+Prepare creates no policy operation. Submit creates or replays the policy
+operation using the now-persisted attempt ID as its idempotency key, avoiding
+concurrent candidate-attempt policy races.
 
 If a live attempt already exists for the same payer, prepare replays it. If a
 live attempt belongs to a different payer, prepare returns `409`. A new attempt
@@ -491,8 +503,10 @@ Validation is fail-closed and occurs before broadcast.
    initial implementation should issue no lookup tables.
 4. Re-encode the message and compare its SHA-256 digest in constant time with
    the attempt's persisted message digest.
-5. Verify the expected payer signature is present and valid for the message.
-6. Verify the fee-payer signature slot is empty before SDP sponsorship.
+5. Verify the fee payer is signer index `0`, the expected payer occupies the
+   issued signer slot, and its signature is valid for the message.
+6. Verify the issued fee-payer signature slot remains empty before SDP
+   sponsorship.
 7. Reject missing payer, additional, or unexpected signatures and signer slots.
 8. Verify the fee payer, payer, recent blockhash, and transaction version.
 9. Verify instruction programs and semantics as defense in depth:
@@ -504,7 +518,9 @@ Validation is fail-closed and occurs before broadcast.
 10. Reject extra value-moving, compute-budget, memo, or arbitrary program
     instructions unless explicitly added to the issued template in a future
     version.
-11. For Token-2022, reject unsupported transfer-fee, transfer-hook,
+11. Require each SPL mint in the project's cluster-specific Merchant Pay mint
+    allowlist. For Token-2022, initially allow no mint extensions and only
+    `immutableOwner` on token accounts; reject unsupported transfer-fee, transfer-hook,
     confidential-transfer, frozen/default-state, permanent-delegate, or other
     extensions that can alter amount-received or execution semantics.
 12. Confirm the blockhash remains valid and the payment/attempt remain payable.
@@ -534,8 +550,9 @@ transaction. The submit path therefore uses a claimed-state-machine sequence:
 
 1. Decode the payer-signed bytes, compare the exact message, and verify the
    payer signature and transaction semantics without mutating state.
-2. Enforce policy and sponsorship authorization before creating or invoking a
-   signer. This ordering must be registered in
+2. Create or replay the attempt-keyed policy decision, refresh it if policy changed, and
+   enforce sponsorship authorization before creating or invoking a signer.
+   This ordering must be registered in
    `security/value-moving-conformance.node.test.ts` together with claimed-state
    replay evidence and the new signing sink.
 3. In one database transaction, atomically claim the prepared attempt as
@@ -547,13 +564,15 @@ transaction. The submit path therefore uses a claimed-state-machine sequence:
 4. Ask the fee-payment adapter to add its signature without sending.
 5. Revalidate the adapter output, then strictly simulate the fully signed
    transaction.
-6. Derive the deterministic Solana signature from the fully signed bytes.
+6. Assert the sponsor signature occupies signer index `0`, then derive the
+   deterministic Solana signature from the fully signed bytes.
 7. In one database transaction:
    - create the inbound `payment_transfers` row as `processing`;
    - persist the full signed wire transaction and deterministic signature;
    - link transfer and attempt;
    - set payment state to `processing`.
-8. Submit the already-fully-signed bytes through the fee-payment port.
+8. Submit the already-fully-signed bytes through the fee-payment port using
+   the same project-selected, cluster-verified RPC client used for simulation.
    `FeePaymentPort` should gain a submit-only operation so merchant checkout
    preserves the repository's single gasless submission boundary without
    signing the message a second time.
@@ -577,7 +596,7 @@ A crash after claim but before sponsor signing is recovered from the persisted
 payer-signed bytes. A crash after sponsor signing but before transfer creation
 repeats deterministic signing of the same message, revalidates it, and
 continues. A crash after transfer creation is reconciled by the persisted
-deterministic signature.
+deterministic signature and immutable fully signed bytes.
 
 ## Reconciliation
 
@@ -592,8 +611,13 @@ until finalization:
   `paid`.
 - on-chain error: update transfer and attempt to `failed`; return Payment
   Request to `awaiting_payment` if it has not expired, otherwise `expired`.
-- signature not found after the existing recovery window: apply the same
-  failure/retry rule.
+- signature not found while the blockhash remains valid: rebroadcast the exact
+  persisted fully signed bytes; accepted, already-known, and ambiguous results
+  remain `processing`.
+- signature not found after blockhash invalidity is proven and historical
+  signature lookup through configured RPC failover is also absent: apply the
+  failure/retry rule. A deterministic rebroadcast rejection alone is
+  insufficient evidence to drop the attempt.
 - a previously confirmed, not-yet-finalized signature that disappears or
   becomes invalid: move the Payment Request to `settlement_review`, preserve
   its audit history, and alert operators. Never silently make it payable again.
