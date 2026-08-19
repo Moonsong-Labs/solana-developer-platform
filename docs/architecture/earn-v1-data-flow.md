@@ -121,9 +121,10 @@ between signing and recording is otherwise unrecoverable. `earn_vault_positions`
 records only WHICH (wallet, vault) pairs an org holds; shares and value stay live
 chain reads, so the ledger-vs-live rule above is unchanged.
 
-Still outstanding for that shape: the withdraw counterpart and the Active-tab
-snapshot. Until both land, a vault position can be entered and not exited through
-SDP — so Kamino must not become creatable on mainnet.
+Still outstanding for that shape: the withdraw counterpart. The dashboard now
+hydrates and shows durable vault positions, but their SDP exit action stays
+disabled. Until the withdraw path lands, a vault position can be entered and not
+exited through SDP — so Kamino must not become creatable on mainnet.
 
 The original V1 note, still accurate for the custodial model: The execution-era design that
 used to be diagrammed here (per-strategy `createDeposit`/`createWithdrawal`,

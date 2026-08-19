@@ -40,6 +40,12 @@ const earnFundingWalletSchema = z.object({
   id: z.string(),
   walletId: z.string(),
   publicKey: z.string(),
+  /**
+   * Custody provider name, for display only. Optional and deliberately not an
+   * enum: it labels a badge, and a provider id this build has not heard of must
+   * not fail the row and disable deposits over a caption.
+   */
+  provider: z.string().optional(),
   label: z.string().nullable(),
   purpose: z.string().nullable(),
   status: z.enum(["active", "inactive"]),

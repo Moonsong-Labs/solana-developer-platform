@@ -94,8 +94,8 @@ the body `requestId` form.
   style in one place and not the other throws instead of rendering a blank.
 - `earn-program-data.ts` — THE data seam, over the BFF proxies above.
   `useEarnStrategies()` is what this module's pages read today; the program,
-  vault-position and vault-deposit seams are documented under "Seams without a
-  caller here". **No provider id is spelled in this file** — surfacing comes
+  vault-position and vault-deposit seams serve Treasury Solutions next door (see
+  "Where these seams are consumed"). **No provider id is spelled in this file** — surfacing comes
   from `./earn-surfacing`, and reads are provider-agnostic on purpose so a
   position taken while a provider was offered stays visible after it is
   un-surfaced (ADR 0002 — un-surfacing closes the door in, never the door out).
@@ -112,6 +112,18 @@ the body `requestId` form.
   state with a default stablecoin would make every read below depend on
   remembering to fail closed, and the provider-unavailable case would silently
   hold a lane that cannot pay out.
+- `earn-vault-deposit-modal.tsx` — the `vault_direct` deposit: one SDP custody
+  wallet funds one strategy, and that same wallet signs on chain and holds the
+  shares. A vault address is never presented as a funding address. The
+  idempotency key is derived from a request SIGNATURE — `(strategy, wallet,
+  amount)` — so re-pressing submit after a timeout replays the same key, while
+  editing any of the three mints a new one: a retry is not a second deposit, and
+  a changed deposit is not a retry. `validateVaultDepositAmount` never touches a
+  JavaScript number; trailing zeroes past the mint scale are harmless, but a
+  non-zero digit below one atom is REJECTED rather than rounded before a
+  value-moving request. `walletBalanceForMint` distinguishes an absent or
+  malformed RPC observation (`undefined`) from a successful observation with no
+  row for the mint (a real zero) — only the latter may read as "no funds".
 - `earn-decimal.ts` — the strict decimal parser: digits required on BOTH sides
   of the point, optional no-trim and length caps, plus the canonical form. Scale
   and ordering are NOT reimplemented — `decimalScale` and `compareDecimalAmounts`
@@ -140,22 +152,24 @@ the body `requestId` form.
   it as `[]` would disable deposits while claiming the org has no wallets. Only
   `active` wallets are returned — an inactive wallet cannot originate a
   transfer. `walletDisplayName` uses `||`, not `??`, so a whitespace label falls
-  back instead of rendering an empty name.
+  back instead of rendering an empty name. `provider` is optional and a plain
+  string rather than an enum: it labels a badge, and a provider id this build has
+  not heard of must not fail the row and disable deposits over a caption.
 
-## Seams without a caller here — do not delete them as dead code
+## Where these seams are consumed — do not delete them as dead code
 
-`useEarnPrograms`, `useEarnVaultPositions`, `createEarnVaultDeposit` and
-`EarnWithdrawModal` are exercised by unit tests in this PR and have **no product
-caller in this module**. That is a stack boundary, not an oversight: this module
-is the Earn Program page (select a strategy → build a button → integrate the
-API), and the surface that reads positions, opens the vault-deposit modal and
-drives withdrawals is **Treasury Solutions**
-(`../treasury-solutions/treasury-solutions-workspace.tsx` and
-`earn-vault-deposit-modal.tsx`), which lands in the next change on the stack.
+`useEarnPrograms`, `useEarnVaultPositions`, `createEarnVaultDeposit`,
+`EarnWithdrawModal` and `EarnVaultDepositModal` have **no caller inside this
+module**. That is a module boundary, not an oversight: this module is the Earn
+Program page (select a strategy → build a button → integrate the API), and the
+surface that reads positions, opens the vault-deposit modal and drives
+withdrawals is **Treasury Solutions**
+(`../treasury-solutions/treasury-solutions-workspace.tsx`), which consumes all
+five. The deposit modal itself lives HERE, beside the strategy, decimal and
+funding-wallet helpers it is built from, and is rendered from there.
 
-The whole module is dark until then — `MARKETS_ENABLED` is `flagDefault(…,
-false)` — so nothing ships half-wired. If you are reading this and Treasury
-Solutions exists, these seams have callers and this section can go.
+Grep before deleting: a seam whose only caller is one directory over still looks
+unreferenced from inside this one.
 
 `createEarnVaultDeposit` rebuilds its request body field-by-field rather than
 spreading the caller's input, so even an untyped caller cannot smuggle
@@ -273,7 +287,9 @@ browser pass on `/dashboard/markets/earn` and
   layouts above. A bespoke env helper, a `process.env` read, or a
   `NEXT_PUBLIC_*` twin is wrong.
 - **i18n: English only.** Edit `messages/en/dashboard-earn.json` (this module's
-  copy is the `DashboardMarkets.earnProgram.*` namespace); NEVER touch
+  copy is the `DashboardMarkets.earnProgram.*` and `DashboardEarn.*` namespaces;
+  `DashboardMarkets.treasury.*` in the same file belongs to Treasury Solutions
+  next door — one catalogue file, several surfaces); NEVER touch
   `messages/{es,fr,pt}` — or any future non-`en` locale — in the same PR. CI's
   Translation Catalog Policy fails a branch that edits English and localized
   catalogs together, because translations land on the automated release PR.
