@@ -5,6 +5,59 @@ the fail-closed registry and check capabilities — no `if (provider === "ground
 anywhere. See `packages/sdp-earn/README.md` for architecture; ADR 0002 for
 invariants (the 2026-08-11 addendum owns the ledger-vs-live rules below).
 
+## In flight: the unified movement ledger (PRO-1705)
+
+Earn is mid-migration from two movement tables split by execution mechanism to
+ONE. Migrations `0062`-`0064` add `earn_movements` (every money movement, both
+directions, both execution models) and `earn_positions` (every holding, vault
+and custodial), and backfill all existing history into them.
+
+**Nothing reads the new tables yet.** `earn_program_withdrawals`,
+`earn_vault_movements` and `earn_vault_positions` remain authoritative for every
+route below; the unified tables are kept current by a dual-write so the read
+switch is a later, separate release.
+
+**The rule while both shapes exist — if you add or change a writer of any legacy
+earn table, it MUST mirror into the unified ledger in the SAME transaction.**
+Call the projection functions in
+`db/repositories/earn-movements.repository.ts`; do not hand-write an insert. The
+mapping itself lives in SQL views created by `0063` and is shared with the bulk
+backfill, precisely so history and new rows cannot disagree. Details worth
+knowing before touching it:
+
+- A projection is an upsert keyed on the LEGACY row's id — the unified row keeps
+  it — so every guarded transition simply re-projects the whole row, and a row an
+  older revision wrote without mirroring is repaired by the next write to it.
+- The projections assert their row is projectable BEFORE writing. `INSERT ...
+  SELECT` from a view that yields nothing inserts zero rows and SUCCEEDS, which
+  would silently drop a money movement.
+- Every movement needs a holding, so every write path projects the holding
+  BEFORE the movement. A custodial holding is minted when the program wallet is
+  linked (`insertProviderWallet`) and by `0064` for programs that already exist;
+  if a program somehow has none, the withdrawal projection OPENS one rather than
+  failing. That is not politeness: on the observation path the mirror shares its
+  transaction with the legacy write, so throwing would roll back the
+  `provider_reference` stamp for a payout the provider had already made, and a
+  movement with no reference is the one row nothing can heal.
+- `finalized` is the one status no legacy table can express, so a legacy write
+  never regresses a unified row that already reached it.
+- The vocabulary tables `earn_execution_models`, `earn_movement_directions` and
+  `earn_movement_statuses` are seeded reference data, pinned to `@sdp/types` by a
+  conformance test. Never truncate them in a test fixture.
+- `EARN_MOVEMENT_TRANSITIONS` in `@sdp/types` is the one declaration of which
+  transitions are legal. The custodial half is enforced today
+  (`earn-withdrawal-ledger.service.ts` derives its CAS source statuses from it);
+  the vault half has no enforcer until reads switch, because the live guard still
+  guards the LEGACY table in migration 0059's vocabulary. It is written to agree
+  with `0062`'s CHECK constraints — in particular there is no
+  `confirmed → failed`, because recording one could only succeed by erasing a
+  `confirmed_at` SDP actually observed.
+- `0064` establishes history; it does NOT converge rows that a legacy-only writer
+  ADVANCED during a rollout or rollback window (`ON CONFLICT DO NOTHING` leaves
+  the stale projection). The read-switch release re-states the projection as an
+  upsert to sweep those. Read `0064`'s header before assuming the backfill is
+  self-correcting.
+
 ## Route map — with each route's single source of truth
 
 Every route reads exactly ONE source for the STATE it reports (DB or live

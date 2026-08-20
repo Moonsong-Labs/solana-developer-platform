@@ -1,8 +1,22 @@
 import type { SdpEnvironment } from "@sdp/types";
 import { type AppDb, asTransactionalClient } from "@/db";
 import { conflict } from "@/lib/errors";
+import {
+  ensureEarnMovementFromVaultMovement,
+  ensureEarnPositionFromVaultPosition,
+  projectEarnMovementFromVaultMovement,
+  projectEarnPositionFromVaultPosition,
+} from "./earn-movements.repository";
 
-/** Persistence for signed, non-custodial Earn vault movements and holdings. */
+/**
+ * Persistence for signed, non-custodial Earn vault movements and holdings.
+ *
+ * Still the authoritative writer, and additionally MIRRORS every write into the
+ * unified `earn_movements`/`earn_positions` ledger in the same transaction
+ * (PRO-1705, migrations 0062-0064). Reads switch to the unified tables in a
+ * later release; until then the mirror is what keeps them current, and one
+ * Postgres transaction is what makes the two shapes unable to diverge.
+ */
 
 export function generateEarnVaultPositionId(): string {
   return `earn_vault_position_${crypto.randomUUID()}`;
@@ -424,14 +438,21 @@ export function createPostgresEarnVaultRepository(db: AppDb): EarnVaultRepositor
         );
         if (prior) {
           assertMovementIsOwnReplay(prior, input);
-          return {
-            position: await requireMovementPosition(transaction, prior),
-            movement: prior,
-            replayed: true,
-          };
+          const position = await requireMovementPosition(transaction, prior);
+          // A replay writes no legacy row, but it is still the path a caller
+          // retrying an unmirrored row takes — so repair rather than answer 200
+          // while the ledger is still missing the movement. `ensure`, because a
+          // replay changes nothing about the holding and this runs concurrently
+          // with the winning request's own writes.
+          await ensureEarnPositionFromVaultPosition(transaction, position.id);
+          await ensureEarnMovementFromVaultMovement(transaction, prior.id);
+          return { position, movement: prior, replayed: true };
         }
 
         const claimed = await claimPosition(transaction, input);
+        // Mirror the holding before the movement: the ledger's tenancy and
+        // exact-claim foreign keys both point at it.
+        await projectEarnPositionFromVaultPosition(transaction, claimed.id);
         const inserted = await insertMovement(transaction, input, claimed.id);
         if (!inserted) {
           // A concurrent request committed after the preflight. A divergent
@@ -443,12 +464,16 @@ export function createPostgresEarnVaultRepository(db: AppDb): EarnVaultRepositor
           );
           if (!winner) throw new Error("Failed to resolve concurrent earn vault movement");
           assertMovementIsOwnReplay(winner, input);
-          return {
-            position: await requireMovementPosition(transaction, winner),
-            movement: winner,
-            replayed: true,
-          };
+          const winnerPosition = await requireMovementPosition(transaction, winner);
+          // Same repair as the sequential replay above: the winner projected its
+          // own row, but this loser may be the first write to touch a holding
+          // that predates the ledger.
+          await ensureEarnPositionFromVaultPosition(transaction, winnerPosition.id);
+          await ensureEarnMovementFromVaultMovement(transaction, winner.id);
+          return { position: winnerPosition, movement: winner, replayed: true };
         }
+
+        await projectEarnMovementFromVaultMovement(transaction, inserted.id);
 
         return {
           position: claimed,
@@ -607,7 +632,28 @@ export function createPostgresEarnVaultRepository(db: AppDb): EarnVaultRepositor
           .bind(...values, input.movementId, input.organizationId, ...input.fromStatuses)
           .first<EarnVaultMovementRow>();
 
-      if (input.toStatus !== "failed" && input.toStatus !== "confirmed") return advance(db);
+      // Every transition now runs in a transaction, including the non-terminal
+      // ones that used to be a bare UPDATE: the ledger mirror has to commit with
+      // the transition it describes, or a crash between them would leave the two
+      // shapes disagreeing about a money movement's state.
+      if (input.toStatus !== "failed" && input.toStatus !== "confirmed") {
+        return db.transaction(async (executor) => {
+          const transaction = asTransactionalClient(executor);
+          const movement = await advance(transaction);
+          if (!movement) return null;
+          // The holding first, as in the terminal branch below. The movement
+          // projection INNER JOINs earn_positions, so a movement whose holding
+          // was never mirrored — one written by a revision that predates the
+          // ledger, or during a rollout window — would otherwise fail here and
+          // roll the legacy status write back with it. `ensure` rather than
+          // re-project: a non-terminal transition changes no holding state, so
+          // there is nothing to refresh, and taking a row lock on the holding
+          // here would deadlock against a concurrent flow on the same one.
+          await ensureEarnPositionFromVaultPosition(transaction, movement.position_id);
+          await projectEarnMovementFromVaultMovement(transaction, movement.id);
+          return movement;
+        });
+      }
 
       return db.transaction(async (executor) => {
         const transaction = asTransactionalClient(executor);
@@ -654,6 +700,10 @@ export function createPostgresEarnVaultRepository(db: AppDb): EarnVaultRepositor
             .bind(movement.position_id)
             .run();
         }
+        // A terminal transition can activate or de-activate the holding, so the
+        // holding is re-projected too — not just the movement.
+        await projectEarnPositionFromVaultPosition(transaction, movement.position_id);
+        await projectEarnMovementFromVaultMovement(transaction, movement.id);
         return movement;
       });
     },
