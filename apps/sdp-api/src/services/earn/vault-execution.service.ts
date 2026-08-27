@@ -32,6 +32,7 @@ import {
 import type { Env } from "@/types/env";
 import { assertClusterEndpoint } from "./execution-registry";
 import type { VaultDeadline } from "./vault-deadline";
+import { describeVaultSimulationError } from "./vault-simulation-error";
 import type { VaultFeeMode } from "./vault-sponsorship";
 
 /**
@@ -446,7 +447,7 @@ export async function simulateVaultPlan(
   }
 ): Promise<
   | { ok: true; prepared: PreparedVaultPlanExecution }
-  | { ok: false; error: string; logs: readonly string[] }
+  | { ok: false; error: string; fault: "caller" | "sponsor"; logs: readonly string[] }
 > {
   assertExpectedPlan(input.plan, input.cluster, input.expectedAssetIdentity);
   let instructions: EarnVaultTransactionPlan["instructions"];
@@ -456,6 +457,7 @@ export async function simulateVaultPlan(
     return {
       ok: false,
       error: cause instanceof Error ? cause.message : "invalid vault plan",
+      fault: "caller",
       logs: [],
     };
   }
@@ -501,11 +503,11 @@ export async function simulateVaultPlan(
   );
 
   if (result.value.err) {
+    const verdict = describeVaultSimulationError(result.value.err, input.fee);
     return {
       ok: false,
-      error: JSON.stringify(result.value.err, (_key, value) =>
-        typeof value === "bigint" ? value.toString() : value
-      ),
+      error: verdict.message,
+      fault: verdict.fault,
       logs: result.value.logs ?? [],
     };
   }
