@@ -12,13 +12,11 @@ import {
   readBvnkOnrampPaymentRuleState,
 } from "@sdp/payments/ramps/providers/bvnk/provider-data";
 import {
-  lightsparkPayoutCollectedData,
-  lightsparkPayoutFields,
+  lightsparkCollectAccountRequirements,
   lightsparkPurposeOfPaymentRequirement,
 } from "@sdp/payments/ramps/providers/lightspark/counterparty";
 import {
   isLightsparkExternalAccountActive,
-  latestLightsparkPayoutAccount,
   readLightsparkPurposeOfPayment,
 } from "@sdp/payments/ramps/providers/lightspark/provider-data";
 import { readMuralOrganization } from "@sdp/payments/ramps/providers/mural/provider-data";
@@ -26,11 +24,13 @@ import { readyCounterparty } from "@sdp/payments/ramps/requirements";
 import { isSolanaCryptoAsset, SOLANA_ASSET_TO_RAIL } from "@sdp/payments/ramps/shared";
 import type { RampRuntimeContext } from "@sdp/payments/ramps/types";
 import { parseDecimalAmount } from "@sdp/solana/amount";
-import type {
-  PaymentRampEstimate,
-  PaymentRampQuote,
-  RampProviderEstimateResult,
-  SdpEnvironment,
+import {
+  isCountryCode,
+  type PaymentRampEstimate,
+  type PaymentRampInstruction,
+  type PaymentRampQuote,
+  type RampProviderEstimateResult,
+  type SdpEnvironment,
 } from "@sdp/types";
 import {
   OFFRAMP_SUPPORT,
@@ -40,6 +40,7 @@ import {
   type RampFiatCurrency,
 } from "@sdp/types/generated/ramp";
 import type {
+  CryptoRailId,
   OfframpPairSupport,
   OnrampPairSupport,
   RampProviderDirectionSupport,
@@ -49,6 +50,10 @@ import type { CounterpartyRequirements } from "@sdp/types/ramp-requirements";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { isPostgresUniqueViolation } from "@/db/postgres-utils";
+import {
+  createPostgresCounterpartyProviderAccountsRepository,
+  isRampTransferType,
+} from "@/db/repositories";
 import type { CounterpartyRow } from "@/db/repositories/counterparty.repository";
 import {
   generatePaymentTransferId,
@@ -148,6 +153,16 @@ type OfframpCurrencyPair = {
 
 type SubmitCounterpartyRequirementsInput = z.infer<typeof submitCounterpartyRequirementsSchema>;
 
+type ScopedSubmitCounterpartyRequirementsInput = SubmitCounterpartyRequirementsInput & {
+  counterparty: CounterpartyRow;
+  projectId: string;
+};
+
+type ScopedLightsparkRequirementsInput = Extract<
+  ScopedSubmitCounterpartyRequirementsInput,
+  { provider: "lightspark" }
+>;
+
 function filterProviders(
   providers: readonly RampProviderId[],
   environment: SdpEnvironment,
@@ -200,6 +215,22 @@ export async function assertRampProviderAvailable(
 type RampQuoteDirection = "onramp" | "offramp";
 
 /**
+ * Resolves a request's crypto asset symbol to its canonical crypto rail.
+ *
+ * @param cryptoToken - Public crypto asset symbol from the request.
+ * @returns The canonical Solana crypto rail.
+ */
+export function requireCryptoRail(cryptoToken: string): CryptoRailId {
+  const symbol = cryptoToken.trim().toUpperCase();
+  if (!isSolanaCryptoAsset(symbol)) {
+    throw badRequest(
+      `cryptoToken must be one of: ${Object.keys(SOLANA_ASSET_TO_RAIL).join(", ")}.`
+    );
+  }
+  return SOLANA_ASSET_TO_RAIL[symbol];
+}
+
+/**
  * Throws unless the committed corridor-support matrix (the same tables estimate
  * selects providers from) lists the provider for the requested crypto/fiat pair.
  * When fiatCurrency is omitted (off-ramp quotes may defer fiat selection to the
@@ -210,13 +241,7 @@ function assertRampCorridorSupported(
   input: { provider: RampProviderId; cryptoToken: string; fiatCurrency?: RampFiatCurrency },
   environment: SdpEnvironment
 ): void {
-  const symbol = input.cryptoToken.trim().toUpperCase();
-  if (!isSolanaCryptoAsset(symbol)) {
-    throw badRequest(
-      `cryptoToken must be one of: ${Object.keys(SOLANA_ASSET_TO_RAIL).join(", ")}.`
-    );
-  }
-  const rail = SOLANA_ASSET_TO_RAIL[symbol];
+  const rail = requireCryptoRail(input.cryptoToken);
   const pairs: readonly (OnrampPairSupport | OfframpPairSupport)[] =
     direction === "onramp" ? ONRAMP_SUPPORT : OFFRAMP_SUPPORT;
   const fiat = input.fiatCurrency;
@@ -442,6 +467,39 @@ function rampQuoteTransferStatus(quote: PaymentRampQuote): PaymentTransferStatus
   return quote.status;
 }
 
+function isCryptoDepositInstruction(
+  instruction: PaymentRampInstruction
+): instruction is Extract<PaymentRampInstruction, { kind: "crypto_deposit" }> {
+  return "kind" in instruction && instruction.kind === "crypto_deposit";
+}
+
+/**
+ * Persists the quote's crypto deposit instruction alongside the transfer so
+ * the in-app send validates against it — the same contract hosted providers
+ * fill via their awaiting_payment webhook.
+ *
+ * @param input - Quote persistence input.
+ * @returns providerData fragment carrying the cryptoDeposit, or empty when
+ * the quote has no crypto deposit instruction.
+ */
+function rampQuoteCryptoDepositProviderData(
+  input: PersistRampQuoteTransferInput
+): Record<string, unknown> {
+  if (input.direction !== "offramp" || input.quote.deliveryMode !== "manual_instructions") {
+    return {};
+  }
+  const instruction = input.quote.paymentInstructions?.find(isCryptoDepositInstruction);
+  if (instruction === undefined || input.cryptoAmount === null) {
+    return {};
+  }
+  return {
+    cryptoDeposit: {
+      destinationAddress: instruction.destinationAddress,
+      amount: input.cryptoAmount,
+    },
+  };
+}
+
 async function persistRampQuoteTransfer(
   c: AppContext,
   input: PersistRampQuoteTransferInput
@@ -506,6 +564,7 @@ async function persistRampQuoteTransfer(
       providerData: {
         ...(input.providerData ?? {}),
         ...rampQuoteExpiryProviderData(input.quote),
+        ...rampQuoteCryptoDepositProviderData(input),
       },
       serializedTx: null,
       signature: null,
@@ -529,58 +588,128 @@ async function persistRampQuoteTransfer(
   return created.id;
 }
 
+/**
+ * Advances a Lightspark customer through purpose and payout-account setup.
+ *
+ * @param c - Request context for database and provider access.
+ * @param input - Scoped Lightspark requirements submission.
+ * @returns The resulting Lightspark requirements state.
+ */
+async function advanceLightsparkRequirements(
+  c: AppContext,
+  input: ScopedLightsparkRequirementsInput
+): Promise<CounterpartyRequirements> {
+  const [customer, purposeOfPayment] = await Promise.all([
+    ensureLightsparkCustomer(c, {
+      counterparty: input.counterparty,
+      projectId: input.projectId,
+      collectedData: input.collectedData,
+    }),
+    ensureLightsparkPurposeOfPayment(c, {
+      counterparty: input.counterparty,
+      projectId: input.projectId,
+      collectedData: input.collectedData,
+    }),
+  ]);
+  if (purposeOfPayment === null) {
+    return lightsparkPurposeOfPaymentRequirement(input.direction);
+  }
+  if (input.direction === "onramp") {
+    return readyCounterparty("lightspark", input.direction);
+  }
+  const cryptoRail = requireCryptoRail(input.cryptoToken);
+  const collectedData = input.collectedData;
+  const repository = createPostgresCounterpartyProviderAccountsRepository(getDb(c.env));
+  if (collectedData === undefined || collectedData.destinationCountry === undefined) {
+    const rows = await repository.listExternalAccounts({
+      organizationId: input.counterparty.organization_id,
+      projectId: input.projectId,
+      counterpartyId: input.counterparty.id,
+      provider: "lightspark",
+      fiatCurrency: input.fiatCurrency,
+    });
+    return lightsparkCollectAccountRequirements(
+      cryptoRail,
+      input.fiatCurrency,
+      rows.map((row) => {
+        if (row.destination_country === null || row.provider_status === null) {
+          throw internalError("Lightspark external-account row is missing corridor data.");
+        }
+        return { destinationCountry: row.destination_country, status: row.provider_status };
+      })
+    );
+  }
+  if (!isCountryCode(collectedData.destinationCountry)) {
+    throw badRequest("destinationCountry must be a supported ISO 3166-1 alpha-2 country code.");
+  }
+  const existing = await repository.getActiveExternalAccount({
+    organizationId: input.counterparty.organization_id,
+    projectId: input.projectId,
+    counterpartyId: input.counterparty.id,
+    provider: "lightspark",
+    fiatCurrency: input.fiatCurrency,
+    destinationCountry: collectedData.destinationCountry,
+  });
+  if (existing !== null && existing.external_account_reference !== null) {
+    if (existing.provider_status === null) {
+      throw badRequest("Lightspark payout account has no provider status yet.");
+    }
+    if (isLightsparkExternalAccountActive(existing.provider_status)) {
+      return readyCounterparty("lightspark", input.direction);
+    }
+    const refreshed = await RAMP_PROVIDER_CLIENTS.lightspark.getExternalAccount(rampRuntime(c), {
+      accountId: existing.external_account_reference,
+    });
+    if (refreshed.status !== existing.provider_status) {
+      await repository.updateExternalAccountStatus({
+        organizationId: input.counterparty.organization_id,
+        projectId: input.projectId,
+        counterpartyId: input.counterparty.id,
+        provider: "lightspark",
+        id: existing.id,
+        providerStatus: refreshed.status,
+      });
+    }
+    if (isLightsparkExternalAccountActive(refreshed.status)) {
+      return readyCounterparty("lightspark", input.direction);
+    }
+    throw badRequest(
+      `Lightspark payout account is not active yet (status: ${refreshed.status}). Retry once it is verified.`
+    );
+  }
+  if (collectedData.paymentRails === undefined) {
+    throw badRequest('Missing required field "paymentRails" for Lightspark off-ramp.');
+  }
+  const account = await ensureLightsparkPayoutAccount(c, {
+    counterparty: input.counterparty,
+    projectId: input.projectId,
+    customer,
+    cryptoRail,
+    fiatCurrency: input.fiatCurrency,
+    collectedData,
+  });
+  if (account.provider_status === null) {
+    throw badRequest("Lightspark payout account has no provider status yet.");
+  }
+  if (isLightsparkExternalAccountActive(account.provider_status)) {
+    return readyCounterparty("lightspark", input.direction);
+  }
+  throw badRequest(
+    `Lightspark payout account was created but is not active yet (status: ${account.provider_status}). Retry once it is verified.`
+  );
+}
+
 export async function advanceCounterpartyRequirements(
   c: AppContext,
-  input: SubmitCounterpartyRequirementsInput & { counterparty: CounterpartyRow; projectId: string }
+  input: ScopedSubmitCounterpartyRequirementsInput
 ): Promise<CounterpartyRequirements> {
   switch (input.provider) {
     case "moonpay":
       return readyCounterparty("moonpay", input.direction);
     case "moneygram":
       return readyCounterparty("moneygram", input.direction);
-    case "lightspark": {
-      const [customer, purposeOfPayment] = await Promise.all([
-        ensureLightsparkCustomer(c, {
-          counterparty: input.counterparty,
-          projectId: input.projectId,
-          collectedData: input.collectedData,
-        }),
-        ensureLightsparkPurposeOfPayment(c, {
-          counterparty: input.counterparty,
-          projectId: input.projectId,
-          collectedData: input.collectedData,
-        }),
-      ]);
-      if (purposeOfPayment === null) {
-        return lightsparkPurposeOfPaymentRequirement(input.direction);
-      }
-      if (input.direction === "offramp") {
-        const payoutData =
-          input.collectedData === undefined
-            ? undefined
-            : lightsparkPayoutCollectedData(input.fiatCurrency, input.collectedData);
-        const storedAccount = latestLightsparkPayoutAccount(
-          input.counterparty.provider_data,
-          input.fiatCurrency
-        );
-        if (payoutData === undefined && !storedAccount) {
-          return {
-            provider: "lightspark",
-            direction: "offramp",
-            status: "collect_account",
-            fields: lightsparkPayoutFields(input.fiatCurrency),
-          };
-        }
-        await ensureLightsparkPayoutAccount(c, {
-          counterparty: input.counterparty,
-          projectId: input.projectId,
-          customer,
-          fiatCurrency: input.fiatCurrency,
-          collectedData: input.collectedData,
-        });
-      }
-      return readyCounterparty("lightspark", input.direction);
-    }
+    case "lightspark":
+      return advanceLightsparkRequirements(c, input);
     case "bvnk": {
       if (input.direction === "offramp") {
         await ensureBvnkOfframpBeneficiary(c, {
@@ -836,6 +965,7 @@ export async function createOnrampQuote(c: AppContext): Promise<Response> {
         externalCustomerId: counterparty.id,
         customerId,
         purposeOfPayment,
+        description: reservedTransferId,
       });
       break;
     }
@@ -1023,15 +1153,23 @@ export async function createOfframpQuote(c: AppContext): Promise<Response> {
       }
       const customerId = await lightsparkProviderCustomerId(c, counterparty, projectId);
       const purposeOfPayment = readLightsparkPurposeOfPayment(counterparty.provider_data);
-      const payoutAccount = latestLightsparkPayoutAccount(
-        counterparty.provider_data,
-        input.fiatCurrency
-      );
+      const payoutAccount = await createPostgresCounterpartyProviderAccountsRepository(
+        getDb(c.env)
+      ).getActiveExternalAccount({
+        organizationId: scope.auth.organizationId,
+        projectId,
+        counterpartyId: counterparty.id,
+        provider: "lightspark",
+        fiatCurrency: input.fiatCurrency,
+        destinationCountry: input.destinationCountry,
+      });
       if (
         customerId === null ||
         purposeOfPayment === null ||
-        !payoutAccount ||
-        !isLightsparkExternalAccountActive(payoutAccount.status)
+        payoutAccount === null ||
+        payoutAccount.external_account_reference === null ||
+        payoutAccount.provider_status === null ||
+        !isLightsparkExternalAccountActive(payoutAccount.provider_status)
       ) {
         throw counterpartyNotProvisioned("lightspark", "offramp");
       }
@@ -1043,7 +1181,8 @@ export async function createOfframpQuote(c: AppContext): Promise<Response> {
         externalCustomerId: counterparty.id,
         customerId,
         purposeOfPayment,
-        payoutAccountId: payoutAccount.accountId,
+        payoutAccountId: payoutAccount.external_account_reference,
+        description: reservedTransferId,
       });
       break;
     }
@@ -1113,10 +1252,9 @@ export async function createOfframpQuote(c: AppContext): Promise<Response> {
     case "stripe":
       throw badRequest("Stripe off-ramp is not supported.");
     default: {
-      const exhaustive: never = input.provider;
-      throw new AppError(
-        "INTERNAL_ERROR",
-        `Off-ramp quotes are not implemented for provider: ${String(exhaustive)}`
+      const exhaustive: never = input;
+      throw internalError(
+        `Off-ramp quote provider is not implemented: ${JSON.stringify(exhaustive)}`
       );
     }
   }
@@ -1160,14 +1298,16 @@ export async function cancelRampTransfer(c: ValidatedBodyContext<typeof cancelRa
   const projectId = requireProjectId(c);
   const repository = getPaymentsRepository(c);
 
-  const transfer = await repository.getTransferByProviderReference({
-    provider: input.provider,
-    providerReference: input.providerReference,
+  const transfer = await repository.getTransferById({
+    transferId: input.transferId,
     organizationId: scope.auth.organizationId,
     projectId,
   });
   if (!transfer) {
     throw notFound("Transfer");
+  }
+  if (!isRampTransferType(transfer.type)) {
+    throw badRequest("Only ramp transfers can be canceled through this endpoint.");
   }
   const cancelableStatuses: readonly PaymentTransferStatus[] = ["pending", "awaiting_payment"];
   if (!cancelableStatuses.includes(transfer.status)) {
