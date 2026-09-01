@@ -8,6 +8,12 @@
       "programAudience": "For payments platforms",
       "programDescription": "Let your customers earn inside your product. Pick a strategy, style the button, integrate the API."
     },
+    "liquidity": {
+      "instant": "Instant",
+      "delayed": "Delayed",
+      "delayedDay": "Delayed · 1 day",
+      "delayedDays": "Delayed · {days} days"
+    },
     "treasury": {
       "eyebrow": "Portfolio overview",
       "description": "Review custody balances for the selected project, provider strategies for its environment, and organization-wide custodial positions.",
@@ -54,6 +60,7 @@
       "strategy": "Strategy",
       "asset": "Asset",
       "apy": "APY",
+      "liquidity": "Liquidity",
       "balance": "Balance",
       "yourPosition": "Your position",
       "status": "Status",
@@ -117,6 +124,8 @@
       "strategy": "Strategy",
       "asset": "Strategy asset",
       "apy": "Customer APY",
+      "liquidity": "Liquidity",
+      "provider": "Provider",
       "availability": "Availability",
       "sandboxReady": "Sandbox ready",
       "unavailable": "Unavailable",
@@ -210,10 +219,6 @@
     "apyType": {
       "variable": "Variable",
       "fixed": "Fixed"
-    },
-    "liquidity": {
-      "instant": "Instant",
-      "delayed": "T+{days}"
     },
     "withdraw": {
       "title": "Withdraw",
@@ -472,7 +477,6 @@
       "quoteLoading": "Fetching the live payout quote…",
       "quoteUnavailable": "The live payout quote is unavailable right now, so this withdrawal cannot be sized safely. Try again in a moment.",
       "quoteBlocked": "The vault is not paying out this withdrawal right now: {message}",
-
       "quoteZeroAssets": "These shares are too few to redeem any of the deposit token at the current rate, so there is no slippage floor that could protect the exit.",
       "slippageHelp": "The withdrawal refuses to execute if the vault would pay less than this tolerance allows. 10 basis points is 0.1%.",
       "slippageExceeded": "The vault would pay less than your slippage tolerance allows for these shares. Increase the tolerance below and try again.",
