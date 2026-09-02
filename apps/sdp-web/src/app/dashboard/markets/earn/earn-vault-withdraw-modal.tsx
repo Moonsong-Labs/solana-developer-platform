@@ -737,7 +737,9 @@ export function EarnVaultWithdrawModal({
         ) : null}
 
         <p className="mt-4 text-xs leading-5 text-tertiary" id="earn-vault-withdraw-note">
-          {t("DashboardEarn.vaultWithdraw.confirmNote")}
+          {quote.kind === "quoted" && quote.preview.feeSponsored === true
+            ? t("DashboardEarn.vaultWithdraw.confirmNoteSponsored")
+            : t("DashboardEarn.vaultWithdraw.confirmNote")}
         </p>
         {submitError ? (
           <p
