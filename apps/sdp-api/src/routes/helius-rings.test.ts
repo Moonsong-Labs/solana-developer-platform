@@ -185,6 +185,20 @@ describe("Helius Rings routes", () => {
     expect(body.data.health.photon).toBe("red");
   });
 
+  it("GET /setup-status asks for project setup without exposing management to API keys", async () => {
+    const res = await app.request("/v1/helius-rings/setup-status", { headers: authHeaders() }, env);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      data: {
+        configured: false,
+        source: "none",
+        canManage: false,
+        allowInsecureHttpAllowed: true,
+        defaultConnection: null,
+      },
+    });
+  });
+
   describe("project rings", () => {
     // A real 32-byte address: the route schema runs `isAddress`, not just a shape regex.
     const RING_PROGRAM = "Stake11111111111111111111111111111111111111";

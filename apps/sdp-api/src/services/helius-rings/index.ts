@@ -1,6 +1,8 @@
 export { RingsAdapterError } from "./adapter-error";
 export {
+  createConfiguredRingsGateway,
   type RingsUpstreamEnv,
+  resolvePersistedRingsGateway,
   resolveRingsGateway,
   ringsUpstreamsConfigured,
   UnconfiguredRingsGateway,

@@ -22,6 +22,7 @@ export interface HeliusRingsOperationRow {
   id: string;
   organization_id: string;
   project_id: string;
+  rings_connection_id: string | null;
   wallet_id: string;
   op_type: OpType;
   state: OperationState;
@@ -78,6 +79,7 @@ export interface HeliusRingsTimelockInput {
  * lives in one place (the service) instead of being duplicated behind a column.
  */
 export interface ReserveHeliusRingsIntentInput extends HeliusRingsProjectScope {
+  ringsConnectionId?: string | null;
   walletId: string;
   opType: OpType;
   intentKey: string;

@@ -241,6 +241,8 @@ export interface Env {
   HELIUS_RINGS_RPC_URL?: string;
   HELIUS_RINGS_INDEXER_URL?: string;
   HELIUS_RINGS_PROVER_URL?: string;
+  /** @deprecated Import this value into a project Rings connection. */
+  HELIUS_RINGS_RING_RPC_URL?: string;
 
   // Helius ring RPC, which mints custom-ring auditor keys. Only ring bring-up
   // needs it; absent, submitting a ring program id fails with config_error.
