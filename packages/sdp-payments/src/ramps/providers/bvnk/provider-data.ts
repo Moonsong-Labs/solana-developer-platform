@@ -115,7 +115,7 @@ export async function buildBvnkWalletIdempotencyKey(walletName: string): Promise
 const BVNK_VERIFIED_STATUSES = new Set(["VERIFIED", "COMPLETED", "APPROVED"]);
 const BVNK_VERIFYING_STATUSES = new Set(["PENDING"]);
 const BVNK_VERIFICATION_REQUIRED_STATUSES = new Set(["ACTIONS_REQUIRED", "INFO_REQUIRED"]);
-const BVNK_VERIFICATION_FAILED_STATUSES = new Set(["REJECTED"]);
+const BVNK_VERIFICATION_FAILED_STATUSES = new Set(["REJECTED", "TERMINATED"]);
 
 /**
  * Whether a cached BVNK customer status counts as fully verified. The customer
@@ -260,6 +260,23 @@ export function buildBvnkCustomerExternalReference(counterpartyId: string): stri
     );
   }
   return `cp_${match.slice(1).join("").toLowerCase()}`;
+}
+
+const BVNK_CUSTOMER_EXTERNAL_REFERENCE_PATTERN =
+  /^cp_([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/;
+
+/**
+ * Recovers the SDP counterparty id from a BVNK customer `externalReference`.
+ *
+ * @param reference - Candidate `cp_<32_hex_uuid>` external reference.
+ * @returns The `cpty_<uuid>` counterparty id, or null when the value is not an SDP external reference.
+ */
+export function parseBvnkCustomerExternalReference(reference: string): string | null {
+  const match = BVNK_CUSTOMER_EXTERNAL_REFERENCE_PATTERN.exec(reference);
+  if (!match) {
+    return null;
+  }
+  return `cpty_${match.slice(1).join("-")}`;
 }
 
 /** Per funding-spec (fiat+token+destination) virtual wallet + rule. */
