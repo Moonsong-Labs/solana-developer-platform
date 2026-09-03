@@ -8,10 +8,10 @@
     },
     "setup": {
       "title": "Set up Helius Rings",
-      "description": "Save the RPC, Photon indexer, and prover used by this project.",
+      "description": "Save the Solana RPC, Photon indexer, prover, and Ring RPC shared by every Helius ring in this project.",
       "legacyDescription": "This project still uses deployment environment variables. Import them into the encrypted project configuration.",
       "configuredTitle": "Rings configuration",
-      "configuredDescription": "{name} is the active configuration for this project.",
+      "configuredDescription": "{name} is shared by every Helius ring in this project.",
       "adminRequired": "An organization administrator must configure Helius Rings before wallets can be used.",
       "name": "Configuration name",
       "rpc": "Solana RPC URL",

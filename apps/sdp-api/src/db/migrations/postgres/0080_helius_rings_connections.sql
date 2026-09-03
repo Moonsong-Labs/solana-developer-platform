@@ -1,4 +1,6 @@
--- Project-owned Helius Rings upstream bundles (migration 0080).
+-- Project-owned Helius Rings upstream bundles (migration 0080). The active
+-- default is shared by the default ring and every custom ring in the project;
+-- ring records must not select or duplicate these endpoints.
 --
 -- Endpoint URLs may contain credentials, so the connection row only carries
 -- lifecycle and redacted display data. The encrypted payload lives in the

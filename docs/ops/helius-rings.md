@@ -23,11 +23,15 @@ Photon indexer, prover, and optional custom Ring RPC URLs. The first active
 connection becomes the project default. URLs are encrypted through the shared
 provider-credential store; API and dashboard responses expose origins only.
 
+The project default is shared by the default ring and every custom ring in the
+project. Custom-ring records contain ring-specific on-chain metadata, not
+upstream URLs or a connection selector.
+
 Each operation records the connection selected when it is prepared. Retries and
 background settlement therefore keep using the same upstream bundle even if an
 administrator later changes the project default. The optional custom Ring RPC
-field is stored now so custom-ring records can reference the connection without
-changing this schema.
+field is stored now so custom-ring support can use the same project-wide
+configuration without changing this schema.
 
 The former environment variables remain as a migration bridge. When no database
 default exists, the dashboard offers to import the complete legacy bundle. A
