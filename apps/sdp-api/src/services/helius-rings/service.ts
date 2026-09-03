@@ -52,8 +52,11 @@ import { getLogger } from "@/runtime/logger";
 import { enforceWalletOperationPolicy } from "@/services/policy/enforcement.service";
 import type { Env } from "@/types/env";
 import { RingsAdapterError, redactAdapterMessage } from "./adapter-error";
+import { resolveRingsConnection } from "./connection-resolver";
 import {
+  createConfiguredRingsGateway,
   type RingsOuterTransactionPolicyInput,
+  resolvePersistedRingsGateway,
   resolveRingsGateway,
   validateRingsOuterTransaction,
 } from "./gateway";
@@ -84,6 +87,9 @@ export interface HeliusRingsActor {
 
 export interface HeliusRingsServiceDependencies {
   gateway?: RingsGatewayPort;
+  resolveGateway?: (connectionId?: string | null) => Promise<RingsGatewayPort>;
+  resolveConnectionId?: () => Promise<string | null>;
+  resolveRpcUrl?: (connectionId?: string | null) => Promise<string | undefined>;
   wallets?: HeliusRingsWalletRepository;
   operations?: HeliusRingsOperationRepository;
   events?: HeliusRingsEventRepository;
@@ -179,7 +185,9 @@ export function createHeliusRingsService(
 }
 
 export class HeliusRingsService {
-  private readonly gateway: RingsGatewayPort;
+  private readonly resolveGateway: (connectionId?: string | null) => Promise<RingsGatewayPort>;
+  private readonly resolveConnectionId: () => Promise<string | null>;
+  private readonly resolveRpcUrl: (connectionId?: string | null) => Promise<string | undefined>;
   private readonly wallets: HeliusRingsWalletRepository;
   private readonly operations: HeliusRingsOperationRepository;
   private readonly events: HeliusRingsEventRepository;
@@ -208,19 +216,55 @@ export class HeliusRingsService {
     this.projectRings = dependencies.projectRings ?? createHeliusRingsProjectRingRepository(env);
     // The bring-up hook persists a ring's lookup table the moment it lands, so
     // a crash before markActive resumes by adoption instead of renting twice.
-    // It must exist before the gateway that calls it.
-    this.gateway =
-      dependencies.gateway ??
-      resolveRingsGateway(env, tenant, {
-        recordRingLookupTable: async (ringProgramId, lookupTableAddress) => {
-          await this.projectRings.recordLookupTable({
-            organizationId: tenant.organizationId,
-            projectId: tenant.projectId,
-            ringProgramId,
-            lookupTableAddress,
+    // The repository must exist before the gateway that calls the hook.
+    const gatewayDependencies = {
+      recordRingLookupTable: async (ringProgramId: string, lookupTableAddress: string) => {
+        await this.projectRings.recordLookupTable({
+          organizationId: tenant.organizationId,
+          projectId: tenant.projectId,
+          ringProgramId,
+          lookupTableAddress,
+        });
+      },
+    };
+    this.resolveGateway = dependencies.resolveGateway
+      ? dependencies.resolveGateway
+      : dependencies.gateway
+        ? async () => dependencies.gateway as RingsGatewayPort
+        : async (connectionId) => {
+            if (connectionId) {
+              return resolvePersistedRingsGateway(env, tenant, connectionId, gatewayDependencies);
+            }
+            try {
+              const connection = await resolveRingsConnection({ env, ...tenant });
+              return connection.source === "legacy_environment"
+                ? resolveRingsGateway(env, tenant, gatewayDependencies)
+                : createConfiguredRingsGateway(env, tenant, connection, gatewayDependencies);
+            } catch (error) {
+              if (error instanceof HeliusRingsError && error.code === "config_error") {
+                return resolveRingsGateway(env, tenant, gatewayDependencies);
+              }
+              throw error;
+            }
+          };
+    this.resolveConnectionId =
+      dependencies.resolveConnectionId ??
+      (dependencies.gateway
+        ? async () => null
+        : async () => {
+            try {
+              return (await resolveRingsConnection({ env, ...tenant })).id;
+            } catch (error) {
+              if (error instanceof HeliusRingsError && error.code === "config_error") return null;
+              throw error;
+            }
           });
-        },
-      });
+    this.resolveRpcUrl =
+      dependencies.resolveRpcUrl ??
+      (dependencies.gateway
+        ? async () => undefined
+        : async (connectionId) =>
+            (await resolveRingsConnection({ env, ...tenant, connectionId })).solanaRpcUrl);
     this.wallets = dependencies.wallets ?? createHeliusRingsWalletRepository(env);
     this.operations = dependencies.operations ?? createHeliusRingsOperationRepository(env);
     this.events = dependencies.events ?? createHeliusRingsEventRepository(env);
@@ -273,7 +317,7 @@ export class HeliusRingsService {
       return mapHeliusRingsWalletRow(wallet);
     }
 
-    const provision = await this.gateway.provisionIdentity({
+    const provision = await (await this.resolveGateway()).provisionIdentity({
       walletId: wallet.id,
       sdpAddress: input.sdpAddress,
     });
@@ -299,7 +343,10 @@ export class HeliusRingsService {
       );
     }
 
-    const identity = await this.gateway.readIdentity({ walletId: wallet.id, owner });
+    const identity = await (await this.resolveGateway()).readIdentity({
+      walletId: wallet.id,
+      owner,
+    });
     return { ...identity, recordedShieldedAddress: wallet.shielded_address };
   }
 
@@ -335,7 +382,7 @@ export class HeliusRingsService {
     }
 
     try {
-      const provisioned = await this.gateway.provisionRing({
+      const provisioned = await (await this.resolveGateway()).provisionRing({
         ringProgramId: reserved.ring_program_id,
         lookupTableAddress: reserved.lookup_table_address,
       });
@@ -476,7 +523,8 @@ export class HeliusRingsService {
   async prepareOperation(
     input: PrivateOperationInput,
     context: PrepareOperationContext,
-    retry: { ofOperationId: string; ringProgramId: string | null } | null = null
+    retry: { ofOperationId: string; ringProgramId: string | null } | null = null,
+    ringsConnectionId: string | null | undefined = undefined
   ): Promise<PrivateOperation> {
     assertOperationEnabled(input.opType);
     const wallet = await this.requireWallet(input.walletId);
@@ -486,9 +534,12 @@ export class HeliusRingsService {
     // the failed attempt both saw a resolved id, and that is what re-runs.
     const ringProgramId = retry ? retry.ringProgramId : await this.resolveRing(input.ring);
     const intentKey = computeIntentKey(input, ringProgramId);
+    const selectedConnectionId =
+      ringsConnectionId === undefined ? await this.resolveConnectionId() : ringsConnectionId;
 
     const { operation, reserved } = await this.operations.reserveIntent({
       ...this.tenant,
+      ringsConnectionId: selectedConnectionId,
       walletId: wallet.id,
       opType: input.opType,
       intentKey,
@@ -675,7 +726,9 @@ export class HeliusRingsService {
       return this.toPrivateOperation(failed ?? (await this.requireOperation(operation.id)));
     }
     try {
-      const indexed = await this.gateway.verifyIndexed(operation.outer_tx_signature);
+      const indexed = await (
+        await this.resolveGateway(operation.rings_connection_id)
+      ).verifyIndexed(operation.outer_tx_signature);
       if (!indexed) return this.toPrivateOperation(operation);
       const completed = await this.transition(operation.id, "indexing", "indexed", {
         photonIndexedAt: indexed.indexedAt,
@@ -715,6 +768,7 @@ export class HeliusRingsService {
       await this.submitOuterTransaction({
         env: this.env,
         signedTxBase64: operation.signed_transaction,
+        rpcUrl: await this.resolveRpcUrl(operation.rings_connection_id),
       });
     } catch (error) {
       await this.events.append({
@@ -770,7 +824,9 @@ export class HeliusRingsService {
       );
     }
 
-    const indexed = await this.gateway.verifyIndexed(operation.outer_tx_signature);
+    const indexed = await (await this.resolveGateway(operation.rings_connection_id)).verifyIndexed(
+      operation.outer_tx_signature
+    );
     if (indexed) {
       await this.settleReconciled(operation, indexed);
       throw new HeliusRingsError(
@@ -843,7 +899,9 @@ export class HeliusRingsService {
       return this.toPrivateOperation(operation);
     }
 
-    const indexed = await this.gateway.verifyIndexed(operation.outer_tx_signature);
+    const indexed = await (await this.resolveGateway(operation.rings_connection_id)).verifyIndexed(
+      operation.outer_tx_signature
+    );
     if (!indexed) return this.toPrivateOperation(operation);
 
     return this.toPrivateOperation(await this.settleReconciled(operation, indexed));
@@ -929,10 +987,15 @@ export class HeliusRingsService {
       clientNonce,
     };
 
-    return this.prepareOperation(input, context, {
-      ofOperationId: failed.id,
-      ringProgramId: failed.ring_program_id ?? null,
-    });
+    return this.prepareOperation(
+      input,
+      context,
+      {
+        ofOperationId: failed.id,
+        ringProgramId: failed.ring_program_id ?? null,
+      },
+      failed.rings_connection_id
+    );
   }
 
   async getOperation(operationId: string): Promise<PrivateOperation> {
@@ -946,7 +1009,7 @@ export class HeliusRingsService {
    */
   async probeHealth(): Promise<RuntimeHealth> {
     try {
-      const health = await this.gateway.probeHealth();
+      const health = await (await this.resolveGateway()).probeHealth();
       await Promise.all(
         RUNTIME_HEALTH_COMPONENTS.map((component) =>
           this.health.recordHealth({
@@ -1028,7 +1091,7 @@ export class HeliusRingsService {
       const recipient = recipientResult.value;
       const ring = ringResult.value;
 
-      const built = await this.gateway.buildOperation({
+      const built = await (await this.resolveGateway(current.rings_connection_id)).buildOperation({
         operation: this.toPrivateOperation(current),
         owner,
         ...(wallet.shielded_address ? { expectedShieldedAddress: wallet.shielded_address } : {}),
@@ -1459,7 +1522,7 @@ export class HeliusRingsService {
 
     const allowlist = await this.assets.listActive();
 
-    const result = await this.gateway.syncPhoton({
+    const result = await (await this.resolveGateway()).syncPhoton({
       walletId: wallet.id,
       owner: wallet.owner_address,
       // Re-derived and compared inside the gateway. A wallet whose material no

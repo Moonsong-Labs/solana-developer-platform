@@ -69,6 +69,18 @@ describe("resolveRingsGateway", () => {
       });
     });
 
+    it("forwards the optional custom Ring RPC without making it required", () => {
+      const { captured, createGateway } = capturingCreate();
+
+      resolveRingsGateway(
+        envOf({ HELIUS_RINGS_RING_RPC_URL: "https://d1ojzfopdqqs5r.cloudfront.net" }),
+        tenant,
+        { createGateway }
+      );
+
+      expect(captured[0]).toHaveProperty("ringRpcUrl", "https://d1ojzfopdqqs5r.cloudfront.net");
+    });
+
     // Read as an explicit flag rather than inferred from the URL scheme, so a
     // production typo cannot quietly authorise plaintext.
     it.each([

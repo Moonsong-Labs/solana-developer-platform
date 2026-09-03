@@ -17,21 +17,37 @@ routes (/v1/helius-rings)
 
 ## Configuration
 
+Rings upstreams are project-owned database connections. Open the Helius Rings
+dashboard for a project and save a named connection containing the Solana RPC,
+Photon indexer, prover, and optional custom Ring RPC URLs. The first active
+connection becomes the project default. URLs are encrypted through the shared
+provider-credential store; API and dashboard responses expose origins only.
+
+Each operation records the connection selected when it is prepared. Retries and
+background settlement therefore keep using the same upstream bundle even if an
+administrator later changes the project default. The optional custom Ring RPC
+field is stored now so custom-ring records can reference the connection without
+changing this schema.
+
+The former environment variables remain as a migration bridge. When no database
+default exists, the dashboard offers to import the complete legacy bundle. A
+partial legacy bundle is treated as unconfigured.
+
 | Variable | Meaning |
 | --- | --- |
 | `HELIUS_RINGS_ENABLED` | Gates routes, dashboard, indexing poll. Default `false`. |
-| `HELIUS_RINGS_RPC_URL` | Solana RPC (API key in URL). Required when enabled. |
-| `HELIUS_RINGS_INDEXER_URL` | Photon indexer. Required when enabled. |
-| `HELIUS_RINGS_PROVER_URL` | Proving service. Required when enabled. |
-| `HELIUS_RINGS_RING_RPC_URL` | Helius ring RPC that mints custom-ring auditor keys. Optional: absent, recording a custom ring fails `config_error` while everything else keeps working. |
-| `HELIUS_RINGS_ALLOW_INSECURE_HTTP` | Opt-in plain HTTP for devnet upstreams. |
+| `HELIUS_RINGS_RPC_URL` | Legacy Solana RPC bootstrap value. |
+| `HELIUS_RINGS_INDEXER_URL` | Legacy Photon indexer bootstrap value. |
+| `HELIUS_RINGS_PROVER_URL` | Legacy proving-service bootstrap value. |
+| `HELIUS_RINGS_RING_RPC_URL` | Legacy Ring RPC bootstrap value. Custom-ring bring-up fails with `config_error` when the active project configuration has no Ring RPC URL. |
+| `HELIUS_RINGS_ALLOW_INSECURE_HTTP` | Legacy opt-in for plain HTTP. Persisted setup allows it only in development. |
 | `SOLANA_NETWORK` | Must be `devnet`. |
 
 > **The seed is public.** Identities derive from `INSECURE_TEST_SEED_DEVNET_ONLY!!`
 > in `packages/sdp-helius-rings-sdk/src/deterministic-ka/seed.ts`. Devnet only.
 
-Missing upstreams → health red, port methods fail with `config_error` (not a throw at
-construction).
+Missing setup → the dashboard shows the configuration form; direct port methods
+fail with `config_error`.
 
 ## State machine
 
