@@ -22,6 +22,7 @@ export interface HeliusRingsOperationRow {
   id: string;
   organization_id: string;
   project_id: string;
+  /** Versioned upstream bundle. NULL is reserved for legacy environment operations. */
   rings_connection_id: string | null;
   wallet_id: string;
   op_type: OpType;

@@ -152,6 +152,22 @@ export class HeliusRingsConnectionStore {
     return row !== null;
   }
 
+  /** Serializes deactivation with the operation repository's SHARE pin lock. */
+  lockActiveNonDefault(
+    organizationId: string,
+    projectId: string,
+    connectionId: string
+  ): Promise<HeliusRingsConnectionRow | null> {
+    return this.db.queryOne<HeliusRingsConnectionRow>(
+      `SELECT ${SELECT_COLUMNS}
+         FROM helius_rings_connections c
+        WHERE c.id = ? AND c.organization_id = ? AND c.project_id = ?
+          AND c.status = 'active' AND c.is_default = FALSE
+        FOR UPDATE`,
+      [connectionId, organizationId, projectId]
+    );
+  }
+
   async makeDefault(
     organizationId: string,
     projectId: string,
