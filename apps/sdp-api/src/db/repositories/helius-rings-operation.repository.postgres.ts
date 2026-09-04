@@ -163,7 +163,7 @@ export function createPostgresHeliusRingsOperationRepository(
                ring_program_id,
                retry_of_operation_id,
                timelock_unlock_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (intent_key)
              -- Self-assignment rather than DO NOTHING: DO NOTHING returns zero
              -- rows on a replay, which is indistinguishable from a failed

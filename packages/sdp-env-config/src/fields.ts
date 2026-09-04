@@ -733,13 +733,6 @@ export const FIELDS: EnvField[] = [
   {
     key: "HELIUS_RINGS_RING_RPC_URL",
     section: "advanced",
-    kind: "password",
-    label: "Helius Rings custom Ring RPC URL",
-    help: "Optional legacy bootstrap value reserved for custom Ring deployments.",
-  },
-  {
-    key: "HELIUS_RINGS_RING_RPC_URL",
-    section: "advanced",
     kind: "url",
     label: "Helius Rings ring RPC URL",
     help: "Helius ring RPC that mints custom-ring auditor keys. Only needed to bring up a project's custom ring.",
