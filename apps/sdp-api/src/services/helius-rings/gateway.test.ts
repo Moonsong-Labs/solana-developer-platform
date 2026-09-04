@@ -187,7 +187,7 @@ describe("resolveRingsGateway", () => {
       expect(without.captured[0]).not.toHaveProperty("ringRpcUrl");
     });
 
-    it("refuses ring bring-up by naming the env var when the ring RPC URL is unset", async () => {
+    it("refuses ring bring-up when the project configuration has no ring RPC URL", async () => {
       const resolved = resolveRingsGateway(envOf(), tenant, {
         createGateway: capturingCreate().createGateway,
       });
@@ -200,8 +200,7 @@ describe("resolveRingsGateway", () => {
       expect(error).toBeInstanceOf(HeliusRingsError);
       expect(error).toMatchObject({
         code: "config_error",
-        message:
-          "ring bring-up needs HELIUS_RINGS_RING_RPC_URL; every other rings operation runs without it",
+        message: "ring bring-up needs a Ring RPC URL in the project's Helius Rings configuration",
       });
     });
 
