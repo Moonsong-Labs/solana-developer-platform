@@ -232,7 +232,10 @@ export class HeliusRingsService {
       : dependencies.gateway
         ? async () => dependencies.gateway as RingsGatewayPort
         : async (connectionId) => {
-            if (connectionId) {
+            if (connectionId === null) {
+              return resolveRingsGateway(env, tenant, gatewayDependencies);
+            }
+            if (connectionId !== undefined) {
               return resolvePersistedRingsGateway(env, tenant, connectionId, gatewayDependencies);
             }
             try {

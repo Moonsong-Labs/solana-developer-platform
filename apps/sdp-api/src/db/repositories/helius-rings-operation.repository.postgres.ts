@@ -1,3 +1,4 @@
+import { HeliusRingsError } from "@sdp/helius-rings";
 import type { AppDb } from "@/db";
 import {
   DEFAULT_RINGS_IN_FLIGHT_SWEEP_LIMIT,
@@ -144,6 +145,30 @@ export function createPostgresHeliusRingsOperationRepository(
       const id = generateHeliusRingsOperationId();
 
       return db.transaction(async (tx) => {
+        const existing = await tx
+          .prepare("SELECT * FROM helius_rings_operations WHERE intent_key = ?")
+          .bind(input.intentKey)
+          .first<Record<string, unknown>>();
+        if (existing) return { operation: mapRow(existing), reserved: false };
+
+        if (input.ringsConnectionId) {
+          const connection = await tx
+            .prepare(
+              `SELECT id
+                 FROM helius_rings_connections
+                WHERE id = ? AND organization_id = ? AND project_id = ? AND status = 'active'
+                FOR SHARE`
+            )
+            .bind(input.ringsConnectionId, input.organizationId, input.projectId)
+            .first<{ id: string }>();
+          if (!connection) {
+            throw new HeliusRingsError(
+              "config_error",
+              "The selected Helius Rings connection is no longer active"
+            );
+          }
+        }
+
         const row = await tx
           .prepare(
             `INSERT INTO helius_rings_operations (

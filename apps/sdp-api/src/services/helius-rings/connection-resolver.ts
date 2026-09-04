@@ -28,20 +28,30 @@ export async function resolveRingsConnection(input: {
   projectId: string;
   connectionId?: string | null;
 }): Promise<ResolvedRingsConnection> {
+  if (input.connectionId === null) {
+    const legacy = resolveLegacy(input.env);
+    if (legacy) return legacy;
+    throw new HeliusRingsError(
+      "config_error",
+      "The legacy Helius Rings configuration used by this operation is unavailable"
+    );
+  }
+
   const store = new HeliusRingsConnectionStore(getDb(input.env));
-  const row = input.connectionId
-    ? await store.findById(input.organizationId, input.projectId, input.connectionId)
-    : await store.findDefault(input.organizationId, input.projectId);
+  const row =
+    input.connectionId !== undefined
+      ? await store.findById(input.organizationId, input.projectId, input.connectionId)
+      : await store.findDefault(input.organizationId, input.projectId);
 
   if (row) return resolveStored(input.env, row);
-  if (!input.connectionId) {
+  if (input.connectionId === undefined) {
     const legacy = resolveLegacy(input.env);
     if (legacy) return legacy;
   }
 
   throw new HeliusRingsError(
     "config_error",
-    input.connectionId
+    input.connectionId !== undefined
       ? "Helius Rings connection is missing, inactive, or belongs to another project"
       : "Helius Rings setup is required for this project"
   );

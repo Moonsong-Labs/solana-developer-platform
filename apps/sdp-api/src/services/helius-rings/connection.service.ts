@@ -1,4 +1,4 @@
-import { createRingsGateway } from "@sdp/helius-rings-sdk";
+import { createRingsGateway, probeRingRpcHealth } from "@sdp/helius-rings-sdk";
 import { assertReachableTenantEndpoint } from "@sdp/rpc/byok";
 import type { Context } from "hono";
 import { getDb } from "@/db";
@@ -125,25 +125,31 @@ export async function createRingsConnection(
   const auth = getAuth(c);
   if (!auth.userId) throw forbidden("Rings connection management requires an administrator");
   const projectId = requireProjectId(c);
-  const normalized = validateInput(c.env, input);
+  const normalized = validateRingsConnectionInput(c.env, input);
 
-  const health = await createRingsGateway({
-    solanaRpcUrl: normalized.solanaRpcUrl,
-    indexerUrl: normalized.indexerUrl,
-    proverUrl: normalized.proverUrl,
-    organizationId: auth.organizationId,
-    projectId,
-    allowInsecureHttp: normalized.allowInsecureHttp,
-    signTransaction: async () => {
-      throw new Error("probe does not sign");
-    },
-    submitTransaction: async () => {
-      throw new Error("probe does not submit");
-    },
-  }).probeHealth();
-  const failed = (["rpc", "photon", "prover"] as const).filter(
+  const [health, ringRpcHealth] = await Promise.all([
+    createRingsGateway({
+      solanaRpcUrl: normalized.solanaRpcUrl,
+      indexerUrl: normalized.indexerUrl,
+      proverUrl: normalized.proverUrl,
+      organizationId: auth.organizationId,
+      projectId,
+      allowInsecureHttp: normalized.allowInsecureHttp,
+      signTransaction: async () => {
+        throw new Error("probe does not sign");
+      },
+      submitTransaction: async () => {
+        throw new Error("probe does not submit");
+      },
+    }).probeHealth(),
+    normalized.ringRpcUrl
+      ? probeRingRpcHealth({ url: normalized.ringRpcUrl })
+      : Promise.resolve(null),
+  ]);
+  const failed: string[] = (["rpc", "photon", "prover"] as const).filter(
     (component) => health[component] === "red"
   );
+  if (ringRpcHealth?.status === "red") failed.push("ringRpc");
   if (failed.length > 0) {
     throw conflict("Helius Rings rejected the connection", {
       components: failed,
@@ -247,11 +253,20 @@ export async function deactivateRingsConnection(c: AppContext, connectionId: str
   if (!target) throw notFound("Helius Rings connection");
   if (target.is_default)
     throw conflict("Choose another default connection before deactivating this one");
-  if (await store.hasUnsettledOperations(auth.organizationId, projectId, connectionId)) {
-    throw conflict("Settle or void operations pinned to this connection before deactivating it");
-  }
   const row = await db.transaction(async (tx) => {
-    const deactivated = await new HeliusRingsConnectionStore(tx).deactivate(
+    const transactionalStore = new HeliusRingsConnectionStore(tx);
+    const locked = await transactionalStore.lockActiveNonDefault(
+      auth.organizationId,
+      projectId,
+      connectionId
+    );
+    if (!locked) return null;
+    if (
+      await transactionalStore.hasUnsettledOperations(auth.organizationId, projectId, connectionId)
+    ) {
+      throw conflict("Settle or void operations pinned to this connection before deactivating it");
+    }
+    const deactivated = await transactionalStore.deactivate(
       auth.organizationId,
       projectId,
       connectionId
@@ -278,21 +293,29 @@ export async function testRingsConnection(c: AppContext, connectionId: string) {
     projectId,
     connectionId,
   });
-  const health = await createRingsGateway({
-    ...connection,
-    organizationId: auth.organizationId,
-    projectId,
-    signTransaction: async () => {
-      throw new Error("probe does not sign");
-    },
-    submitTransaction: async () => {
-      throw new Error("probe does not submit");
-    },
-  }).probeHealth();
-  return { health };
+  const [health, ringRpc] = await Promise.all([
+    createRingsGateway({
+      ...connection,
+      organizationId: auth.organizationId,
+      projectId,
+      signTransaction: async () => {
+        throw new Error("probe does not sign");
+      },
+      submitTransaction: async () => {
+        throw new Error("probe does not submit");
+      },
+    }).probeHealth(),
+    connection.ringRpcUrl
+      ? probeRingRpcHealth({ url: connection.ringRpcUrl })
+      : Promise.resolve(null),
+  ]);
+  return { health, ringRpc };
 }
 
-function validateInput(env: Env, input: RingsConnectionInput): RingsConnectionInput {
+export function validateRingsConnectionInput(
+  env: Env,
+  input: RingsConnectionInput
+): RingsConnectionInput {
   const allowInsecureHttp = input.allowInsecureHttp;
   if (allowInsecureHttp && env.ENVIRONMENT !== "development") {
     throw badRequest("Plain HTTP Rings endpoints are allowed only in development");
@@ -324,12 +347,13 @@ function validateUrl(value: string, label: string, allowInsecureHttp: boolean): 
     throw badRequest(`${label} URL must use HTTPS`);
   }
   if (parsed.username || parsed.password) throw badRequest(`${label} URL cannot contain user info`);
-  if (parsed.protocol === "https:" && !allowInsecureHttp) {
-    try {
-      assertReachableTenantEndpoint(parsed.toString());
-    } catch {
-      throw badRequest(`${label} URL points to a host SDP cannot reach`);
-    }
+  try {
+    // Development may relax the scheme, never the host policy.
+    const policyUrl = new URL(parsed);
+    policyUrl.protocol = "https:";
+    assertReachableTenantEndpoint(policyUrl.toString());
+  } catch {
+    throw badRequest(`${label} URL points to a host SDP cannot reach`);
   }
   return parsed.toString();
 }
