@@ -15,7 +15,7 @@ import {
 } from "@/services/stores/helius-rings-connection.store";
 import { ProviderCredentialStore } from "@/services/stores/provider-credential.store";
 import type { Env } from "@/types/env";
-import { resolveLegacy, resolveRingsConnection } from "./connection-resolver";
+import { resolveRingsConnection } from "./connection-resolver";
 
 type AppContext = Context<{ Bindings: Env }>;
 
@@ -98,10 +98,9 @@ export async function getRingsSetupStatus(c: AppContext) {
     };
   }
 
-  const legacy = resolveLegacy(c.env);
   return {
-    configured: legacy !== null,
-    source: legacy ? ("legacy_environment" as const) : ("none" as const),
+    configured: false,
+    source: "none" as const,
     canManage,
     allowInsecureHttpAllowed,
     defaultConnection: null,
@@ -217,19 +216,6 @@ export async function createRingsConnection(
     await destroyStoredVersion(secretStore, stored);
     throw error;
   }
-}
-
-export async function importLegacyRingsConnection(c: AppContext, name: string) {
-  const legacy = resolveLegacy(c.env);
-  if (!legacy) throw badRequest("No legacy Helius Rings configuration is available");
-  return createRingsConnection(c, {
-    name,
-    solanaRpcUrl: legacy.solanaRpcUrl,
-    indexerUrl: legacy.indexerUrl,
-    proverUrl: legacy.proverUrl,
-    ...(legacy.ringRpcUrl ? { ringRpcUrl: legacy.ringRpcUrl } : {}),
-    allowInsecureHttp: legacy.allowInsecureHttp,
-  });
 }
 
 export async function makeDefaultRingsConnection(c: AppContext, connectionId: string) {

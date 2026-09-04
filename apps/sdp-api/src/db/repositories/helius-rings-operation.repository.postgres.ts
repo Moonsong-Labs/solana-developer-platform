@@ -36,7 +36,7 @@ function mapRow(row: Record<string, unknown>): HeliusRingsOperationRow {
     id: row.id as string,
     organization_id: row.organization_id as string,
     project_id: row.project_id as string,
-    rings_connection_id: (row.rings_connection_id ?? null) as string | null,
+    rings_connection_id: row.rings_connection_id as string,
     wallet_id: row.wallet_id as string,
     op_type: row.op_type as HeliusRingsOperationRow["op_type"],
     state: row.state as HeliusRingsOperationRow["state"],
@@ -151,22 +151,20 @@ export function createPostgresHeliusRingsOperationRepository(
           .first<Record<string, unknown>>();
         if (existing) return { operation: mapRow(existing), reserved: false };
 
-        if (input.ringsConnectionId) {
-          const connection = await tx
-            .prepare(
-              `SELECT id
-                 FROM helius_rings_connections
-                WHERE id = ? AND organization_id = ? AND project_id = ? AND status = 'active'
-                FOR SHARE`
-            )
-            .bind(input.ringsConnectionId, input.organizationId, input.projectId)
-            .first<{ id: string }>();
-          if (!connection) {
-            throw new HeliusRingsError(
-              "config_error",
-              "The selected Helius Rings connection is no longer active"
-            );
-          }
+        const connection = await tx
+          .prepare(
+            `SELECT id
+               FROM helius_rings_connections
+              WHERE id = ? AND organization_id = ? AND project_id = ? AND status = 'active'
+              FOR SHARE`
+          )
+          .bind(input.ringsConnectionId, input.organizationId, input.projectId)
+          .first<{ id: string }>();
+        if (!connection) {
+          throw new HeliusRingsError(
+            "config_error",
+            "The selected Helius Rings connection is no longer active"
+          );
         }
 
         const row = await tx
@@ -201,7 +199,7 @@ export function createPostgresHeliusRingsOperationRepository(
             id,
             input.organizationId,
             input.projectId,
-            input.ringsConnectionId ?? null,
+            input.ringsConnectionId,
             input.walletId,
             input.opType,
             input.intentKey,

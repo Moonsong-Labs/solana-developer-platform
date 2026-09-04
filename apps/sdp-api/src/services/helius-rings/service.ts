@@ -52,12 +52,11 @@ import { getLogger } from "@/runtime/logger";
 import { enforceWalletOperationPolicy } from "@/services/policy/enforcement.service";
 import type { Env } from "@/types/env";
 import { RingsAdapterError, redactAdapterMessage } from "./adapter-error";
-import { resolveRingsConnection } from "./connection-resolver";
+import { resolveDefaultRingsConnectionId, resolveRingsConnection } from "./connection-resolver";
 import {
-  createConfiguredRingsGateway,
   type RingsOuterTransactionPolicyInput,
   resolvePersistedRingsGateway,
-  resolveRingsGateway,
+  UnconfiguredRingsGateway,
   validateRingsOuterTransaction,
 } from "./gateway";
 import { buildRingsWalletOperationInput } from "./policy-envelope";
@@ -87,9 +86,9 @@ export interface HeliusRingsActor {
 
 export interface HeliusRingsServiceDependencies {
   gateway?: RingsGatewayPort;
-  resolveGateway?: (connectionId?: string | null) => Promise<RingsGatewayPort>;
-  resolveConnectionId?: () => Promise<string | null>;
-  resolveRpcUrl?: (connectionId?: string | null) => Promise<string | undefined>;
+  resolveGateway?: (connectionId?: string) => Promise<RingsGatewayPort>;
+  resolveConnectionId?: () => Promise<string>;
+  resolveRpcUrl?: (connectionId?: string) => Promise<string | undefined>;
   wallets?: HeliusRingsWalletRepository;
   operations?: HeliusRingsOperationRepository;
   events?: HeliusRingsEventRepository;
@@ -185,9 +184,9 @@ export function createHeliusRingsService(
 }
 
 export class HeliusRingsService {
-  private readonly resolveGateway: (connectionId?: string | null) => Promise<RingsGatewayPort>;
-  private readonly resolveConnectionId: () => Promise<string | null>;
-  private readonly resolveRpcUrl: (connectionId?: string | null) => Promise<string | undefined>;
+  private readonly resolveGateway: (connectionId?: string) => Promise<RingsGatewayPort>;
+  private readonly resolveConnectionId: () => Promise<string>;
+  private readonly resolveRpcUrl: (connectionId?: string) => Promise<string | undefined>;
   private readonly wallets: HeliusRingsWalletRepository;
   private readonly operations: HeliusRingsOperationRepository;
   private readonly events: HeliusRingsEventRepository;
@@ -232,36 +231,26 @@ export class HeliusRingsService {
       : dependencies.gateway
         ? async () => dependencies.gateway as RingsGatewayPort
         : async (connectionId) => {
-            if (connectionId === null) {
-              return resolveRingsGateway(env, tenant, gatewayDependencies);
-            }
             if (connectionId !== undefined) {
               return resolvePersistedRingsGateway(env, tenant, connectionId, gatewayDependencies);
             }
             try {
-              const connection = await resolveRingsConnection({ env, ...tenant });
-              return connection.source === "legacy_environment"
-                ? resolveRingsGateway(env, tenant, gatewayDependencies)
-                : createConfiguredRingsGateway(env, tenant, connection, gatewayDependencies);
+              return await resolvePersistedRingsGateway(
+                env,
+                tenant,
+                undefined,
+                gatewayDependencies
+              );
             } catch (error) {
               if (error instanceof HeliusRingsError && error.code === "config_error") {
-                return resolveRingsGateway(env, tenant, gatewayDependencies);
+                return new UnconfiguredRingsGateway();
               }
               throw error;
             }
           };
     this.resolveConnectionId =
       dependencies.resolveConnectionId ??
-      (dependencies.gateway
-        ? async () => null
-        : async () => {
-            try {
-              return (await resolveRingsConnection({ env, ...tenant })).id;
-            } catch (error) {
-              if (error instanceof HeliusRingsError && error.code === "config_error") return null;
-              throw error;
-            }
-          });
+      (async () => resolveDefaultRingsConnectionId({ env, ...tenant }));
     this.resolveRpcUrl =
       dependencies.resolveRpcUrl ??
       (dependencies.gateway
@@ -527,7 +516,7 @@ export class HeliusRingsService {
     input: PrivateOperationInput,
     context: PrepareOperationContext,
     retry: { ofOperationId: string; ringProgramId: string | null } | null = null,
-    ringsConnectionId: string | null | undefined = undefined
+    ringsConnectionId?: string
   ): Promise<PrivateOperation> {
     assertOperationEnabled(input.opType);
     const wallet = await this.requireWallet(input.walletId);

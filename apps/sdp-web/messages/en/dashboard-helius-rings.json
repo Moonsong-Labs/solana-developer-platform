@@ -9,7 +9,6 @@
     "setup": {
       "title": "Set up Helius Rings",
       "description": "Save the Solana RPC, Photon indexer, prover, and Ring RPC shared by every Helius ring in this project.",
-      "legacyDescription": "This project still uses deployment environment variables. Import them into the encrypted project configuration.",
       "configuredTitle": "Rings configuration",
       "configuredDescription": "{name} is shared by every Helius ring in this project.",
       "adminRequired": "An organization administrator must configure Helius Rings before wallets can be used.",
@@ -20,7 +19,6 @@
       "ringRpc": "Custom Ring RPC URL (optional)",
       "allowHttp": "Allow plain HTTP for local development",
       "save": "Test and save configuration",
-      "import": "Import environment configuration",
       "saving": "Checking configuration…",
       "loading": "Loading project configuration…",
       "failed": "The configuration could not be saved."

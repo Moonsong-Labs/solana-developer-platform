@@ -22,8 +22,8 @@ export interface HeliusRingsOperationRow {
   id: string;
   organization_id: string;
   project_id: string;
-  /** Versioned upstream bundle. NULL is reserved for legacy environment operations. */
-  rings_connection_id: string | null;
+  /** Versioned upstream bundle selected when the operation is prepared. */
+  rings_connection_id: string;
   wallet_id: string;
   op_type: OpType;
   state: OperationState;
@@ -80,7 +80,7 @@ export interface HeliusRingsTimelockInput {
  * lives in one place (the service) instead of being duplicated behind a column.
  */
 export interface ReserveHeliusRingsIntentInput extends HeliusRingsProjectScope {
-  ringsConnectionId?: string | null;
+  ringsConnectionId: string;
   walletId: string;
   opType: OpType;
   intentKey: string;

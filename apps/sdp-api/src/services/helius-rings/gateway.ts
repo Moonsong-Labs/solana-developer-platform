@@ -5,26 +5,12 @@ import {
   type OuterTransactionPolicyInput,
   validateOuterTransaction as validateSdkOuterTransaction,
 } from "@sdp/helius-rings-sdk";
-import { isRingsInsecureHttpAllowed } from "@/lib/feature-flags";
 import { instrumentVendorPort } from "@/runtime/vendor-calls";
 import type { Env } from "@/types/env";
 import { RingsAdapterError } from "./adapter-error";
 import { type ResolvedRingsConnection, resolveRingsConnection } from "./connection-resolver";
 import { submitRingsOuterTransaction } from "./rpc-adapter";
 import { signRingsMessage, signRingsOuterTransaction } from "./signer-adapter";
-
-const RINGS_UPSTREAM_ENV_KEYS = {
-  solanaRpcUrl: "HELIUS_RINGS_RPC_URL",
-  indexerUrl: "HELIUS_RINGS_INDEXER_URL",
-  proverUrl: "HELIUS_RINGS_PROVER_URL",
-} as const satisfies Record<string, keyof Env>;
-
-type RingsUpstreams = Record<keyof typeof RINGS_UPSTREAM_ENV_KEYS, string>;
-
-export type RingsUpstreamEnv = Pick<
-  Env,
-  (typeof RINGS_UPSTREAM_ENV_KEYS)[keyof typeof RINGS_UPSTREAM_ENV_KEYS]
->;
 
 export interface RingsGatewayTenant {
   organizationId: string;
@@ -57,40 +43,10 @@ export function validateRingsOuterTransaction(
   return validateSdkOuterTransaction(input);
 }
 
-export function ringsUpstreamsConfigured(env: RingsUpstreamEnv): boolean {
-  return !("missing" in readUpstreams(env));
-}
-
-export function resolveRingsGateway(
-  env: Env,
-  tenant: RingsGatewayTenant,
-  dependencies: ResolveRingsGatewayDependencies = {}
-): RingsGatewayPort {
-  const configured = readUpstreams(env);
-  if ("missing" in configured) {
-    return new UnconfiguredRingsGateway(configured.missing);
-  }
-  const ringRpcUrl = env.HELIUS_RINGS_RING_RPC_URL?.trim();
-
-  return createConfiguredRingsGateway(
-    env,
-    tenant,
-    {
-      id: null,
-      name: "Legacy environment configuration",
-      source: "legacy_environment",
-      ...configured.upstreams,
-      ...(ringRpcUrl ? { ringRpcUrl } : {}),
-      allowInsecureHttp: isRingsInsecureHttpAllowed(env),
-    },
-    dependencies
-  );
-}
-
 export async function resolvePersistedRingsGateway(
   env: Env,
   tenant: RingsGatewayTenant,
-  connectionId?: string | null,
+  connectionId?: string,
   dependencies: ResolveRingsGatewayDependencies = {}
 ): Promise<RingsGatewayPort> {
   const connection = await resolveRingsConnection({ env, ...tenant, connectionId });
@@ -182,34 +138,8 @@ async function asDomainFailure<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-function readUpstreams(
-  env: RingsUpstreamEnv
-): { upstreams: RingsUpstreams } | { missing: string[] } {
-  const upstreams = {} as RingsUpstreams;
-  const missing: string[] = [];
-
-  for (const [field, key] of Object.entries(RINGS_UPSTREAM_ENV_KEYS) as Array<
-    [keyof RingsUpstreams, keyof RingsUpstreamEnv]
-  >) {
-    const value = (env[key] ?? "").trim();
-    if (value === "") {
-      missing.push(key);
-      continue;
-    }
-    upstreams[field] = value;
-  }
-
-  return missing.length > 0 ? { missing } : { upstreams };
-}
-
 export class UnconfiguredRingsGateway implements RingsGatewayPort {
-  private readonly reason: string;
-
-  constructor(missingKeys: readonly string[]) {
-    this.reason = `Helius Rings is enabled but ${missingKeys.join(", ")} ${
-      missingKeys.length === 1 ? "is" : "are"
-    } not configured`;
-  }
+  constructor(private readonly reason = "Helius Rings setup is required for this project") {}
 
   async probeHealth(): Promise<RuntimeHealth> {
     return {

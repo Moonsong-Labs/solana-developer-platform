@@ -15,7 +15,7 @@ export interface SafeRingsConnection {
 
 export interface RingsSetupStatus {
   configured: boolean;
-  source: "database" | "legacy_environment" | "none";
+  source: "database" | "none";
   canManage: boolean;
   allowInsecureHttpAllowed: boolean;
   defaultConnection: SafeRingsConnection | null;
@@ -51,13 +51,4 @@ export async function createRingsConnection(input: {
     body: JSON.stringify(input),
   });
   return read(response, "Could not save the Helius Rings configuration");
-}
-
-export async function importLegacyRingsConnection(name: string): Promise<SafeRingsConnection> {
-  const response = await fetch("/api/dashboard/helius-rings/connections/import-legacy", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  return read(response, "Could not import the environment configuration");
 }

@@ -69,10 +69,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_helius_rings_connections_project_default
 CREATE INDEX IF NOT EXISTS idx_helius_rings_connections_project_status
     ON helius_rings_connections(project_id, status, created_at DESC);
 
--- New operations pin the upstream bundle selected at prepare time. NULL is
--- retained for operations created before persisted configuration existed.
+-- Operations pin the upstream bundle selected at prepare time.
 ALTER TABLE helius_rings_operations
-    ADD COLUMN IF NOT EXISTS rings_connection_id TEXT;
+    ADD COLUMN IF NOT EXISTS rings_connection_id TEXT NOT NULL;
 
 DO $$
 BEGIN
@@ -91,5 +90,4 @@ END
 $$;
 
 CREATE INDEX IF NOT EXISTS idx_helius_rings_operations_connection
-    ON helius_rings_operations(rings_connection_id)
-    WHERE rings_connection_id IS NOT NULL;
+    ON helius_rings_operations(rings_connection_id);
