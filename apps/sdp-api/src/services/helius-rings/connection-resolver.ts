@@ -1,6 +1,5 @@
 import { HeliusRingsError } from "@sdp/helius-rings";
 import { getDb } from "@/db";
-import { isRingsInsecureHttpAllowed } from "@/lib/feature-flags";
 import {
   type CredentialSecretPayload,
   createCredentialSecretStore,
@@ -12,9 +11,8 @@ import {
 import type { Env } from "@/types/env";
 
 export interface ResolvedRingsConnection {
-  id: string | null;
+  id: string;
   name: string;
-  source: "database" | "legacy_environment";
   solanaRpcUrl: string;
   indexerUrl: string;
   proverUrl: string;
@@ -26,17 +24,8 @@ export async function resolveRingsConnection(input: {
   env: Env;
   organizationId: string;
   projectId: string;
-  connectionId?: string | null;
+  connectionId?: string;
 }): Promise<ResolvedRingsConnection> {
-  if (input.connectionId === null) {
-    const legacy = resolveLegacy(input.env);
-    if (legacy) return legacy;
-    throw new HeliusRingsError(
-      "config_error",
-      "The legacy Helius Rings configuration used by this operation is unavailable"
-    );
-  }
-
   const store = new HeliusRingsConnectionStore(getDb(input.env));
   const row =
     input.connectionId !== undefined
@@ -44,10 +33,6 @@ export async function resolveRingsConnection(input: {
       : await store.findDefault(input.organizationId, input.projectId);
 
   if (row) return resolveStored(input.env, row);
-  if (input.connectionId === undefined) {
-    const legacy = resolveLegacy(input.env);
-    if (legacy) return legacy;
-  }
 
   throw new HeliusRingsError(
     "config_error",
@@ -55,6 +40,21 @@ export async function resolveRingsConnection(input: {
       ? "Helius Rings connection is missing, inactive, or belongs to another project"
       : "Helius Rings setup is required for this project"
   );
+}
+
+export async function resolveDefaultRingsConnectionId(input: {
+  env: Env;
+  organizationId: string;
+  projectId: string;
+}): Promise<string> {
+  const row = await new HeliusRingsConnectionStore(getDb(input.env)).findDefault(
+    input.organizationId,
+    input.projectId
+  );
+  if (!row) {
+    throw new HeliusRingsError("config_error", "Helius Rings setup is required for this project");
+  }
+  return row.id;
 }
 
 async function resolveStored(
@@ -75,7 +75,6 @@ async function resolveStored(
   return {
     id: row.id,
     name: row.name,
-    source: "database",
     ...endpoints,
     // A database copied from a development environment must not carry its
     // plaintext exception into a deployed runtime.
@@ -85,7 +84,7 @@ async function resolveStored(
 
 function parsePayload(
   payload: CredentialSecretPayload
-): Omit<ResolvedRingsConnection, "id" | "name" | "source" | "allowInsecureHttp"> {
+): Omit<ResolvedRingsConnection, "id" | "name" | "allowInsecureHttp"> {
   const solanaRpcUrl = requiredString(payload.solanaRpcUrl, "solanaRpcUrl");
   const indexerUrl = requiredString(payload.indexerUrl, "indexerUrl");
   const proverUrl = requiredString(payload.proverUrl, "proverUrl");
@@ -102,24 +101,6 @@ function requiredString(value: unknown, field: string): string {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
-
-export function resolveLegacy(env: Env): ResolvedRingsConnection | null {
-  const solanaRpcUrl = env.HELIUS_RINGS_RPC_URL?.trim();
-  const indexerUrl = env.HELIUS_RINGS_INDEXER_URL?.trim();
-  const proverUrl = env.HELIUS_RINGS_PROVER_URL?.trim();
-  if (!solanaRpcUrl || !indexerUrl || !proverUrl) return null;
-  const ringRpcUrl = env.HELIUS_RINGS_RING_RPC_URL?.trim();
-  return {
-    id: null,
-    name: "Legacy environment configuration",
-    source: "legacy_environment",
-    solanaRpcUrl,
-    indexerUrl,
-    proverUrl,
-    ...(ringRpcUrl ? { ringRpcUrl } : {}),
-    allowInsecureHttp: isRingsInsecureHttpAllowed(env),
-  };
 }
 
 /**
@@ -145,5 +126,5 @@ export async function resolveRingsBackgroundRpcUrl(env: Env): Promise<string | u
       })
     ).solanaRpcUrl;
   }
-  return resolveLegacy(env)?.solanaRpcUrl;
+  return undefined;
 }

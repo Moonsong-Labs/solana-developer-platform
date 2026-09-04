@@ -33,18 +33,9 @@ administrator later changes the project default. The optional custom Ring RPC
 field is stored now so custom-ring support can use the same project-wide
 configuration without changing this schema.
 
-The former environment variables remain as a migration bridge. When no database
-default exists, the dashboard offers to import the complete legacy bundle. A
-partial legacy bundle is treated as unconfigured.
-
 | Variable | Meaning |
 | --- | --- |
 | `HELIUS_RINGS_ENABLED` | Gates routes, dashboard, indexing poll. Default `false`. |
-| `HELIUS_RINGS_RPC_URL` | Legacy Solana RPC bootstrap value. |
-| `HELIUS_RINGS_INDEXER_URL` | Legacy Photon indexer bootstrap value. |
-| `HELIUS_RINGS_PROVER_URL` | Legacy proving-service bootstrap value. |
-| `HELIUS_RINGS_RING_RPC_URL` | Legacy Ring RPC bootstrap value. Custom-ring bring-up fails with `config_error` when the active project configuration has no Ring RPC URL. |
-| `HELIUS_RINGS_ALLOW_INSECURE_HTTP` | Legacy opt-in for plain HTTP. Persisted setup allows it only in development. |
 | `SOLANA_NETWORK` | Must be `devnet`. |
 
 > **The seed is public.** Identities derive from `INSECURE_TEST_SEED_DEVNET_ONLY!!`
@@ -201,7 +192,7 @@ Enabled when `HELIUS_RINGS_ENABLED=true`.
 | Provisioning | 503, wallet `pending` | On-chain register, wallet `ready` |
 | Sync | 503 | On-demand from dashboard |
 | Shield | `failed:config_error` or `gateway_unavailable` | Build, sign, broadcast, index |
-| Shield (custom ring) | same; also needs `HELIUS_RINGS_RING_RPC_URL` and an active ring | Ring-bound deposit through the ring program |
+| Shield (custom ring) | same; also needs a Ring RPC URL in project setup and an active ring | Ring-bound deposit through the ring program |
 | Withdraw (SOL) | same | Note selection, prove, outbox, sign, broadcast, index |
 | Withdraw / transfer (custom ring, SOL) | same; needs the ring active with its lookup table | Ring transact through the SDK's one-call builders, ALT-compressed |
 | Merge | not exposed | not exposed |
@@ -258,8 +249,8 @@ does.
 3. Hand the program id to the project admin. They enter it with a name in the
    dashboard's *Custom rings* card (or `POST /v1/helius-rings/rings`).
 
-SDP then completes bring-up through the SDK: an auditor key from the ring RPC
-(`HELIUS_RINGS_RING_RPC_URL`), the ring's create-config instruction, its
+SDP then completes bring-up through the SDK: an auditor key from the Ring RPC
+saved in project setup, the ring's create-config instruction, its
 shielded-pool registration, a read grant naming the config authority as the
 ring's initial reader, and the ring's address lookup table — each signed
 through custody and confirmed on chain. The table holds exactly

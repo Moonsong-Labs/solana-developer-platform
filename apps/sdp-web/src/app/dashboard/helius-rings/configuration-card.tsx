@@ -7,11 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslations } from "@/i18n/provider";
-import {
-  createRingsConnection,
-  importLegacyRingsConnection,
-  type RingsSetupStatus,
-} from "./helius-rings-configuration.data";
+import { createRingsConnection, type RingsSetupStatus } from "./helius-rings-configuration.data";
 
 export function RingsConfigurationCard({
   setup,
@@ -36,18 +32,14 @@ export function RingsConfigurationCard({
     setSaving(true);
     setError(null);
     try {
-      if (setup.source === "legacy_environment") {
-        await importLegacyRingsConnection(name.trim());
-      } else {
-        await createRingsConnection({
-          name: name.trim(),
-          solanaRpcUrl,
-          indexerUrl,
-          proverUrl,
-          ...(ringRpcUrl.trim() ? { ringRpcUrl } : {}),
-          allowInsecureHttp,
-        });
-      }
+      await createRingsConnection({
+        name: name.trim(),
+        solanaRpcUrl,
+        indexerUrl,
+        proverUrl,
+        ...(ringRpcUrl.trim() ? { ringRpcUrl } : {}),
+        allowInsecureHttp,
+      });
       await onConfigured();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("DashboardHeliusRings.setup.failed"));
@@ -75,11 +67,7 @@ export function RingsConfigurationCard({
     <Card>
       <CardHeader>
         <CardTitle>{t("DashboardHeliusRings.setup.title")}</CardTitle>
-        <CardDescription>
-          {setup.source === "legacy_environment"
-            ? t("DashboardHeliusRings.setup.legacyDescription")
-            : t("DashboardHeliusRings.setup.description")}
-        </CardDescription>
+        <CardDescription>{t("DashboardHeliusRings.setup.description")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {!setup.canManage ? (
@@ -92,58 +80,48 @@ export function RingsConfigurationCard({
               </Callout>
             ) : null}
             <Field label={t("DashboardHeliusRings.setup.name")} value={name} onChange={setName} />
-            {setup.source !== "legacy_environment" ? (
-              <>
-                <Field
-                  label={t("DashboardHeliusRings.setup.rpc")}
-                  value={solanaRpcUrl}
-                  onChange={setSolanaRpcUrl}
-                  type="url"
+            <Field
+              label={t("DashboardHeliusRings.setup.rpc")}
+              value={solanaRpcUrl}
+              onChange={setSolanaRpcUrl}
+              type="url"
+            />
+            <Field
+              label={t("DashboardHeliusRings.setup.indexer")}
+              value={indexerUrl}
+              onChange={setIndexerUrl}
+              type="url"
+            />
+            <Field
+              label={t("DashboardHeliusRings.setup.prover")}
+              value={proverUrl}
+              onChange={setProverUrl}
+              type="url"
+            />
+            <Field
+              label={t("DashboardHeliusRings.setup.ringRpc")}
+              value={ringRpcUrl}
+              onChange={setRingRpcUrl}
+              type="url"
+              required={false}
+            />
+            {setup.allowInsecureHttpAllowed ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={allowInsecureHttp}
+                  onChange={(event) => setAllowInsecureHttp(event.currentTarget.checked)}
                 />
-                <Field
-                  label={t("DashboardHeliusRings.setup.indexer")}
-                  value={indexerUrl}
-                  onChange={setIndexerUrl}
-                  type="url"
-                />
-                <Field
-                  label={t("DashboardHeliusRings.setup.prover")}
-                  value={proverUrl}
-                  onChange={setProverUrl}
-                  type="url"
-                />
-                <Field
-                  label={t("DashboardHeliusRings.setup.ringRpc")}
-                  value={ringRpcUrl}
-                  onChange={setRingRpcUrl}
-                  type="url"
-                  required={false}
-                />
-                {setup.allowInsecureHttpAllowed ? (
-                  <label className="flex items-center gap-2 text-sm text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={allowInsecureHttp}
-                      onChange={(event) => setAllowInsecureHttp(event.currentTarget.checked)}
-                    />
-                    {t("DashboardHeliusRings.setup.allowHttp")}
-                  </label>
-                ) : null}
-              </>
+                {t("DashboardHeliusRings.setup.allowHttp")}
+              </label>
             ) : null}
             <Button
               onClick={() => void save()}
-              disabled={
-                saving ||
-                name.trim() === "" ||
-                (setup.source !== "legacy_environment" && !requiredUrlsPresent)
-              }
+              disabled={saving || name.trim() === "" || !requiredUrlsPresent}
             >
               {saving
                 ? t("DashboardHeliusRings.setup.saving")
-                : setup.source === "legacy_environment"
-                  ? t("DashboardHeliusRings.setup.import")
-                  : t("DashboardHeliusRings.setup.save")}
+                : t("DashboardHeliusRings.setup.save")}
             </Button>
           </>
         )}

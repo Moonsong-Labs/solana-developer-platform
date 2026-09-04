@@ -7,7 +7,6 @@ import { projectContextMiddleware } from "@/middleware/project-context";
 import {
   createRingsConnection,
   deactivateRingsConnection,
-  importLegacyRingsConnection,
   listRingsConnections,
   makeDefaultRingsConnection,
   testRingsConnection,
@@ -23,7 +22,6 @@ const connectionInputSchema = z.strictObject({
   allowInsecureHttp: z.boolean().default(false),
 });
 const connectionParamsSchema = z.strictObject({ connectionId: z.string().trim().min(1) });
-const importSchema = z.strictObject({ name: z.string().trim().min(1).max(100) });
 
 const routes = new Hono<{ Bindings: Env }>();
 routes.use("*", rpcAdminAuthMiddleware());
@@ -37,14 +35,6 @@ routes.post("/connections", async (c) => {
     throw badRequest("Invalid request body", { errors: z.flattenError(parsed.error).fieldErrors });
   }
   return created(c, await createRingsConnection(c, parsed.data));
-});
-
-routes.post("/connections/import-legacy", async (c) => {
-  const parsed = importSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) {
-    throw badRequest("Invalid request body", { errors: z.flattenError(parsed.error).fieldErrors });
-  }
-  return created(c, await importLegacyRingsConnection(c, parsed.data.name));
 });
 
 routes.post("/connections/:connectionId/test", async (c) => {

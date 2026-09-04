@@ -20,6 +20,7 @@ const OTHER_PROJECT_ID = "prj_hro_repo_other";
 let repo: HeliusRingsOperationRepository;
 let walletRepo: HeliusRingsWalletRepository;
 let walletId: string;
+let defaultConnectionId: string;
 
 const scope = {
   organizationId: TEST_ORG.id,
@@ -31,6 +32,7 @@ function shieldIntent(
 ): ReserveHeliusRingsIntentInput {
   return {
     ...scope,
+    ringsConnectionId: defaultConnectionId,
     walletId,
     opType: "shield",
     intentKey: "sha256:shield-1",
@@ -133,6 +135,7 @@ describe("HeliusRingsOperationRepository (postgres)", () => {
     });
     if (!wallet) throw new Error("wallet fixture was not created");
     walletId = wallet.id;
+    defaultConnectionId = (await insertRingsConnection("default")).id;
   });
 
   describe("reserveIntent", () => {
