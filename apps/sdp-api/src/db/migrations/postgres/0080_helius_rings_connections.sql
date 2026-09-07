@@ -69,6 +69,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_helius_rings_connections_project_default
 CREATE INDEX IF NOT EXISTS idx_helius_rings_connections_project_status
     ON helius_rings_connections(project_id, status, created_at DESC);
 
+-- This migration can run either before or after 0081_tenant_isolation_rls.sql:
+-- a fresh database sorts it before 0081, while an existing deployment may
+-- already have 0081 recorded. Keep the policy self-contained so both paths
+-- enforce the same tenant boundary.
+ALTER TABLE helius_rings_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE helius_rings_connections FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS sdp_tenant_isolation ON helius_rings_connections;
+CREATE POLICY sdp_tenant_isolation ON helius_rings_connections
+    USING (
+        COALESCE(current_setting('app.tenant_isolation_identity', true), '')
+            IN ('system', 'operator')
+        OR (
+            COALESCE(current_setting('app.tenant_isolation_identity', true), '') = 'tenant'
+            AND organization_id = NULLIF(
+                current_setting('app.tenant_isolation_organization_id', true),
+                ''
+            )
+        )
+    )
+    WITH CHECK (
+        COALESCE(current_setting('app.tenant_isolation_identity', true), '')
+            IN ('system', 'operator')
+        OR (
+            COALESCE(current_setting('app.tenant_isolation_identity', true), '') = 'tenant'
+            AND organization_id = NULLIF(
+                current_setting('app.tenant_isolation_organization_id', true),
+                ''
+            )
+        )
+    );
+
 -- Operations pin the upstream bundle selected at prepare time.
 ALTER TABLE helius_rings_operations
     ADD COLUMN IF NOT EXISTS rings_connection_id TEXT NOT NULL;
