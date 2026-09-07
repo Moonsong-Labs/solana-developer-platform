@@ -3,7 +3,7 @@ import { assertReachableTenantEndpoint } from "@sdp/rpc/byok";
 import type { Context } from "hono";
 import { getDb } from "@/db";
 import { parsePostgresJsonOr } from "@/db/postgres-utils";
-import { getAuth, requireProjectId } from "@/lib/auth";
+import { canManageOrganizationCredentials, getAuth, requireProjectId } from "@/lib/auth";
 import { badRequest, conflict, forbidden, notFound } from "@/lib/errors";
 import {
   createCredentialSecretStore,
@@ -79,9 +79,7 @@ export function mapRingsConnection(row: HeliusRingsConnectionRow): SafeRingsConn
 export async function getRingsSetupStatus(c: AppContext) {
   const auth = getAuth(c);
   const projectId = requireProjectId(c);
-  const canManage =
-    auth.authType !== "api_key" &&
-    (auth.permissions.includes("org:admin") || auth.permissions.includes("*"));
+  const canManage = canManageOrganizationCredentials(auth);
   const allowInsecureHttpAllowed = c.env.ENVIRONMENT === "development";
   const rows = await new HeliusRingsConnectionStore(getDb(c.env)).list(
     auth.organizationId,
